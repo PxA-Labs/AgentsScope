@@ -10,16 +10,16 @@ permissions:
 
 jobs:
   label-pr-title:
-    name: Auto Label PR by Conventional Title
+    name: Auto Label PR by Conventional Title & Scope
     runs-on: ubuntu-latest
     steps:
-      - name: Add Conventional Commit Labels
+      - name: Add Conventional Commit & Scope Labels
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const pr = context.payload.pull_request;
-            const title = pr.title.trim().toLowerCase();
+            const title = pr.title.trim();
 
             const typeMap = {
               'feat': { name: 'type: feature', color: 'a2eeef' },
@@ -28,19 +28,47 @@ jobs:
               'refactor': { name: 'type: refactor', color: 'cfd3d7' },
               'test': { name: 'type: test', color: 'bfd4f2' },
               'chore': { name: 'type: chore', color: 'fef2c0' },
-              'perf': { name: 'type: performance', color: 'd4c5f9' }
+              'perf': { name: 'type: performance', color: 'd4c5f9' },
+              'style': { name: 'type: style', color: 'ebd77f' },
+              'ci': { name: 'type: ci', color: '0e8a16' },
+              'build': { name: 'type: build', color: 'fbca04' }
             };
 
-            const match = title.match(/^([a-z]+)(\([^)]+\))?:/);
+            const scopeMap = {
+              'sdk': { name: 'pkg: sdk', color: '1d76db' },
+              'server': { name: 'pkg: server', color: '0052cc' },
+              'ui': { name: 'pkg: ui', color: '5319e7' },
+              'graph': { name: 'area: ui/graph', color: 'b60205' },
+              'feed': { name: 'area: ui/event-feed', color: '0e8a16' },
+              'inspector': { name: 'area: ui/inspector', color: 'fbca04' },
+              'analytics': { name: 'area: ui/analytics', color: '1d76db' },
+              'ws': { name: 'area: server/websocket', color: '006b75' },
+              'api': { name: 'area: server/api', color: 'd4c5f9' },
+              'db': { name: 'area: server/database', color: 'bfd4f2' },
+              'langchain': { name: 'area: sdk/langchain', color: 'c2e0c6' },
+              'docker': { name: 'area: docker', color: 'fef2c0' }
+            };
+
+            const match = title.match(/^([a-zA-Z]+)(?:\(([^)]+)\))?:/);
             if (!match) {
               console.log('PR title does not follow Conventional Commits format.');
               return;
             }
 
-            const prefix = match[1];
+            const prefix = match[1].toLowerCase();
+            const scope = match[2] ? match[2].toLowerCase() : null;
+
+            const labelsToAdd = [];
+
             if (typeMap[prefix]) {
-              const labelConfig = typeMap[prefix];
-              
+              labelsToAdd.push(typeMap[prefix]);
+            }
+
+            if (scope && scopeMap[scope]) {
+              labelsToAdd.push(scopeMap[scope]);
+            }
+
+            for (const labelConfig of labelsToAdd) {
               // Ensure label exists in repo
               try {
                 await github.rest.issues.getLabel({
@@ -54,7 +82,7 @@ jobs:
                   repo: context.repo.repo,
                   name: labelConfig.name,
                   color: labelConfig.color,
-                  description: `Pull requests of type ${prefix}`
+                  description: `Auto-generated label for ${labelConfig.name}`
                 });
               }
 

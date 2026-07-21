@@ -1,5 +1,6 @@
-# Configuration for actions/labeler
+# Configuration for actions/labeler v5
 
+# Packages
 'pkg: sdk':
   - changed-files:
       - any-glob-to-any-file: 'packages/sdk/**/*'
@@ -11,6 +12,86 @@
 'pkg: ui':
   - changed-files:
       - any-glob-to-any-file: 'packages/ui/**/*'
+
+# SDK Subcomponents
+'area: sdk/langchain':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/sdk/**/callback.py'
+
+'area: sdk/websocket':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/sdk/**/client.py'
+
+'area: sdk/decorators':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/sdk/**/decorators.py'
+
+# Server Subcomponents
+'area: server/api':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/server/routers/**/*'
+
+'area: server/websocket':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/server/ws_manager.py'
+
+'area: server/graph-layout':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/server/graph_layout.py'
+
+'area: server/database':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/server/database.py'
+          - 'packages/server/models.py'
+
+# UI Subcomponents
+'area: ui/graph':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/ui/app/sessions/*/graph/**/*'
+          - 'packages/ui/components/AgentGraph.tsx'
+
+'area: ui/event-feed':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/ui/app/sessions/*/events/**/*'
+          - 'packages/ui/components/EventFeed.tsx'
+
+'area: ui/inspector':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/ui/components/EventInspector.tsx'
+
+'area: ui/analytics':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/ui/app/sessions/*/stats/**/*'
+          - 'packages/ui/components/TokenCounter.tsx'
+          - 'packages/ui/components/CostBadge.tsx'
+
+'area: ui/state':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'packages/ui/store/**/*'
+          - 'packages/ui/hooks/**/*'
+
+# Other Project Areas
+'area: examples':
+  - changed-files:
+      - any-glob-to-any-file: 'examples/**/*'
+
+'area: docker':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docker-compose.yml'
+          - '**/Dockerfile'
 
 'documentation':
   - changed-files:
@@ -24,7 +105,6 @@
   - changed-files:
       - any-glob-to-any-file:
           - '.github/**/*'
-          - 'docker-compose.yml'
           - 'Makefile'
 
 'dependencies':
