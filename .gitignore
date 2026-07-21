@@ -45,3 +45,7 @@ htmlcov/
 
 # Build
 *.tgz
+
+# Developer & AI Agent Docs
+docs/
+

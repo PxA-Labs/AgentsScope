@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>🔭 AgentScope</h1>
+  <h1>AgentScope</h1>
   <p><em>Lightweight observability for multi-agent AI pipelines</em></p>
 
   <!-- Badges -->
@@ -24,7 +24,7 @@
 
 <br />
 
-## 🚀 The Core Value Prop
+## The Core Value Prop
 
 **AgentScope** is a lightweight, open-source, self-hosted observability dashboard designed specifically for multi-agent AI pipelines. 
 
@@ -34,7 +34,7 @@ Keep track of real-time events, visualize your agent DAG, monitor token usage, a
 
 **Self-hosted. No accounts. No cloud dependency.**
 
-## 🤯 Quick Demo
+## Quick Demo
 
 **BEFORE**: Running agents blindly, adding `verbose=True`, reading walls of text.
 
@@ -49,20 +49,20 @@ agent.run(input, callbacks=[cb])
 # That's it. Open http://localhost:3000
 ```
 
-## ✨ Features
+## Features
 
-- 🔍 **Real-time Event Feed** — Watch your agents work in real-time
-- 🌳 **Agent DAG Graph** — Visualize the full call hierarchy
-- 💰 **Token Counter** — Track token usage and estimated costs
-- 🔎 **Event Inspector** — Click any event to see full prompt + completion text
-- 📊 **Stats Dashboard** — Token breakdown, latency heatmap, error log
-- 📚 **Session History** — Browse past runs, compare results
-- 🐳 **One-Command Setup** — `docker compose up` and you're running
-- 🔌 **LangChain Integration** — Works with LangChain 0.2+ out of the box
-- 🏠 **Self-Hosted** — Your data stays on your machine
-- ⚡ **Zero Impact** — SDK never blocks your agent pipeline
+- **Real-time Event Feed** — Watch your agents work in real-time
+- **Agent DAG Graph** — Visualize the full call hierarchy
+- **Token Counter** — Track token usage and estimated costs
+- **Event Inspector** — Click any event to see full prompt + completion text
+- **Stats Dashboard** — Token breakdown, latency heatmap, error log
+- **Session History** — Browse past runs, compare results
+- **One-Command Setup** — `docker compose up` and you're running
+- **LangChain Integration** — Works with LangChain 0.2+ out of the box
+- **Self-Hosted** — Your data stays on your machine
+- **Zero Impact** — SDK never blocks your agent pipeline
 
-## ⏱️ Getting Started (5 minutes)
+## Getting Started (5 minutes)
 
 ### Option 1: Docker (Recommended)
 
@@ -120,7 +120,7 @@ result = chain.invoke(
 # Open http://localhost:3000 — your trace is there!
 ```
 
-## 🏗 Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -129,7 +129,7 @@ flowchart LR
     C -->|REST + WS| D[Next.js Dashboard UI]
 ```
 
-## 🛠 Usage Examples
+## Usage Examples
 
 ### 1. Basic LLM Chain
 ```python
@@ -165,7 +165,7 @@ def process_data(data):
     return f"Processed {data}"
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 You can configure the server and UI using the following environment variables:
 
@@ -178,7 +178,7 @@ You can configure the server and UI using the following environment variables:
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8765` | API URL for UI |
 | `NEXT_PUBLIC_WS_URL` | `ws://localhost:8765` | WebSocket URL for UI |
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 agentscope/
@@ -191,7 +191,7 @@ agentscope/
 └── CONTRIBUTING.md
 ```
 
-## 💻 Tech Stack
+## Tech Stack
 
 | Component | Technology |
 |---|---|
@@ -199,7 +199,7 @@ agentscope/
 | **Server** | FastAPI, SQLAlchemy, SQLite, uvicorn |
 | **UI** | Next.js 14, React Flow, Recharts, Zustand, Tailwind CSS |
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) file for more details.
 
@@ -210,7 +210,7 @@ We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) fi
 5. Push to the Branch (`git push origin feature/AmazingFeature`)
 6. Open a Pull Request
 
-## 🗺 Roadmap
+## Roadmap
 
 - [x] LangChain integration
 - [x] Real-time event feed
@@ -221,7 +221,7 @@ We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) fi
 - [ ] Prompt diff view
 - [ ] Export to JSON/CSV
 
-## ❓ FAQ
+## FAQ
 
 **Q: Is this production-ready?**  
 A: AgentScope is primarily a developer tool designed for local debugging and observability during the development of your pipelines.
@@ -235,11 +235,11 @@ A: Your data never leaves your machine. It is stored locally in an SQLite databa
 **Q: Does the SDK slow down my agents?**  
 A: No. All events are emitted as fire-and-forget messages in background tasks, resulting in zero impact on your agent's performance.
 
-## 📄 License
+## License
 
 Distributed under the Apache License 2.0. See `LICENSE` for more information.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 A huge thank you to the open-source tools that made AgentScope possible:
 - [LangChain](https://github.com/langchain-ai/langchain)
