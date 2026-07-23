@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,33 +18,44 @@ from schemas import (
 )
 from ws_manager import manager
 from graph_layout import compute_graph_layout
+from agentscope._pricing import calculate_cost as _calculate_llm_cost
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
-PRICING_TABLE = {
-    "gpt-4o": {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
-    "gpt-4": {"input": 30.00 / 1_000_000, "output": 60.00 / 1_000_000},
-    "gpt-3.5-turbo": {"input": 0.50 / 1_000_000, "output": 1.50 / 1_000_000},
-    "claude-3-5-sonnet": {"input": 3.00 / 1_000_000, "output": 15.00 / 1_000_000},
-    "gemini-1.5-pro": {"input": 1.25 / 1_000_000, "output": 5.00 / 1_000_000},
-}
 
+def _compute_session_aggregates(events: List[EventModel]) -> Dict[str, Any]:
+    """Compute aggregate token counts, costs, errors, and agent counts from events."""
+    total_tokens = 0
+    total_cost = 0.0
+    error_count = 0
+    agents = set()
 
-def _calculate_llm_cost(
-    model_name: str, prompt_tokens: int | None, completion_tokens: int | None
-) -> float:
-    if not model_name or model_name not in PRICING_TABLE:
-        return 0.0
-    prices = PRICING_TABLE[model_name]
-    in_tokens = prompt_tokens or 0
-    out_tokens = completion_tokens or 0
-    return (in_tokens * prices["input"]) + (out_tokens * prices["output"])
+    for ev in events:
+        if ev.status == "error":
+            error_count += 1
+        if ev.agent_name:
+            agents.add(ev.agent_name)
+        if ev.event_type == "llm_end" and ev.payload:
+            tokens = ev.payload.get("total_tokens") or 0
+            total_tokens += tokens
+
+            model = ev.payload.get("model") or ""
+            prompt_tokens = ev.payload.get("prompt_tokens") or 0
+            completion_tokens = ev.payload.get("completion_tokens") or 0
+            total_cost += _calculate_llm_cost(model, prompt_tokens, completion_tokens)
+
+    return {
+        "total_tokens": total_tokens,
+        "total_cost": total_cost,
+        "error_count": error_count,
+        "agent_count": len(agents),
+    }
 
 
 @router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_session(session_in: SessionCreate, db: AsyncSession = Depends(get_db)):
     """Initialize a new observability session."""
-    session_id = session_in.session_id or str(func.uuid())
+    session_id = session_in.session_id or str(uuid.uuid4())
 
     # Check if session already exists
     existing = await db.execute(
@@ -143,9 +155,9 @@ async def update_session(
         )
 
     db_session.status = session_update.status.value
-    if session_update.ended_at:
+    if session_update.ended_at is not None:
         db_session.ended_at = session_update.ended_at
-    else:
+    elif session_update.status.value in ["completed", "failed"]:
         db_session.ended_at = datetime.utcnow()
 
     # Recalculate session aggregates from events before finishing
@@ -153,30 +165,11 @@ async def update_session(
     event_res = await db.execute(event_stmt)
     events = event_res.scalars().all()
 
-    total_tokens = 0
-    total_cost = 0.0
-    error_count = 0
-    agents = set()
-
-    for ev in events:
-        if ev.status == "error":
-            error_count += 1
-        if ev.agent_name:
-            agents.add(ev.agent_name)
-        if ev.event_type == "llm_end" and ev.payload:
-            tokens = ev.payload.get("total_tokens") or 0
-            total_tokens += tokens
-
-            # calculate cost
-            model = ev.payload.get("model") or ""
-            prompt_tokens = ev.payload.get("prompt_tokens") or 0
-            completion_tokens = ev.payload.get("completion_tokens") or 0
-            total_cost += _calculate_llm_cost(model, prompt_tokens, completion_tokens)
-
-    db_session.total_tokens = total_tokens
-    db_session.total_cost_usd = total_cost
-    db_session.error_count = error_count
-    db_session.agent_count = len(agents)
+    aggregates = _compute_session_aggregates(events)
+    db_session.total_tokens = aggregates["total_tokens"]
+    db_session.total_cost_usd = aggregates["total_cost"]
+    db_session.error_count = aggregates["error_count"]
+    db_session.agent_count = aggregates["agent_count"]
 
     await db.commit()
     await db.refresh(db_session)
@@ -249,9 +242,7 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
     res = await db.execute(stmt)
     events = res.scalars().all()
 
-    total_tokens = 0
-    total_cost_usd = 0.0
-    error_count = 0
+    aggregates = _compute_session_aggregates(events)
     event_count = len(events)
 
     # Group stats by agent
@@ -259,11 +250,9 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
 
     # Timeline
     timeline: List[TokenTimelinePoint] = []
+    current_cumulative_tokens = 0
 
     for ev in events:
-        if ev.status == "error":
-            error_count += 1
-
         name = ev.agent_name or ev.agent_type or "Unknown"
         if name not in agent_info:
             agent_info[name] = {
@@ -283,22 +272,14 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
 
         if ev.event_type == "llm_end" and ev.payload:
             tokens = ev.payload.get("total_tokens") or 0
-            total_tokens += tokens
-
-            # cost
-            model = ev.payload.get("model") or ""
-            prompt_tokens = ev.payload.get("prompt_tokens") or 0
-            completion_tokens = ev.payload.get("completion_tokens") or 0
-            cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
-            total_cost_usd += cost
-
+            current_cumulative_tokens += tokens
             agent_info[name]["total_tokens"] += tokens
 
             # Append timeline point
             timeline.append(
                 TokenTimelinePoint(
                     timestamp=ev.timestamp.isoformat() + "Z",
-                    cumulative_tokens=total_tokens,
+                    cumulative_tokens=current_cumulative_tokens,
                 )
             )
 
@@ -326,11 +307,11 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
         total_duration_ms = int((end_t - start_t).total_seconds() * 1000)
 
     return StatsResponse(
-        total_tokens=total_tokens,
-        total_cost_usd=round(total_cost_usd, 6),
+        total_tokens=aggregates["total_tokens"],
+        total_cost_usd=round(aggregates["total_cost"], 6),
         total_duration_ms=total_duration_ms,
         event_count=event_count,
-        error_count=error_count,
+        error_count=aggregates["error_count"],
         agents=agents_list,
         token_timeline=timeline,
     )

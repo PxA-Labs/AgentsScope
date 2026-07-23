@@ -3,6 +3,8 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 import models
+import database
+import main
 from database import Base, get_db
 from main import app
 
@@ -17,7 +19,26 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_temp.db"
 
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():
+    # Remove old database file if it exists to ensure a clean state
+    for suffix in ["", "-journal", "-wal"]:
+        path = f"./test_temp.db{suffix}"
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
     engine = create_async_engine(TEST_DATABASE_URL)
+
+    # Patch the global session maker in both database and main modules
+    test_session_maker = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    database.async_session_maker = test_session_maker
+    main.async_session_maker = test_session_maker
+
     print("REGISTRY TABLES BEFORE CREATE:", list(Base.metadata.tables.keys()))
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

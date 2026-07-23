@@ -39,6 +39,11 @@ def configure(
         session_metadata: Arbitrary tags/metadata for the session.
     """
     global _global_client
+    if _global_client is not None:
+        try:
+            _global_client.stop()
+        except Exception:
+            pass
     _global_client = AgentScopeClient(
         host=host,
         port=port,
@@ -97,9 +102,9 @@ def _make_decorator(
         # Start Event
         client.emit(
             {
-                "event_id": run_id,
+                "event_id": f"{run_id}-start",
                 "session_id": "",
-                "parent_event_id": parent_id,
+                "parent_event_id": f"{parent_id}-start" if parent_id else None,
                 "event_type": "chain_start",
                 "agent_name": name,
                 "agent_type": agent_type,
@@ -123,9 +128,9 @@ def _make_decorator(
             # End Event
             client.emit(
                 {
-                    "event_id": run_id,
+                    "event_id": f"{run_id}-end",
                     "session_id": "",
-                    "parent_event_id": parent_id,
+                    "parent_event_id": f"{run_id}-start",
                     "event_type": "chain_end",
                     "agent_name": name,
                     "agent_type": agent_type,
@@ -147,9 +152,9 @@ def _make_decorator(
             # Error Event
             client.emit(
                 {
-                    "event_id": run_id,
+                    "event_id": f"{run_id}-error",
                     "session_id": "",
-                    "parent_event_id": parent_id,
+                    "parent_event_id": f"{run_id}-start",
                     "event_type": "chain_error",
                     "agent_name": name,
                     "agent_type": agent_type,
@@ -183,9 +188,9 @@ def _make_decorator(
         # Start Event
         client.emit(
             {
-                "event_id": run_id,
+                "event_id": f"{run_id}-start",
                 "session_id": "",
-                "parent_event_id": parent_id,
+                "parent_event_id": f"{parent_id}-start" if parent_id else None,
                 "event_type": "chain_start",
                 "agent_name": name,
                 "agent_type": agent_type,
@@ -209,9 +214,9 @@ def _make_decorator(
             # End Event
             client.emit(
                 {
-                    "event_id": run_id,
+                    "event_id": f"{run_id}-end",
                     "session_id": "",
-                    "parent_event_id": parent_id,
+                    "parent_event_id": f"{run_id}-start",
                     "event_type": "chain_end",
                     "agent_name": name,
                     "agent_type": agent_type,
@@ -233,9 +238,9 @@ def _make_decorator(
             # Error Event
             client.emit(
                 {
-                    "event_id": run_id,
+                    "event_id": f"{run_id}-error",
                     "session_id": "",
-                    "parent_event_id": parent_id,
+                    "parent_event_id": f"{run_id}-start",
                     "event_type": "chain_error",
                     "agent_name": name,
                     "agent_type": agent_type,

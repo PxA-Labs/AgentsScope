@@ -1,6 +1,8 @@
 # Makefile for AgentScope development orchestration
 
-.PHONY: setup-sdk setup-server setup-ui setup-all test test-sdk test-server run-server run-ui clean help
+.PHONY: all setup-sdk setup-server setup-ui setup-all test test-sdk test-server run-server run-ui clean docker-clean help
+
+all: setup-all
 
 help:
 	@echo "Available commands:"
@@ -14,6 +16,7 @@ help:
 	@echo "  make run-server    - Run FastAPI server with hot-reload"
 	@echo "  make run-ui        - Run Next.js UI in dev mode"
 	@echo "  make clean         - Remove caches, builds, and local db files"
+	@echo "  make docker-clean  - Stop containers and destroy sqlite_data volume"
 
 setup-sdk:
 	cd packages/sdk && pip install -e .[dev,langchain]
@@ -40,6 +43,8 @@ run-server:
 run-ui:
 	cd packages/ui && npm run dev
 
+# clean: Removes only host-side build caches, dependency folders, and SQLite databases.
+# Note: This does NOT delete the persistent named sqlite_data Docker Compose volume.
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
@@ -47,3 +52,7 @@ clean:
 	find . -type d -name ".next" -exec rm -rf {} +
 	find . -type d -name "node_modules" -exec rm -rf {} +
 	rm -f packages/server/agentscope.db packages/server/agentscope.db-journal packages/server/agentscope.db-wal
+
+# docker-clean: Destructively stops Compose services and deletes volume storage.
+docker-clean:
+	docker compose down -v

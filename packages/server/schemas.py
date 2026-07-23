@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, AliasChoices
 
 
 class SessionStatus(str, Enum):
@@ -31,25 +31,10 @@ class SessionResponse(BaseModel):
     total_cost_usd: float = 0.0
     error_count: int = 0
     agent_count: int = 0
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def map_sqlalchemy_metadata(cls, data: Any) -> Any:
-        if not isinstance(data, dict) and hasattr(data, "metadata_"):
-            return {
-                "session_id": data.session_id,
-                "name": data.name,
-                "status": data.status,
-                "started_at": data.started_at,
-                "ended_at": data.ended_at,
-                "total_tokens": data.total_tokens,
-                "total_cost_usd": data.total_cost_usd,
-                "error_count": data.error_count,
-                "agent_count": data.agent_count,
-                "metadata": data.metadata_,
-            }
-        return data
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("metadata_", "metadata"),
+    )
 
     class Config:
         from_attributes = True

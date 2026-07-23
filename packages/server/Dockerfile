@@ -9,8 +9,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
-# Create directory for persistent SQLite data
-RUN mkdir -p /app/data
+# Create directory for persistent SQLite data and configure system user
+RUN mkdir -p /app/data && \
+    groupadd -g 1001 agentscope && \
+    useradd -u 1001 -g agentscope -s /bin/sh agentscope && \
+    chown -R agentscope:agentscope /app/data
+
+USER agentscope
 
 EXPOSE 8765
 

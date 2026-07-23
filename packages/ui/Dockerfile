@@ -3,8 +3,8 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Install dependencies
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy application files
 COPY . .
@@ -16,5 +16,7 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
 EXPOSE 3000
+
+USER node
 
 CMD ["npm", "start"]

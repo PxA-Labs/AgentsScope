@@ -31,7 +31,7 @@ class AgentScopeClient:
         )
         self.session_metadata = session_metadata or {}
         self.session_id: Optional[str] = None
-        self.queue: queue.Queue = queue.Queue()
+        self.queue: queue.Queue = queue.Queue(maxsize=5000)
         self.thread: Optional[threading.Thread] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.running = False
@@ -68,7 +68,17 @@ class AgentScopeClient:
         """
         if not self.running:
             self.start()
-        self.queue.put(event)
+        # Non-blocking eviction loop: if queue is full, evict oldest element
+        while True:
+            try:
+                self.queue.put_nowait(event)
+                break
+            except queue.Full:
+                try:
+                    self.queue.get_nowait()
+                    self.queue.task_done()
+                except queue.Empty:
+                    pass
 
     def patch_session_status(self, status: str) -> None:
         """Update the session status on the server.
@@ -118,6 +128,8 @@ class AgentScopeClient:
         asyncio.set_event_loop(self.loop)
         try:
             self.loop.run_until_complete(self._main_async_loop())
+        except (RuntimeError, asyncio.CancelledError):
+            pass
         finally:
             self.loop.close()
 
@@ -126,12 +138,13 @@ class AgentScopeClient:
 
         backoff = 1.0
         max_backoff = 30.0
+        failed_event = None
 
         while self.running:
             try:
                 # 1. Ensure the session is registered with the Server
                 if not self.session_id:
-                    self._create_session_sync()
+                    await self.loop.run_in_executor(None, self._create_session_sync)
                     if not self.session_id:
                         # Server is down, wait and retry session creation
                         await asyncio.sleep(backoff)
@@ -147,10 +160,16 @@ class AgentScopeClient:
 
                     # 3. Read events from the queue and send them
                     while self.running:
-                        # Fetch event from the blocking queue using loop executor
-                        event = await self.loop.run_in_executor(None, self.queue.get)
-                        if event is None:
-                            break
+                        # If a prior send failed, retry it first to preserve ordering
+                        if failed_event is not None:
+                            event = failed_event
+                            failed_event = None
+                        else:
+                            event = await self.loop.run_in_executor(
+                                None, self.queue.get
+                            )
+                            if event is None:
+                                break
 
                         # Encapsulate event into ingestion schema
                         message = {
@@ -167,7 +186,7 @@ class AgentScopeClient:
                                 "Failed to send event to AgentScope "
                                 f"server: {e}. Re-queueing."
                             )
-                            self.queue.put(event)
+                            failed_event = event
                             raise e  # Trigger reconnection and retry
 
             except (

@@ -5,8 +5,6 @@ pydantic>=2.0.0
 websockets>=11.0
 python-dotenv>=1.0.0
 aiosqlite>=0.19.0
-pytest>=7.0.0
-pytest-asyncio>=0.20.0
-httpx>=0.24.0
 greenlet
+
 

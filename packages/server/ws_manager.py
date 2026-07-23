@@ -65,7 +65,7 @@ class ConnectionManager:
         if session_id in self.ui_connections:
             message_str = json.dumps(message)
             disconnected = set()
-            for connection in self.ui_connections[session_id]:
+            for connection in list(self.ui_connections[session_id]):
                 try:
                     await connection.send_text(message_str)
                 except Exception as e:
@@ -93,7 +93,7 @@ class ConnectionManager:
 
         # 1. Broadcast to global UI subscribers
         disconnected_global = set()
-        for connection in self.global_ui_connections:
+        for connection in list(self.global_ui_connections):
             try:
                 await connection.send_text(payload_str)
             except Exception as e:

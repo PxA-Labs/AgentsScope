@@ -79,4 +79,4 @@ async def test_callback_handler():
     )
     assert len(emitted) == 2
     assert emitted[1]["event_type"] == "chain_end"
-    assert callback.client.patch_session_status.called_once_with("completed")
+    callback.client.patch_session_status.assert_called_once_with("completed")

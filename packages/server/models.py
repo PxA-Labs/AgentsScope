@@ -21,12 +21,10 @@ class SessionModel(Base):
     agent_count = Column(Integer, default=0)
     metadata_ = Column("metadata", JSON, default=dict)
 
-    # Cascades deletions down to individual events
+    # Cascades deletions down to individual events via database-level cascade
     events = relationship(
         "EventModel",
         back_populates="session",
-        cascade="all, delete-orphan",
-        lazy="selectin",
     )
 
 

@@ -45,7 +45,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f packages/sdk/pyproject.toml ]; then pip install -e packages/sdk; fi
+          if [ -f packages/sdk/pyproject.toml ]; then pip install -e packages/sdk[dev,langchain]; fi
 
       - name: Run SDK Tests
         run: |
@@ -66,6 +66,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f packages/server/requirements.txt ]; then pip install -r packages/server/requirements.txt; fi
+          if [ -f packages/server/requirements-dev.txt ]; then pip install -r packages/server/requirements-dev.txt; fi
 
       - name: Run Server Tests
         run: |

@@ -41,30 +41,24 @@ def compute_graph_layout(events: List[Any]) -> Dict[str, Any]:
                 "token_count": None,
             }
 
-        # Merge end/error states
         node = node_data_map[eid]
-        # Timestamps
         if ev.timestamp < node["started_at"]:
             node["started_at"] = ev.timestamp
         if ev.timestamp > node["started_at"]:
             node["ended_at"] = ev.timestamp
 
-        # Status: error takes precedence
         if ev.status == "error":
             node["status"] = "error"
         elif ev.status == "completed" and node["status"] != "error":
             node["status"] = "completed"
 
-        # Latency
         if ev.latency_ms is not None:
             node["latency_ms"] = ev.latency_ms
         elif node["ended_at"]:
             dur = (node["ended_at"] - node["started_at"]).total_seconds() * 1000
             node["latency_ms"] = int(dur)
 
-        # Tokens
         if ev.payload and isinstance(ev.payload, dict):
-            # Try to grab token counts
             tokens = ev.payload.get("total_tokens") or ev.payload.get(
                 "total_token_count"
             )
@@ -102,9 +96,10 @@ def compute_graph_layout(events: List[Any]) -> Dict[str, Any]:
         for child in adj[curr]:
             # Layer is maximum distance from roots (ensures child is always below all parents)
             new_layer = curr_layer + 1
-            if child not in layer_map or new_layer > layer_map[child]:
-                layer_map[child] = new_layer
-                queue.append(child)
+            if new_layer < len(node_ids):
+                if child not in layer_map or new_layer > layer_map[child]:
+                    layer_map[child] = new_layer
+                    queue.append(child)
 
     # Clean up any nodes missed (shouldn't happen in a DAG, but safe fallback)
     for nid in node_ids:

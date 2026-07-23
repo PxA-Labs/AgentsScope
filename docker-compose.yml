@@ -12,7 +12,7 @@ services:
     volumes:
       - sqlite_data:/app/data
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///app/data/agentscope.db
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/agentscope.db
     restart: unless-stopped
 
   ui:

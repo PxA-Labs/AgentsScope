@@ -61,3 +61,83 @@ async def test_session_lifecycle():
         # 6. Verify 404 upon deletion
         get_res_deleted = await ac.get("/api/sessions/test-session-123")
         assert get_res_deleted.status_code == 404
+
+
+def test_websocket_sdk_ingest():
+    import uuid
+
+    session_id = f"ws-test-session-{uuid.uuid4()}"
+    ev_llm_id = f"ev-llm-{uuid.uuid4()}"
+    ev_err_id = f"ev-err-{uuid.uuid4()}"
+
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as client:
+        # 1. Initialize session via REST
+        client.post(
+            "/api/sessions",
+            json={
+                "session_id": session_id,
+                "name": "WS Test Run",
+                "metadata": {"env": "test-ws"},
+            },
+        )
+
+        # 2. Stream events through the SDK WebSocket connection
+        with client.websocket_connect("/ws?client_type=sdk") as websocket:
+            # Event 1: LLM completed event (agent-alpha, 150 tokens)
+            websocket.send_json(
+                {
+                    "type": "event",
+                    "session_id": session_id,
+                    "event": {
+                        "event_id": ev_llm_id,
+                        "event_type": "llm_end",
+                        "agent_name": "agent-alpha",
+                        "agent_type": "llm",
+                        "status": "completed",
+                        "timestamp": "2026-07-23T12:00:00.000Z",
+                        "latency_ms": 150,
+                        "payload": {
+                            "model": "gpt-4o",
+                            "prompt_tokens": 100,
+                            "completion_tokens": 50,
+                            "total_tokens": 150,
+                        },
+                    },
+                }
+            )
+            # Event 2: Chain error event (agent-beta, status error)
+            websocket.send_json(
+                {
+                    "type": "event",
+                    "session_id": session_id,
+                    "event": {
+                        "event_id": ev_err_id,
+                        "event_type": "chain_error",
+                        "agent_name": "agent-beta",
+                        "agent_type": "chain",
+                        "status": "error",
+                        "timestamp": "2026-07-23T12:00:05.000Z",
+                        "latency_ms": 200,
+                        "payload": {"error": "Division by zero"},
+                    },
+                }
+            )
+            import time
+
+            for _ in range(30):
+                response = client.get(f"/api/sessions/{session_id}")
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("total_tokens") == 150:
+                        break
+                time.sleep(0.1)
+
+        # 3. Retrieve session metrics via REST and verify updates
+        response = client.get(f"/api/sessions/{session_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_tokens"] == 150
+        assert data["error_count"] == 1
+        assert data["agent_count"] == 2

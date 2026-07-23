@@ -70,7 +70,7 @@ export interface AgentEvent {
   session_id: string;
   parent_event_id: string | null;
   event_type: EventType;
-  agent_name: string;
+  agent_name?: string | null;
   agent_type: "chain" | "llm" | "tool" | "retriever" | "agent" | "custom";
   timestamp: string; // ISO 8601
   latency_ms: number | null;

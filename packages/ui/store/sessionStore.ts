@@ -41,6 +41,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         newEvents[existingIndex] = {
           ...newEvents[existingIndex],
           ...event,
+          timestamp: newEvents[existingIndex].timestamp,
           payload: {
             ...newEvents[existingIndex].payload,
             ...event.payload,
