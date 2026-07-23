@@ -28,7 +28,12 @@ out/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 *.sqlite3
+test_temp.db*
+
 
 # AgentScope data
 .agentscope/
