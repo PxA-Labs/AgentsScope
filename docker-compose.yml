@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: ./packages/server
+      dockerfile: Dockerfile
+    image: agentscope-server:latest
+    container_name: agentscope-server
+    ports:
+      - "8765:8765"
+    volumes:
+      - sqlite_data:/app/data
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/agentscope.db
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./packages/ui
+      dockerfile: Dockerfile
+    image: agentscope-ui:latest
+    container_name: agentscope-ui
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8765
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8765/ws
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:
