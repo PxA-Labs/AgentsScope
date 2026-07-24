@@ -259,3 +259,26 @@ def test_websocket_event_upsert_and_merge():
         # total cost = 0.000225
         assert abs(sess_data["total_cost_usd"] - 0.000225) < 1e-6
 
+
+def test_set_sqlite_pragma_bypasses_non_sqlite():
+    from unittest.mock import MagicMock
+    from database import set_sqlite_pragma
+    import database
+
+    # Mock engine.dialect.name to "postgresql"
+    original_engine = database.engine
+    mock_engine = MagicMock()
+    mock_engine.dialect.name = "postgresql"
+    database.engine = mock_engine
+
+    try:
+        mock_conn = MagicMock()
+        # Call set_sqlite_pragma hook
+        set_sqlite_pragma(mock_conn, None)
+        # Verify that cursor was never called on the connection (because it was skipped!)
+        mock_conn.cursor.assert_not_called()
+    finally:
+        # Restore original engine
+        database.engine = original_engine
+
+
