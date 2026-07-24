@@ -182,10 +182,16 @@ def test_websocket_event_upsert_and_merge():
                     },
                 }
             )
-            time.sleep(0.1)
+            # Check that database has the start event with correct fields (using bounded retry polling)
+            res_start = None
+            for _ in range(30):
+                response = client.get(f"/api/sessions/{session_id}/events/{run_id}")
+                if response.status_code == 200:
+                    res_start = response
+                    break
+                time.sleep(0.1)
 
-            # Check that database has the start event with correct fields
-            res_start = client.get(f"/api/sessions/{session_id}/events/{run_id}")
+            assert res_start is not None, f"Start event {run_id} not found in database within timeout"
             assert res_start.status_code == 200
             start_data = res_start.json()
             assert start_data["event_type"] == "llm_start"

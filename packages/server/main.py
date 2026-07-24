@@ -110,68 +110,135 @@ async def handle_sdk_event(message: dict) -> None:
 
             payload = event_data.get("payload") or {}
 
-            # 3. Create or Update Telemetry Event
-            event_stmt = select(EventModel).where(
-                EventModel.session_id == sess_id,
-                EventModel.event_id == event_data["event_id"]
-            )
-            event_res = await db.execute(event_stmt)
-            db_event = event_res.scalars().first()
+            # Variables to track prior state for idempotent updates
+            is_new_event = False
+            prev_status = None
+            prev_tokens = 0
+            prev_cost = 0.0
 
-            if db_event:
-                # Update existing event properties
-                db_event.event_type = event_data["event_type"]
-                db_event.status = event_data["status"]
-                if event_data.get("latency_ms") is not None:
-                    db_event.latency_ms = event_data["latency_ms"]
-                db_event.payload = merge_payloads(db_event.payload or {}, payload)
-            else:
-                # Insert new event
-                db_event = EventModel(
-                    event_id=event_data["event_id"],
-                    session_id=sess_id,
-                    parent_event_id=event_data.get("parent_event_id"),
-                    event_type=event_data["event_type"],
-                    agent_name=event_data["agent_name"],
-                    agent_type=event_data["agent_type"],
-                    timestamp=ts,
-                    latency_ms=event_data.get("latency_ms"),
-                    status=event_data["status"],
-                    payload=payload,
-                )
-                db.add(db_event)
-
-            # 4. Update session metrics dynamically
-            if event_data["status"] == "error":
-                session.error_count += 1
-
-            agent_name = db_event.agent_name
-            if agent_name:
-                # Check if this is a new agent name in this session context, excluding pending db_event
-                with db.no_autoflush:
-                    agent_stmt = select(func.count(EventModel.event_id)).where(
+            # 3. Create or Update Telemetry Event atomically
+            try:
+                async with db.begin_nested():
+                    event_stmt = select(EventModel).where(
                         EventModel.session_id == sess_id,
-                        EventModel.agent_name == agent_name,
+                        EventModel.event_id == event_data["event_id"]
                     )
-                    agent_res = await db.execute(agent_stmt)
-                    count = agent_res.scalar() or 0
-                # If count is 0 (or 1 if it's the newly inserted row we just added), count as new agent
-                if count == 0:
-                    session.agent_count += 1
+                    event_res = await db.execute(event_stmt)
+                    db_event = event_res.scalars().first()
 
-            if db_event.event_type == "llm_end":
-                merged_payload = db_event.payload or {}
-                prompt_tokens = merged_payload.get("prompt_tokens") or 0
-                completion_tokens = merged_payload.get("completion_tokens") or 0
-                tokens = merged_payload.get("total_tokens") or (
-                    prompt_tokens + completion_tokens
+                    if db_event:
+                        prev_status = db_event.status
+                        if db_event.event_type == "llm_end":
+                            merged_payload = db_event.payload or {}
+                            prompt_tokens = merged_payload.get("prompt_tokens") or 0
+                            completion_tokens = merged_payload.get("completion_tokens") or 0
+                            prev_tokens = merged_payload.get("total_tokens") or (
+                                prompt_tokens + completion_tokens
+                            )
+                            model = merged_payload.get("model") or ""
+                            prev_cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
+
+                        # Update existing event properties
+                        db_event.event_type = event_data["event_type"]
+                        db_event.status = event_data["status"]
+                        if event_data.get("latency_ms") is not None:
+                            db_event.latency_ms = event_data["latency_ms"]
+                        db_event.payload = merge_payloads(db_event.payload or {}, payload)
+                    else:
+                        is_new_event = True
+                        db_event = EventModel(
+                            event_id=event_data["event_id"],
+                            session_id=sess_id,
+                            parent_event_id=event_data.get("parent_event_id"),
+                            event_type=event_data["event_type"],
+                            agent_name=event_data["agent_name"],
+                            agent_type=event_data["agent_type"],
+                            timestamp=ts,
+                            latency_ms=event_data.get("latency_ms"),
+                            status=event_data["status"],
+                            payload=payload,
+                        )
+                        db.add(db_event)
+                    await db.flush()
+            except IntegrityError:
+                # Concurrent insert collision; retry the lookup-and-merge
+                event_stmt = select(EventModel).where(
+                    EventModel.session_id == sess_id,
+                    EventModel.event_id == event_data["event_id"]
                 )
-                if tokens:
-                    session.total_tokens += tokens
+                event_res = await db.execute(event_stmt)
+                db_event = event_res.scalars().first()
+                if db_event:
+                    prev_status = db_event.status
+                    if db_event.event_type == "llm_end":
+                        merged_payload = db_event.payload or {}
+                        prompt_tokens = merged_payload.get("prompt_tokens") or 0
+                        completion_tokens = merged_payload.get("completion_tokens") or 0
+                        prev_tokens = merged_payload.get("total_tokens") or (
+                            prompt_tokens + completion_tokens
+                        )
+                        model = merged_payload.get("model") or ""
+                        prev_cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
 
-                model = merged_payload.get("model") or ""
-                cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
-                session.total_cost_usd += cost
+                    is_new_event = False
+                    db_event.event_type = event_data["event_type"]
+                    db_event.status = event_data["status"]
+                    if event_data.get("latency_ms") is not None:
+                        db_event.latency_ms = event_data["latency_ms"]
+                    db_event.payload = merge_payloads(db_event.payload or {}, payload)
+
+            # 4. Update session metrics dynamically and idempotently
+            if is_new_event:
+                if event_data["status"] == "error":
+                    session.error_count += 1
+
+                agent_name = db_event.agent_name
+                if agent_name:
+                    with db.no_autoflush:
+                        agent_stmt = select(func.count(EventModel.event_id)).where(
+                            EventModel.session_id == sess_id,
+                            EventModel.agent_name == agent_name,
+                        )
+                        agent_res = await db.execute(agent_stmt)
+                        count = agent_res.scalar() or 0
+                    if count <= 1:
+                        session.agent_count += 1
+                if db_event.event_type == "llm_end":
+                    merged_payload = db_event.payload or {}
+                    prompt_tokens = merged_payload.get("prompt_tokens") or 0
+                    completion_tokens = merged_payload.get("completion_tokens") or 0
+                    tokens = merged_payload.get("total_tokens") or (
+                        prompt_tokens + completion_tokens
+                    )
+                    if tokens:
+                        session.total_tokens += tokens
+
+                    model = merged_payload.get("model") or ""
+                    cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
+                    session.total_cost_usd += cost
+            else:
+                # Event already existed: handle status transition deltas
+                if prev_status != "error" and event_data["status"] == "error":
+                    session.error_count += 1
+                elif prev_status == "error" and event_data["status"] != "error":
+                    session.error_count = max(0, session.error_count - 1)
+
+                # Handle token/cost deltas if we are currently at llm_end
+                if db_event.event_type == "llm_end":
+                    merged_payload = db_event.payload or {}
+                    prompt_tokens = merged_payload.get("prompt_tokens") or 0
+                    completion_tokens = merged_payload.get("completion_tokens") or 0
+                    new_tokens = merged_payload.get("total_tokens") or (
+                        prompt_tokens + completion_tokens
+                    )
+                    model = merged_payload.get("model") or ""
+                    new_cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
+
+                    token_delta = new_tokens - prev_tokens
+                    cost_delta = new_cost - prev_cost
+
+                    session.total_tokens += token_delta
+                    session.total_cost_usd += cost_delta
 
             await db.commit()
             await db.refresh(session)
