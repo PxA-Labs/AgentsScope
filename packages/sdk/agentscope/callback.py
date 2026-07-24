@@ -81,10 +81,10 @@ class AgentScopeCallback(AsyncCallbackHandler):
         try:
             agent_name = self._resolve_name(serialized, metadata, default="Chain")
             event = {
-                "event_id": f"{run_id}-start",
+                "event_id": str(run_id),
                 "session_id": "",  # populated client-side / server-side
                 "parent_event_id": (
-                    f"{parent_run_id}-start" if parent_run_id else None
+                    str(parent_run_id) if parent_run_id else None
                 ),
                 "event_type": "chain_start",
                 "agent_name": agent_name,
@@ -115,9 +115,11 @@ class AgentScopeCallback(AsyncCallbackHandler):
     ) -> None:
         try:
             event = {
-                "event_id": f"{run_id}-end",
+                "event_id": str(run_id),
                 "session_id": "",
-                "parent_event_id": f"{run_id}-start",
+                "parent_event_id": (
+                    str(parent_run_id) if parent_run_id else None
+                ),
                 "event_type": "chain_end",
                 "agent_name": "Chain",
                 "agent_type": "chain",
@@ -149,9 +151,11 @@ class AgentScopeCallback(AsyncCallbackHandler):
     ) -> None:
         try:
             event = {
-                "event_id": f"{run_id}-error",
+                "event_id": str(run_id),
                 "session_id": "",
-                "parent_event_id": f"{run_id}-start",
+                "parent_event_id": (
+                    str(parent_run_id) if parent_run_id else None
+                ),
                 "event_type": "chain_error",
                 "agent_name": "Chain",
                 "agent_type": "chain",
