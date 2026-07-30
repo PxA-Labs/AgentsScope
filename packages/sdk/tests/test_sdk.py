@@ -12,6 +12,21 @@ def test_calculate_cost():
     assert calculate_cost("gpt-4o", 1_000_000, 1_000_000) == 12.50
     assert calculate_cost("unknown-model", 100, 100) == 0.0
 
+    # New model pricing checks
+    # claude-3-haiku: 0.25 input / 1.25 output per 1M tokens
+    assert calculate_cost("claude-3-haiku", 1_000_000, 1_000_000) == 1.50
+    # claude-3-opus: 15.00 input / 75.00 output per 1M tokens
+    assert calculate_cost("claude-3-opus", 1_000_000, 1_000_000) == 90.00
+    # gemini-1.5-flash: 0.075 input / 0.30 output per 1M tokens
+    assert calculate_cost("gemini-1.5-flash", 1_000_000, 1_000_000) == pytest.approx(0.375)
+
+    # Date-pinned & minor version matching
+    assert calculate_cost("claude-3-haiku-20240307", 1_000_000, 1_000_000) == 1.50
+    assert calculate_cost("claude-3-opus-20240229", 1_000_000, 1_000_000) == 90.00
+    assert calculate_cost("gemini-1.5-flash-001", 1_000_000, 1_000_000) == pytest.approx(0.375)
+    assert calculate_cost("gpt-4o-2024-05-13", 1_000_000, 1_000_000) == 12.50
+
+
 
 @trace(name="test_sync")
 def sync_fn(x):
