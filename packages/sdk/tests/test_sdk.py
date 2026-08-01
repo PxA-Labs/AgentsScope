@@ -26,6 +26,15 @@ def test_calculate_cost():
     assert calculate_cost("gemini-1.5-flash-001", 1_000_000, 1_000_000) == pytest.approx(0.375)
     assert calculate_cost("gpt-4o-2024-05-13", 1_000_000, 1_000_000) == 12.50
 
+    # Ensure non-delimited model names do not false match
+    assert calculate_cost("gpt-4orange", 1_000_000, 1_000_000) == 0.0
+
+    # Negative token count validation
+    with pytest.raises(ValueError, match="prompt_tokens cannot be negative"):
+        calculate_cost("gpt-4o", -1, 100)
+    with pytest.raises(ValueError, match="completion_tokens cannot be negative"):
+        calculate_cost("gpt-4o", 100, -1)
+
 
 
 @trace(name="test_sync")

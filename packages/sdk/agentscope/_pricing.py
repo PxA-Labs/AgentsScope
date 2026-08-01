@@ -23,7 +23,7 @@ def get_model_pricing(model_name: str) -> dict[str, float] | None:
         return PRICING_TABLE[model_name_lower]
 
     for key in sorted(PRICING_TABLE.keys(), key=len, reverse=True):
-        if model_name_lower.startswith(key):
+        if model_name_lower.startswith(f"{key}-"):
             return PRICING_TABLE[key]
 
     return None
@@ -46,8 +46,13 @@ def calculate_cost(
     if not prices:
         return 0.0
 
-    input_tokens = prompt_tokens or 0
-    output_tokens = completion_tokens or 0
+    if prompt_tokens is not None and prompt_tokens < 0:
+        raise ValueError("prompt_tokens cannot be negative")
+    if completion_tokens is not None and completion_tokens < 0:
+        raise ValueError("completion_tokens cannot be negative")
+
+    input_tokens = 0 if prompt_tokens is None else prompt_tokens
+    output_tokens = 0 if completion_tokens is None else completion_tokens
 
     input_cost = (input_tokens / 1_000_000) * prices["input"]
     output_cost = (output_tokens / 1_000_000) * prices["output"]
