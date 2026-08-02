@@ -37,15 +37,34 @@ export const useSessionStore = create<SessionState>((set) => ({
       let newEvents;
       if (existingIndex > -1) {
         // Merge or replace existing event (e.g. start -> end update)
+        const existing = state.events[existingIndex];
+        
+        // Merge payloads avoiding empty values
+        const mergedPayload = { ...existing.payload };
+        const incomingPayload = event.payload || {};
+        for (const key in incomingPayload) {
+          if (Object.prototype.hasOwnProperty.call(incomingPayload, key)) {
+            const val = incomingPayload[key];
+            const isNotEmpty =
+              val !== null &&
+              val !== undefined &&
+              val !== "" &&
+              !(Array.isArray(val) && val.length === 0);
+            
+            if (isNotEmpty) {
+              mergedPayload[key] = val;
+            } else if (!(key in mergedPayload)) {
+              mergedPayload[key] = val;
+            }
+          }
+        }
+
         newEvents = [...state.events];
         newEvents[existingIndex] = {
-          ...newEvents[existingIndex],
+          ...existing,
           ...event,
-          timestamp: newEvents[existingIndex].timestamp,
-          payload: {
-            ...newEvents[existingIndex].payload,
-            ...event.payload,
-          },
+          timestamp: existing.timestamp,
+          payload: mergedPayload,
         };
       } else {
         // Append new event
@@ -54,6 +73,8 @@ export const useSessionStore = create<SessionState>((set) => ({
 
       return { events: newEvents };
     }),
+
+
 
   updateSessionMeta: (sessionId, meta) =>
     set((state) => {
