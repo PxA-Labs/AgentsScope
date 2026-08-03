@@ -1,0 +1,7 @@
+# AgentScope repository code owners
+# For more information, see:
+#   https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default code owners: every file in the repository requires approval
+# from at least one of the following users.
+*  @purvanshjoshi @archittmittal
