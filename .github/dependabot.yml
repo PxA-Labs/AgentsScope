@@ -1,0 +1,62 @@
+# Dependabot configuration for AgentScope
+# See: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci/cd"
+
+  # Python SDK (pyproject.toml)
+  - package-ecosystem: "pip"
+    directory: "/packages/sdk"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "pkg: sdk"
+
+  # Python Server (requirements.txt / requirements-dev.txt)
+  - package-ecosystem: "pip"
+    directory: "/packages/server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "pkg: server"
+
+  # Next.js UI (package.json / package-lock.json)
+  - package-ecosystem: "npm"
+    directory: "/packages/ui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "pkg: ui"
+
+  # Server Docker image
+  - package-ecosystem: "docker"
+    directory: "/packages/server"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "area: docker"
+
+  # UI Docker image
+  - package-ecosystem: "docker"
+    directory: "/packages/ui"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "area: docker"
