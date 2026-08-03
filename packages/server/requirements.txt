@@ -2,7 +2,7 @@ fastapi>=0.110.0,<1.0.0
 uvicorn>=0.22.0
 sqlalchemy>=2.0.0
 pydantic>=2.0.0
-websockets>=11.0
+websockets>=17.0
 python-dotenv>=1.0.0
 aiosqlite>=0.19.0
 greenlet
