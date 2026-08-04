@@ -95,5 +95,5 @@ jobs:
         run: |
           if [ -f packages/ui/package.json ]; then
             cd packages/ui
-            npm run build || true
+            npm run build
           fi
