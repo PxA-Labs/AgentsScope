@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, delete, func
@@ -70,7 +70,7 @@ async def create_session(session_in: SessionCreate, db: AsyncSession = Depends(g
         session_id=session_id,
         name=session_in.name,
         status="running",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
         metadata_=session_in.metadata or {},
     )
     db.add(db_session)
@@ -158,7 +158,7 @@ async def update_session(
     if session_update.ended_at is not None:
         db_session.ended_at = session_update.ended_at
     elif session_update.status.value in ["completed", "failed"]:
-        db_session.ended_at = datetime.utcnow()
+        db_session.ended_at = datetime.now(timezone.utc)
 
     # Recalculate session aggregates from events before finishing
     event_stmt = select(EventModel).where(EventModel.session_id == session_id)
@@ -278,7 +278,7 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
             # Append timeline point
             timeline.append(
                 TokenTimelinePoint(
-                    timestamp=ev.timestamp.isoformat() + "Z",
+                    timestamp=ev.timestamp.replace(tzinfo=timezone.utc).isoformat(),
                     cumulative_tokens=current_cumulative_tokens,
                 )
             )
