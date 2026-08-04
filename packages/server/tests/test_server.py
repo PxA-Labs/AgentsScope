@@ -532,6 +532,91 @@ async def test_session_max_limit_pruning(db_session):
         if "MAX_SESSIONS" in os.environ:
             del os.environ["MAX_SESSIONS"]
 
+def test_list_events_pagination():
+    import uuid
+    from fastapi.testclient import TestClient
+
+    session_id = f"pagination-test-{uuid.uuid4()}"
+    with TestClient(app) as client:
+        # Create session
+        client.post(
+            "/api/sessions",
+            json={
+                "session_id": session_id,
+                "name": "Pagination Test Run",
+            },
+        )
+
+        with client.websocket_connect("/ws?client_type=sdk") as websocket:
+            # Send 5 events
+            for i in range(5):
+                websocket.send_json(
+                    {
+                        "type": "event",
+                        "session_id": session_id,
+                        "event": {
+                            "event_id": f"event-{i}-{uuid.uuid4()}",
+                            "event_type": "chain_start",
+                            "agent_name": f"agent-{i}",
+                            "agent_type": "chain",
+                            "status": "running",
+                            "timestamp": f"2026-08-04T12:00:0{i}.000Z",
+                            "payload": {"index": i},
+                        },
+                    }
+                )
+
+            # Wait for ingestion to complete
+            import time
+
+            for _ in range(30):
+                # Retrieve first page with limit=2
+                res = client.get(
+                    f"/api/sessions/{session_id}/events?page=1&limit=2"
+                )
+                if res.status_code == 200 and res.json()["total_count"] == 5:
+                    break
+                time.sleep(0.1)
+
+        # 1. Verify page 1 of limit 2
+        res = client.get(f"/api/sessions/{session_id}/events?page=1&limit=2")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total_count"] == 5
+        assert len(data["events"]) == 2
+        assert data["page"] == 1
+        assert data["limit"] == 2
+        assert data["total_pages"] == 3
+        assert data["events"][0]["payload"]["index"] == 0
+        assert data["events"][1]["payload"]["index"] == 1
+
+        # 2. Verify page 2 of limit 2
+        res = client.get(f"/api/sessions/{session_id}/events?page=2&limit=2")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["events"]) == 2
+        assert data["page"] == 2
+        assert data["events"][0]["payload"]["index"] == 2
+        assert data["events"][1]["payload"]["index"] == 3
+
+        # 3. Verify page 3 of limit 2 (last page, only 1 event)
+        res = client.get(f"/api/sessions/{session_id}/events?page=3&limit=2")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["events"]) == 1
+        assert data["page"] == 3
+        assert data["events"][0]["payload"]["index"] == 4
+
+        # 4. Verify filters with pagination
+        res = client.get(
+            f"/api/sessions/{session_id}/events?page=1&limit=2&agent=agent-2"
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total_count"] == 1
+        assert len(data["events"]) == 1
+        assert data["total_pages"] == 1
+
 
 
 

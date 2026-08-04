@@ -111,3 +111,12 @@ class StatsResponse(BaseModel):
     error_count: int
     agents: List[AgentStats]
     token_timeline: List[TokenTimelinePoint]
+
+
+class PaginatedEventsResponse(BaseModel):
+    events: List[EventResponse]
+    total_count: int
+    page: int
+    limit: int
+    total_pages: int
+

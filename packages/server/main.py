@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -164,7 +164,7 @@ async def handle_sdk_event(message: dict) -> None:
                     session_id=sess_id,
                     name=f"session_{sess_id[:8]}",
                     status="running",
-                    started_at=datetime.utcnow(),
+                    started_at=datetime.now(timezone.utc),
                 )
                 db.add(session)
                 await db.commit()
@@ -176,7 +176,7 @@ async def handle_sdk_event(message: dict) -> None:
                 ts_str = ts_str.replace("Z", "+00:00")
                 ts = datetime.fromisoformat(ts_str)
             else:
-                ts = datetime.utcnow()
+                ts = datetime.now(timezone.utc)
 
             payload = event_data.get("payload") or {}
 
@@ -329,7 +329,7 @@ async def handle_sdk_event(message: dict) -> None:
                 "event_type": db_event.event_type,
                 "agent_name": db_event.agent_name,
                 "agent_type": db_event.agent_type,
-                "timestamp": db_event.timestamp.isoformat() + "Z",
+                "timestamp": db_event.timestamp.replace(tzinfo=timezone.utc).isoformat(),
                 "latency_ms": db_event.latency_ms,
                 "status": db_event.status,
                 "payload": db_event.payload,

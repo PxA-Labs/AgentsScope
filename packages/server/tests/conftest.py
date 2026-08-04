@@ -12,10 +12,6 @@ import main
 from database import Base, get_db
 from main import app
 
-print("CONFTEST Base ID:", id(Base))
-print("MODELS Base ID:", id(models.Base))
-print("MODELS registry tables:", list(models.Base.metadata.tables.keys()))
-
 
 # Temporary file database for testing to avoid SQLite connection isolation traps
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_temp.db"
@@ -42,8 +38,6 @@ async def db_engine():
     )
     database.async_session_maker = test_session_maker
     main.async_session_maker = test_session_maker
-
-    print("REGISTRY TABLES BEFORE CREATE:", list(Base.metadata.tables.keys()))
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
