@@ -22,11 +22,81 @@ logging.basicConfig(
 )
 
 
+async def prune_old_sessions() -> None:
+    """Prune old sessions based on RETENTION_DAYS and MAX_SESSIONS settings."""
+    retention_days_raw = os.getenv("RETENTION_DAYS")
+    max_sessions_raw = os.getenv("MAX_SESSIONS")
+
+    if not retention_days_raw and not max_sessions_raw:
+        return
+
+    from datetime import datetime, timedelta
+    from sqlalchemy import delete
+
+    async with async_session_maker() as db:
+        try:
+            # 1. Prune by retention days
+            if retention_days_raw:
+                try:
+                    days = int(retention_days_raw)
+                    cutoff = datetime.utcnow() - timedelta(days=days)
+                    stmt = delete(SessionModel).where(SessionModel.started_at < cutoff)
+                    res = await db.execute(stmt)
+                    await db.commit()
+                    deleted_count = res.rowcount
+                    if deleted_count:
+                        logging.info(
+                            f"Pruned {deleted_count} sessions older than {days} days "
+                            f"(cutoff: {cutoff.isoformat()})"
+                        )
+                except ValueError:
+                    logging.warning(f"Invalid RETENTION_DAYS value: {retention_days_raw}")
+
+            # 2. Prune by max session limit
+            if max_sessions_raw:
+                try:
+                    limit = int(max_sessions_raw)
+                    # Count current sessions
+                    cnt_stmt = select(func.count(SessionModel.session_id))
+                    cnt_res = await db.execute(cnt_stmt)
+                    total_sessions = cnt_res.scalar() or 0
+
+                    if total_sessions > limit:
+                        excess = total_sessions - limit
+                        # Retrieve the IDs of the oldest excess sessions
+                        old_stmt = (
+                            select(SessionModel.session_id)
+                            .order_by(SessionModel.started_at.asc())
+                            .limit(excess)
+                        )
+                        old_res = await db.execute(old_stmt)
+                        ids_to_delete = old_res.scalars().all()
+
+                        if ids_to_delete:
+                            del_stmt = delete(SessionModel).where(
+                                SessionModel.session_id.in_(ids_to_delete)
+                            )
+                            await db.execute(del_stmt)
+                            await db.commit()
+                            logging.info(
+                                f"Pruned {len(ids_to_delete)} oldest sessions to enforce "
+                                f"MAX_SESSIONS limit of {limit}."
+                            )
+                except ValueError:
+                    logging.warning(f"Invalid MAX_SESSIONS value: {max_sessions_raw}")
+
+        except Exception as e:
+            logging.error(f"Error during database session pruning: {e}")
+            await db.rollback()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB schema
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Prune old sessions on startup
+    await prune_old_sessions()
     yield
     # Teardown connection pool
     await engine.dispose()
