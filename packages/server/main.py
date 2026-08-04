@@ -240,10 +240,17 @@ async def handle_sdk_event(message: dict) -> None:
                     session.total_tokens += token_delta
                     session.total_cost_usd += cost_delta
 
+            # Implicit session status synchronization from root terminal events (Sub-Issue 5.2)
+            if db_event.event_type == "chain_end" and not db_event.parent_event_id:
+                session.status = "completed"
+                session.ended_at = ts
+            elif db_event.event_type == "chain_error" and not db_event.parent_event_id:
+                session.status = "failed"
+                session.ended_at = ts
+
             await db.commit()
             await db.refresh(session)
             await db.refresh(db_event)
-
             # 5. Broadcast updated event to session UI subscribers
             ui_event = {
                 "event_id": db_event.event_id,

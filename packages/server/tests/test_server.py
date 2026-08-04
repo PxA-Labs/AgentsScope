@@ -282,3 +282,67 @@ def test_set_sqlite_pragma_bypasses_non_sqlite():
         database.engine = original_engine
 
 
+def test_implicit_session_status_synchronization():
+    import uuid
+    import time
+    from fastapi.testclient import TestClient
+
+    session_id = f"status-sync-session-{uuid.uuid4()}"
+    run_id = f"run-root-{uuid.uuid4()}"
+
+    with TestClient(app) as client:
+        # Create session
+        client.post(
+            "/api/sessions",
+            json={
+                "session_id": session_id,
+                "name": "Root status sync test",
+            },
+        )
+
+        # Verify that session is initially "running"
+        res_sess = client.get(f"/api/sessions/{session_id}")
+        assert res_sess.status_code == 200
+        assert res_sess.json()["status"] == "running"
+        assert res_sess.json()["ended_at"] is None
+
+        with client.websocket_connect("/ws?client_type=sdk") as websocket:
+            # Send root chain completed event (parent_event_id is None)
+            websocket.send_json(
+                {
+                    "type": "event",
+                    "session_id": session_id,
+                    "event": {
+                        "event_id": run_id,
+                        "event_type": "chain_end",
+                        "agent_name": "Chain",
+                        "agent_type": "chain",
+                        "status": "completed",
+                        "timestamp": "2026-07-24T12:00:00.000Z",
+                        "payload": {
+                            "chain_type": "Chain",
+                            "inputs": {},
+                            "outputs": {},
+                        },
+                    },
+                }
+            )
+
+            # Wait for websocket ingestion to process and implicitly update session status
+            for _ in range(30):
+                response = client.get(f"/api/sessions/{session_id}")
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("status") == "completed":
+                        break
+                time.sleep(0.1)
+
+        # Check that session status has transitioned to "completed" and ended_at is set
+        res_sess = client.get(f"/api/sessions/{session_id}")
+        assert res_sess.status_code == 200
+        sess_data = res_sess.json()
+        assert sess_data["status"] == "completed"
+        assert sess_data["ended_at"] is not None
+
+
+

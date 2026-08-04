@@ -80,3 +80,46 @@ async def test_callback_handler():
     assert len(emitted) == 2
     assert emitted[1]["event_type"] == "chain_end"
     callback.client.patch_session_status.assert_called_once_with("completed")
+
+
+def test_client_pending_status_patch():
+    from unittest.mock import MagicMock
+    from agentscope.client import AgentScopeClient
+
+    client = AgentScopeClient(host="localhost", port=8765, session_name="test_session")
+    # session_id is initially None
+    assert client.session_id is None
+    assert client.pending_status is None
+
+    # Call patch_session_status when session_id is not set yet
+    client.patch_session_status("completed")
+
+    # Verify that status is enqueued in pending_status
+    assert client.pending_status == "completed"
+
+    # Mock _send_status_patch
+    client._send_status_patch = MagicMock()
+
+    # Mock urllib.request.urlopen to simulate successful session creation
+    import urllib.request
+    from io import BytesIO
+
+    mock_response = BytesIO(b'{"session_id": "test-uuid-123"}')
+    original_urlopen = urllib.request.urlopen
+    urllib.request.urlopen = MagicMock(return_value=mock_response)
+
+    try:
+        # Trigger creation
+        client._create_session_sync()
+
+        # Verify session_id is populated
+        assert client.session_id == "test-uuid-123"
+        # Verify pending_status was cleared
+        assert client.pending_status is None
+        # Verify _send_status_patch was called with enqueued status
+        client._send_status_patch.assert_called_once_with(
+            "test-uuid-123", "completed"
+        )
+    finally:
+        urllib.request.urlopen = original_urlopen
+
