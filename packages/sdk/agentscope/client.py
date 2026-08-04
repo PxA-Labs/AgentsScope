@@ -95,7 +95,7 @@ class AgentScopeClient:
         self._send_status_patch(session_id, status)
 
     def _send_status_patch(self, session_id: str, status: str) -> None:
-        url = f"http://{self.host}:{self.port}/sessions/{session_id}"
+        url = f"http://{self.host}:{self.port}/api/sessions/{session_id}"
         data = json.dumps(
             {
                 "status": status,
@@ -212,7 +212,7 @@ class AgentScopeClient:
 
     def _create_session_sync(self) -> None:
         """Issue synchronous POST request to initialize a session on the server."""
-        url = f"http://{self.host}:{self.port}/sessions"
+        url = f"http://{self.host}:{self.port}/api/sessions"
         session_uuid = str(uuid.uuid4())
         data = json.dumps(
             {

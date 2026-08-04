@@ -345,4 +345,92 @@ def test_implicit_session_status_synchronization():
         assert sess_data["ended_at"] is not None
 
 
+def test_sdk_client_integration(db_engine):
+    import uvicorn
+    import threading
+    import socket
+    import time
+    import uuid
+    import urllib.request
+    from agentscope.client import AgentScopeClient
+
+    # Get a free port
+    s = socket.socket()
+    s.bind(("", 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    # Boot local server in background thread
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    # Wait for the server to be ready
+    for _ in range(30):
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/health", timeout=0.1
+            ) as r:
+                if r.status == 200:
+                    break
+        except Exception:
+            pass
+        time.sleep(0.05)
+
+    client = AgentScopeClient(
+        host="127.0.0.1", port=port, session_name="IntegrationTestSession"
+    )
+    try:
+        # Start SDK client
+        client.start()
+
+        # Emit some events
+        event_id = str(uuid.uuid4())
+        client.emit(
+            {
+                "event_id": event_id,
+                "event_type": "chain_start",
+                "agent_name": "TestAgent",
+                "agent_type": "custom",
+                "status": "running",
+                "payload": {"input": "test-data"},
+            }
+        )
+
+        # Wait until session is created and the event is ingested
+        session_id = None
+        for _ in range(40):
+            if client.session_id:
+                session_id = client.session_id
+                break
+            time.sleep(0.1)
+
+        assert session_id is not None, "SDK client failed to register session"
+
+        # Verify via REST API that the event exists
+        res_event = None
+        from fastapi.testclient import TestClient
+
+        with TestClient(app) as test_client:
+            for _ in range(40):
+                r = test_client.get(
+                    f"/api/sessions/{session_id}/events/{event_id}"
+                )
+                if r.status_code == 200:
+                    res_event = r.json()
+                    break
+                time.sleep(0.1)
+
+        assert res_event is not None, "Event was not ingested by the server"
+        assert res_event["event_type"] == "chain_start"
+        assert res_event["payload"]["input"] == "test-data"
+
+    finally:
+        client.stop()
+        server.should_exit = True
+        thread.join(timeout=2.0)
+
+
+
 
