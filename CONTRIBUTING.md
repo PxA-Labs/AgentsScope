@@ -24,8 +24,8 @@ Follow these steps to set up your local development environment for AgentScope:
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/agentscope.git
-cd agentscope
+git clone https://github.com/archittmittal/AgentsScope.git
+cd AgentsScope
 
 # Server
 cd packages/server
