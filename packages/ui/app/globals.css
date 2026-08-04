@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 240 5% 96%;
+    
+    --card: 240 10% 6%;
+    --card-foreground: 240 5% 96%;
+    
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 240 5% 96%;
+    
+    --primary: 263 70% 50%;
+    --primary-foreground: 210 20% 98%;
+    
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 240 5% 96%;
+    
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    
+    --accent: 263 60% 40%;
+    --accent-foreground: 240 5% 96%;
+    
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+    
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 263 70% 50%;
+    --radius: 0.75rem;
+  }
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbars for dashboard views */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Premium Card Glass Effects */
+.glass-panel {
+  background: rgba(15, 15, 23, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.glass-panel-hover:hover {
+  border-color: rgba(147, 51, 234, 0.2);
+  box-shadow: 0 0 15px rgba(147, 51, 234, 0.05);
+  transition: all 0.2s ease-in-out;
+}
