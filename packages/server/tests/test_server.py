@@ -432,5 +432,29 @@ def test_sdk_client_integration(db_engine):
         thread.join(timeout=2.0)
 
 
+def test_server_pricing():
+    from pricing import calculate_cost, get_model_pricing
+    import pytest
+
+    # Model configuration check
+    prices = get_model_pricing("gpt-4o")
+    assert prices is not None
+    assert prices["input"] == 2.50
+    assert prices["output"] == 10.00
+
+    # Prefix match checks
+    assert get_model_pricing("gpt-4o-2024-05-13") == prices
+    assert get_model_pricing("gpt-4orange") is None
+
+    # Calculate cost checks
+    assert calculate_cost("gpt-4o", 1000, 2000) == pytest.approx(
+        (1000 / 1000000 * 2.50) + (2000 / 1000000 * 10.00)
+    )
+
+    with pytest.raises(ValueError, match="prompt_tokens cannot be negative"):
+        calculate_cost("gpt-4o", -1, 100)
+
+
+
 
 

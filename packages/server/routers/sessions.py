@@ -18,7 +18,7 @@ from schemas import (
 )
 from ws_manager import manager
 from graph_layout import compute_graph_layout
-from agentscope._pricing import calculate_cost as _calculate_llm_cost
+from pricing import calculate_cost as _calculate_llm_cost
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 

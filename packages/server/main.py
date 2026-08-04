@@ -13,7 +13,7 @@ from database import engine, Base, async_session_maker
 from models import SessionModel, EventModel
 from ws_manager import manager
 from routers import sessions, events
-from agentscope._pricing import calculate_cost as _calculate_llm_cost
+from pricing import calculate_cost as _calculate_llm_cost
 
 # Configure logging
 logging.basicConfig(
