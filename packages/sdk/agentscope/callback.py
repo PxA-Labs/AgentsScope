@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID
@@ -46,6 +47,8 @@ class AgentScopeCallback(AsyncCallbackHandler):
             session_name=session_name,
             session_metadata=session_metadata,
         )
+        self._run_metadata: Dict[UUID, Dict[str, Any]] = {}
+        self._metadata_lock = threading.Lock()
 
     def _resolve_name(
         self,
@@ -80,6 +83,17 @@ class AgentScopeCallback(AsyncCallbackHandler):
     ) -> None:
         try:
             agent_name = self._resolve_name(serialized, metadata, default="Chain")
+            chain_type = (
+                serialized.get("name") or serialized.get("id", ["Chain"])[-1]
+            )
+            with self._metadata_lock:
+                self._run_metadata[run_id] = {
+                    "agent_name": agent_name,
+                    "agent_type": "chain",
+                    "chain_type": chain_type,
+                    "inputs": inputs,
+                }
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",  # populated client-side / server-side
@@ -93,9 +107,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "latency_ms": None,
                 "status": "running",
                 "payload": {
-                    "chain_type": (
-                        serialized.get("name") or serialized.get("id", ["Chain"])[-1]
-                    ),
+                    "chain_type": chain_type,
                     "inputs": inputs,
                     "outputs": None,
                     "error": None,
@@ -114,6 +126,13 @@ class AgentScopeCallback(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
+            with self._metadata_lock:
+                meta = self._run_metadata.pop(run_id, {})
+            agent_name = meta.get("agent_name", "Chain")
+            agent_type = meta.get("agent_type", "chain")
+            chain_type = meta.get("chain_type", "Chain")
+            inputs = meta.get("inputs", {})
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
@@ -121,14 +140,14 @@ class AgentScopeCallback(AsyncCallbackHandler):
                     str(parent_run_id) if parent_run_id else None
                 ),
                 "event_type": "chain_end",
-                "agent_name": "Chain",
+                "agent_name": agent_name,
                 "agent_type": "chain",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "completed",
                 "payload": {
-                    "chain_type": "Chain",
-                    "inputs": {},
+                    "chain_type": chain_type,
+                    "inputs": inputs,
                     "outputs": outputs,
                     "error": None,
                 },
@@ -150,6 +169,13 @@ class AgentScopeCallback(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
+            with self._metadata_lock:
+                meta = self._run_metadata.pop(run_id, {})
+            agent_name = meta.get("agent_name", "Chain")
+            agent_type = meta.get("agent_type", "chain")
+            chain_type = meta.get("chain_type", "Chain")
+            inputs = meta.get("inputs", {})
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
@@ -157,14 +183,14 @@ class AgentScopeCallback(AsyncCallbackHandler):
                     str(parent_run_id) if parent_run_id else None
                 ),
                 "event_type": "chain_error",
-                "agent_name": "Chain",
+                "agent_name": agent_name,
                 "agent_type": "chain",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "error",
                 "payload": {
-                    "chain_type": "Chain",
-                    "inputs": {},
+                    "chain_type": chain_type,
+                    "inputs": inputs,
                     "outputs": None,
                     "error": str(error),
                 },
@@ -204,6 +230,18 @@ class AgentScopeCallback(AsyncCallbackHandler):
             if not model and serialized:
                 model = serialized.get("name") or serialized.get("id", ["LLM"])[-1]
 
+            temperature = kwargs.get("invocation_params", {}).get("temperature")
+            streaming = kwargs.get("invocation_params", {}).get("stream", False)
+            with self._metadata_lock:
+                self._run_metadata[run_id] = {
+                    "agent_name": agent_name,
+                    "agent_type": "llm",
+                    "model": model,
+                    "prompts": prompts,
+                    "temperature": temperature,
+                    "streaming": streaming,
+                }
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
@@ -221,12 +259,8 @@ class AgentScopeCallback(AsyncCallbackHandler):
                     "prompt_tokens": None,
                     "completion_tokens": None,
                     "total_tokens": None,
-                    "temperature": kwargs.get("invocation_params", {}).get(
-                        "temperature"
-                    ),
-                    "streaming": kwargs.get("invocation_params", {}).get(
-                        "stream", False
-                    ),
+                    "temperature": temperature,
+                    "streaming": streaming,
                 },
             }
             self.client.emit(event)
@@ -242,6 +276,15 @@ class AgentScopeCallback(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
+            with self._metadata_lock:
+                meta = self._run_metadata.pop(run_id, {})
+            agent_name = meta.get("agent_name", "LLM")
+            agent_type = meta.get("agent_type", "llm")
+            model = meta.get("model", "")
+            prompts = meta.get("prompts", [])
+            temperature = meta.get("temperature")
+            streaming = meta.get("streaming", False)
+
             completion = ""
             prompt_tokens = None
             completion_tokens = None
@@ -277,20 +320,20 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "session_id": "",
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "llm_end",
-                "agent_name": "LLM",
+                "agent_name": agent_name,
                 "agent_type": "llm",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "completed",
                 "payload": {
-                    "model": "",
-                    "prompts": [],
+                    "model": model,
+                    "prompts": prompts,
                     "completion": completion,
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "total_tokens": total_tokens,
-                    "temperature": None,
-                    "streaming": False,
+                    "temperature": temperature,
+                    "streaming": streaming,
                 },
             }
             self.client.emit(event)
@@ -306,25 +349,34 @@ class AgentScopeCallback(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
+            with self._metadata_lock:
+                meta = self._run_metadata.pop(run_id, {})
+            agent_name = meta.get("agent_name", "LLM")
+            agent_type = meta.get("agent_type", "llm")
+            model = meta.get("model", "")
+            prompts = meta.get("prompts", [])
+            temperature = meta.get("temperature")
+            streaming = meta.get("streaming", False)
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "llm_error",
-                "agent_name": "LLM",
+                "agent_name": agent_name,
                 "agent_type": "llm",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "error",
                 "payload": {
-                    "model": "",
-                    "prompts": [],
+                    "model": model,
+                    "prompts": prompts,
                     "completion": None,
                     "prompt_tokens": None,
                     "completion_tokens": None,
                     "total_tokens": None,
-                    "temperature": None,
-                    "streaming": False,
+                    "temperature": temperature,
+                    "streaming": streaming,
                 },
             }
             self.client.emit(event)
@@ -346,6 +398,16 @@ class AgentScopeCallback(AsyncCallbackHandler):
     ) -> None:
         try:
             tool_name = self._resolve_name(serialized, metadata, default="Tool")
+            tool_description = serialized.get("description")
+            with self._metadata_lock:
+                self._run_metadata[run_id] = {
+                    "agent_name": tool_name,
+                    "agent_type": "tool",
+                    "tool_name": tool_name,
+                    "tool_description": tool_description,
+                    "input": input_str,
+                }
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
@@ -358,7 +420,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "status": "running",
                 "payload": {
                     "tool_name": tool_name,
-                    "tool_description": serialized.get("description"),
+                    "tool_description": tool_description,
                     "input": input_str,
                     "output": None,
                     "error": None,
@@ -377,20 +439,28 @@ class AgentScopeCallback(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
+            with self._metadata_lock:
+                meta = self._run_metadata.pop(run_id, {})
+            agent_name = meta.get("agent_name", "Tool")
+            agent_type = meta.get("agent_type", "tool")
+            tool_name = meta.get("tool_name", "Tool")
+            tool_description = meta.get("tool_description")
+            input_str = meta.get("input", "")
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "tool_end",
-                "agent_name": "Tool",
+                "agent_name": agent_name,
                 "agent_type": "tool",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "completed",
                 "payload": {
-                    "tool_name": "Tool",
-                    "tool_description": None,
-                    "input": "",
+                    "tool_name": tool_name,
+                    "tool_description": tool_description,
+                    "input": input_str,
                     "output": str(output),
                     "error": None,
                 },
@@ -408,20 +478,28 @@ class AgentScopeCallback(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
+            with self._metadata_lock:
+                meta = self._run_metadata.pop(run_id, {})
+            agent_name = meta.get("agent_name", "Tool")
+            agent_type = meta.get("agent_type", "tool")
+            tool_name = meta.get("tool_name", "Tool")
+            tool_description = meta.get("tool_description")
+            input_str = meta.get("input", "")
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "tool_error",
-                "agent_name": "Tool",
+                "agent_name": agent_name,
                 "agent_type": "tool",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "error",
                 "payload": {
-                    "tool_name": "Tool",
-                    "tool_description": None,
-                    "input": "",
+                    "tool_name": tool_name,
+                    "tool_description": tool_description,
+                    "input": input_str,
                     "output": None,
                     "error": str(error),
                 },
@@ -447,6 +525,13 @@ class AgentScopeCallback(AsyncCallbackHandler):
             retriever_name = self._resolve_name(
                 serialized, metadata, default="Retriever"
             )
+            with self._metadata_lock:
+                self._run_metadata[run_id] = {
+                    "agent_name": retriever_name,
+                    "agent_type": "retriever",
+                    "query": query,
+                }
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
@@ -475,6 +560,12 @@ class AgentScopeCallback(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
+            with self._metadata_lock:
+                meta = self._run_metadata.pop(run_id, {})
+            agent_name = meta.get("agent_name", "Retriever")
+            agent_type = meta.get("agent_type", "retriever")
+            query = meta.get("query", "")
+
             formatted_docs = []
             for doc in documents:
                 # Format each document cleanly
@@ -487,13 +578,13 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "session_id": "",
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "retriever_end",
-                "agent_name": "Retriever",
-                "agent_type": "retriever",
+                "agent_name": agent_name,
+                "agent_type": agent_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "completed",
                 "payload": {
-                    "query": "",
+                    "query": query,
                     "documents": formatted_docs,
                 },
             }
