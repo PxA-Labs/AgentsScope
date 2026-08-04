@@ -11,7 +11,7 @@ jobs:
     name: Python Linting & Formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v7
@@ -35,7 +35,7 @@ jobs:
     name: Test Python SDK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v7
@@ -55,7 +55,7 @@ jobs:
     name: Test FastAPI Server
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v7
@@ -77,7 +77,7 @@ jobs:
     name: Check Next.js UI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js 18
         uses: actions/setup-node@v7
