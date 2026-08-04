@@ -40,8 +40,8 @@ export const useSessionStore = create<SessionState>((set) => ({
         const existing = state.events[existingIndex];
         
         // Merge payloads avoiding empty values
-        const mergedPayload = { ...existing.payload };
-        const incomingPayload = event.payload || {};
+        const mergedPayload = { ...existing.payload } as Record<string, any>;
+        const incomingPayload = (event.payload || {}) as Record<string, any>;
         for (const key in incomingPayload) {
           if (Object.prototype.hasOwnProperty.call(incomingPayload, key)) {
             const val = incomingPayload[key];
