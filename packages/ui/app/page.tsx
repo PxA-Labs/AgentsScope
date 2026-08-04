@@ -22,6 +22,13 @@ import {
   Search,
 } from "lucide-react";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765";
+const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8765";
+
+function getApiUrl(path: string) {
+  return `${API_BASE}${path}`;
+}
+
 export default function Dashboard() {
   const {
     sessions,
@@ -54,14 +61,14 @@ export default function Dashboard() {
   // Fetch Session list
   const fetchSessionsList = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8765/api/sessions");
+      const res = await fetch(getApiUrl("/api/sessions"));
       if (res.ok) {
         const data = await res.json();
-        setSessions(data);
+        setSessions(data.sessions);
 
         // Auto-select first session if none selected
-        if (data.length > 0 && !activeSession) {
-          handleSelectSession(data[0]);
+        if (data.sessions.length > 0 && !activeSession) {
+          handleSelectSession(data.sessions[0]);
         }
       }
     } catch (e) {
@@ -85,11 +92,11 @@ export default function Dashboard() {
     // Fetch existing events
     try {
       const resEvents = await fetch(
-        `http://127.0.0.1:8765/api/sessions/${session.session_id}/events`
+        getApiUrl(`/api/sessions/${session.session_id}/events`)
       );
       if (resEvents.ok) {
         const eventsData = await resEvents.json();
-        setEvents(eventsData);
+        setEvents(eventsData.events);
       }
     } catch (e) {
       console.warn("Failed to fetch session events", e);
@@ -98,7 +105,7 @@ export default function Dashboard() {
     // Fetch graph
     try {
       const resGraph = await fetch(
-        `http://127.0.0.1:8765/api/sessions/${session.session_id}/graph`
+        getApiUrl(`/api/sessions/${session.session_id}/graph`)
       );
       if (resGraph.ok) {
         const graph = await resGraph.json();
@@ -111,7 +118,7 @@ export default function Dashboard() {
     // Fetch stats
     try {
       const resStats = await fetch(
-        `http://127.0.0.1:8765/api/sessions/${session.session_id}/stats`
+        getApiUrl(`/api/sessions/${session.session_id}/stats`)
       );
       if (resStats.ok) {
         const stats = await resStats.json();
@@ -128,8 +135,7 @@ export default function Dashboard() {
 
     let ws: WebSocket;
     const connectWS = () => {
-      const host = window.location.hostname || "127.0.0.1";
-      ws = new WebSocket(`ws://${host}:8765/ws?client_type=ui`);
+      ws = new WebSocket(`${WS_BASE}/ws?client_type=ui`);
 
       ws.onmessage = (event) => {
         try {
@@ -141,7 +147,7 @@ export default function Dashboard() {
               fetchGraphAndStats(activeSession.session_id);
             }
           } else if (message.type === "session_update" && message.session_id === activeSession.session_id) {
-            updateSessionMeta(message.session_id, message.meta);
+            updateSessionMeta(message.session_id, message.session);
           }
         } catch (err) {
           console.error("Error processing websocket payload:", err);
@@ -159,10 +165,10 @@ export default function Dashboard() {
 
   const fetchGraphAndStats = async (sessionId: string) => {
     try {
-      const resGraph = await fetch(`http://127.0.0.1:8765/api/sessions/${sessionId}/graph`);
+      const resGraph = await fetch(getApiUrl(`/api/sessions/${sessionId}/graph`));
       if (resGraph.ok) setGraphData(await resGraph.json());
 
-      const resStats = await fetch(`http://127.0.0.1:8765/api/sessions/${sessionId}/stats`);
+      const resStats = await fetch(getApiUrl(`/api/sessions/${sessionId}/stats`));
       if (resStats.ok) setStatsData(await resStats.json());
     } catch (e) {
       console.warn("Refresh stats failed", e);
@@ -498,44 +504,78 @@ export default function Dashboard() {
                   </h3>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {graphData && graphData.nodes?.length > 0 ? (
-                    graphData.nodes.map((node) => {
-                      return (
-                        <div
-                          key={node.id}
-                          className={`p-3 rounded-xl border flex items-center justify-between ${
-                            node.data.status === "error"
-                              ? "bg-rose-500/10 border-rose-500/30"
-                              : node.data.status === "running"
-                              ? "bg-purple-500/10 border-purple-500/30"
-                              : "bg-secondary/20 border-border"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
-                            <div>
-                              <div className="text-xs font-bold text-white">{node.data.agentName}</div>
-                              <div className="text-[10px] text-muted-foreground font-mono">
-                                Type: {node.data.eventType}
+                    <>
+                      <div className="text-[10px] text-muted-foreground mb-2">
+                        {graphData.nodes.length} agents, {graphData.edges?.length ?? 0} calls
+                      </div>
+                      {graphData.nodes.map((node) => {
+                        const childEdges = graphData.edges?.filter(
+                          (e) => e.source === node.id
+                        ) ?? [];
+                        return (
+                          <div key={node.id}>
+                            <div
+                              className={`p-3 rounded-xl border flex items-center justify-between ${
+                                node.data.status === "error"
+                                  ? "bg-rose-500/10 border-rose-500/30"
+                                  : node.data.status === "running"
+                                  ? "bg-purple-500/10 border-purple-500/30"
+                                  : "bg-secondary/20 border-border"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                                <div>
+                                  <div className="text-xs font-bold text-white">{node.data.agentName}</div>
+                                  <div className="text-[10px] text-muted-foreground font-mono">
+                                    Type: {node.data.eventType}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right text-[10px] font-mono">
+                                <div className="text-white">
+                                  {node.data.durationMs ? `${(node.data.durationMs / 1000).toFixed(2)}s` : "0.00s"}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {node.data.tokenCount ? `${node.data.tokenCount} tokens` : ""}
+                                </div>
                               </div>
                             </div>
+                            {childEdges.length > 0 && (
+                              <div className="ml-6 border-l-2 border-purple-500/20 pl-4 mt-1 space-y-1">
+                                {childEdges.map((edge) => {
+                                  const child = graphData.nodes.find(
+                                    (n) => n.id === edge.target
+                                  );
+                                  if (!child) return null;
+                                  return (
+                                    <div
+                                      key={edge.id}
+                                      className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground py-1"
+                                    >
+                                      <div className="w-1.5 h-1.5 rounded-full bg-purple-400/50" />
+                                      <span className="text-white">{child.data.agentName}</span>
+                                      <span className="text-[9px] opacity-60">
+                                        {edge.data?.eventType ?? ""}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-right text-[10px] font-mono">
-                            <div className="text-white">
-                              {node.data.durationMs ? `${(node.data.durationMs / 1000).toFixed(2)}s` : "0.00s"}
-                            </div>
-                            <div className="text-muted-foreground">
-                              {node.data.tokenCount ? `${node.data.tokenCount} tokens` : ""}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
+                        );
+                      })}
+                    </>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
                       <Layers className="w-12 h-12 text-muted-foreground/30 mb-2" />
-                      <p className="text-xs">No graph nodes generated for this session yet.</p>
+                      <p className="text-xs">No call hierarchy data for this session yet.</p>
+                      <p className="text-[10px] mt-1 opacity-60">
+                        Run an agent pipeline to populate the call graph.
+                      </p>
                     </div>
                   )}
                 </div>
