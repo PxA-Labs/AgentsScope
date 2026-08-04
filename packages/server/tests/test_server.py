@@ -432,5 +432,107 @@ def test_sdk_client_integration(db_engine):
         thread.join(timeout=2.0)
 
 
+@pytest.mark.asyncio
+async def test_session_retention_pruning(db_session):
+    import os
+    import uuid
+    from datetime import datetime, timedelta
+    from models import SessionModel
+    from main import prune_old_sessions
+    from sqlalchemy import select, delete
+
+    # Clear existing database sessions to ensure isolated counts
+    await db_session.execute(delete(SessionModel))
+    await db_session.commit()
+
+    # Insert 1 old session (10 days ago) and 1 new session (now)
+    old_id = f"old-{uuid.uuid4()}"
+    new_id = f"new-{uuid.uuid4()}"
+
+    old_sess = SessionModel(
+        session_id=old_id,
+        name="Old Session",
+        status="completed",
+        started_at=datetime.utcnow() - timedelta(days=10),
+    )
+    new_sess = SessionModel(
+        session_id=new_id,
+        name="New Session",
+        status="completed",
+        started_at=datetime.utcnow(),
+    )
+
+    db_session.add(old_sess)
+    db_session.add(new_sess)
+    await db_session.commit()
+
+    # Trigger prune with RETENTION_DAYS = 5
+    os.environ["RETENTION_DAYS"] = "5"
+    try:
+        await prune_old_sessions()
+
+        # Verify old session is deleted, new session remains
+        stmt = select(SessionModel).where(
+            SessionModel.session_id.in_([old_id, new_id])
+        )
+        res = await db_session.execute(stmt)
+        remaining = res.scalars().all()
+
+        assert len(remaining) == 1
+        assert remaining[0].session_id == new_id
+    finally:
+        if "RETENTION_DAYS" in os.environ:
+            del os.environ["RETENTION_DAYS"]
+
+
+@pytest.mark.asyncio
+async def test_session_max_limit_pruning(db_session):
+    import os
+    import uuid
+    from datetime import datetime, timedelta
+    from models import SessionModel
+    from main import prune_old_sessions
+    from sqlalchemy import select, delete
+
+    # Clear existing database sessions to ensure isolated counts
+    await db_session.execute(delete(SessionModel))
+    await db_session.commit()
+
+    # Insert 4 sessions with different started_at times
+    session_ids = []
+    for i in range(4):
+        sid = f"limit-{i}-{uuid.uuid4()}"
+        sess = SessionModel(
+            session_id=sid,
+            name=f"Session {i}",
+            status="completed",
+            started_at=datetime.utcnow() - timedelta(minutes=10 - i),
+        )
+        db_session.add(sess)
+        session_ids.append(sid)
+    await db_session.commit()
+
+    # Trigger prune with MAX_SESSIONS = 2
+    os.environ["MAX_SESSIONS"] = "2"
+    try:
+        await prune_old_sessions()
+
+        # Verify only the 2 newest sessions remain (limit-2 and limit-3)
+        stmt = select(SessionModel).where(
+            SessionModel.session_id.in_(session_ids)
+        )
+        res = await db_session.execute(stmt)
+        remaining = res.scalars().all()
+
+        assert len(remaining) == 2
+        remaining_ids = {r.session_id for r in remaining}
+        assert session_ids[2] in remaining_ids
+        assert session_ids[3] in remaining_ids
+    finally:
+        if "MAX_SESSIONS" in os.environ:
+            del os.environ["MAX_SESSIONS"]
+
+
+
 
 
