@@ -31,6 +31,7 @@ class AgentScopeClient:
         )
         self.session_metadata = session_metadata or {}
         self.session_id: Optional[str] = None
+        self.pending_status: Optional[str] = None
         self.queue: queue.Queue = queue.Queue(maxsize=5000)
         self.thread: Optional[threading.Thread] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
@@ -79,17 +80,22 @@ class AgentScopeClient:
                     self.queue.task_done()
                 except queue.Empty:
                     pass
-
     def patch_session_status(self, status: str) -> None:
         """Update the session status on the server.
 
         Args:
             status: "completed" or "failed"
         """
-        if not self.session_id:
-            return
+        with self._lock:
+            if not self.session_id:
+                self.pending_status = status
+                return
+            session_id = self.session_id
 
-        url = f"http://{self.host}:{self.port}/sessions/{self.session_id}"
+        self._send_status_patch(session_id, status)
+
+    def _send_status_patch(self, session_id: str, status: str) -> None:
+        url = f"http://{self.host}:{self.port}/sessions/{session_id}"
         data = json.dumps(
             {
                 "status": status,
@@ -108,7 +114,7 @@ class AgentScopeClient:
             try:
                 with urllib.request.urlopen(req, timeout=5):
                     logging.info(
-                        f"AgentScope session {self.session_id} "
+                        f"AgentScope session {session_id} "
                         f"patched to status: {status}"
                     )
             except Exception as e:
@@ -122,7 +128,6 @@ class AgentScopeClient:
             name="AgentScopeSessionPatchThread",
             daemon=True,
         ).start()
-
     def _run_loop(self) -> None:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -227,9 +232,19 @@ class AgentScopeClient:
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
-                self.session_id = res_data.get("session_id")
-                logging.info(
-                    f"AgentScope session successfully registered. ID: {self.session_id}"
-                )
+                new_session_id = res_data.get("session_id")
+
+                status_to_patch = None
+                with self._lock:
+                    self.session_id = new_session_id
+                    logging.info(
+                        f"AgentScope session successfully registered. ID: {self.session_id}"
+                    )
+                    if self.pending_status:
+                        status_to_patch = self.pending_status
+                        self.pending_status = None
+
+                if status_to_patch:
+                    self._send_status_patch(new_session_id, status_to_patch)
         except Exception as e:
             logging.warning(f"Failed to register session with AgentScope server: {e}")
