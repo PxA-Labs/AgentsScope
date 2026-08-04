@@ -24,7 +24,7 @@ langchain = [
     "langchain-core>=0.1.0",
 ]
 dev = [
-    "pytest>=7.0",
+    "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "black>=23.0",
     "ruff>=0.16.1",
