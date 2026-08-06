@@ -22,12 +22,14 @@ def test_calculate_cost():
 
     # Date-pinned & minor version matching
     assert calculate_cost("claude-3-haiku-20240307", 1_000_000, 1_000_000) == 1.50
+    assert calculate_cost("CLAUDE-3-HAIKU-20240307", 1_000_000, 1_000_000) == 1.50
     assert calculate_cost("claude-3-opus-20240229", 1_000_000, 1_000_000) == 90.00
     assert calculate_cost("gemini-1.5-flash-001", 1_000_000, 1_000_000) == pytest.approx(0.375)
     assert calculate_cost("gpt-4o-2024-05-13", 1_000_000, 1_000_000) == 12.50
 
     # Ensure non-delimited model names do not false match
     assert calculate_cost("gpt-4orange", 1_000_000, 1_000_000) == 0.0
+    assert calculate_cost("claude-3-haikuish", 1_000_000, 1_000_000) == 0.0
 
     # Negative token count validation
     with pytest.raises(ValueError, match="prompt_tokens cannot be negative"):
