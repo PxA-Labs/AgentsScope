@@ -21,7 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 langchain = [
-    "langchain-core>=0.1.0",
+    "langchain-core>=1.5.3",
 ]
 dev = [
     "pytest>=9.1.1",
