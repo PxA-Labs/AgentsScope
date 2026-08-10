@@ -88,7 +88,12 @@ def _make_decorator(
 ) -> Callable[..., Any]:
     @functools.wraps(func)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-        client = get_global_client()
+        client = None
+        try:
+            client = get_global_client()
+        except Exception:
+            pass
+
         run_id = str(uuid.uuid4())
         parent_id = current_parent_run_id.get()
         token = current_parent_run_id.set(run_id)
@@ -100,25 +105,29 @@ def _make_decorator(
         }
 
         # Start Event
-        client.emit(
-            {
-                "event_id": run_id,
-                "session_id": "",
-                "parent_event_id": parent_id,
-                "event_type": "chain_start",
-                "agent_name": name,
-                "agent_type": agent_type,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "latency_ms": None,
-                "status": "running",
-                "payload": {
-                    "chain_type": name,
-                    "inputs": inputs,
-                    "outputs": None,
-                    "error": None,
-                },
-            }
-        )
+        if client:
+            try:
+                client.emit(
+                    {
+                        "event_id": run_id,
+                        "session_id": "",
+                        "parent_event_id": parent_id,
+                        "event_type": "chain_start",
+                        "agent_name": name,
+                        "agent_type": agent_type,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "latency_ms": None,
+                        "status": "running",
+                        "payload": {
+                            "chain_type": name,
+                            "inputs": inputs,
+                            "outputs": None,
+                            "error": None,
+                        },
+                    }
+                )
+            except Exception:
+                pass
 
         start_time = time.perf_counter()
         try:
@@ -126,56 +135,69 @@ def _make_decorator(
             latency = int((time.perf_counter() - start_time) * 1000)
 
             # End Event
-            client.emit(
-                {
-                    "event_id": run_id,
-                    "session_id": "",
-                    "parent_event_id": parent_id,
-                    "event_type": "chain_end",
-                    "agent_name": name,
-                    "agent_type": agent_type,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "latency_ms": latency,
-                    "status": "completed",
-                    "payload": {
-                        "chain_type": name,
-                        "inputs": {},
-                        "outputs": {"result": str(result)},
-                        "error": None,
-                    },
-                }
-            )
+            if client:
+                try:
+                    client.emit(
+                        {
+                            "event_id": run_id,
+                            "session_id": "",
+                            "parent_event_id": parent_id,
+                            "event_type": "chain_end",
+                            "agent_name": name,
+                            "agent_type": agent_type,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "latency_ms": latency,
+                            "status": "completed",
+                            "payload": {
+                                "chain_type": name,
+                                "inputs": {},
+                                "outputs": {"result": str(result)},
+                                "error": None,
+                            },
+                        }
+                    )
+                except Exception:
+                    pass
             return result
         except Exception as e:
             latency = int((time.perf_counter() - start_time) * 1000)
 
             # Error Event
-            client.emit(
-                {
-                    "event_id": run_id,
-                    "session_id": "",
-                    "parent_event_id": parent_id,
-                    "event_type": "chain_error",
-                    "agent_name": name,
-                    "agent_type": agent_type,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "latency_ms": latency,
-                    "status": "error",
-                    "payload": {
-                        "chain_type": name,
-                        "inputs": {},
-                        "outputs": None,
-                        "error": str(e),
-                    },
-                }
-            )
+            if client:
+                try:
+                    client.emit(
+                        {
+                            "event_id": run_id,
+                            "session_id": "",
+                            "parent_event_id": parent_id,
+                            "event_type": "chain_error",
+                            "agent_name": name,
+                            "agent_type": agent_type,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "latency_ms": latency,
+                            "status": "error",
+                            "payload": {
+                                "chain_type": name,
+                                "inputs": {},
+                                "outputs": None,
+                                "error": str(e),
+                            },
+                        }
+                    )
+                except Exception:
+                    pass
             raise e
         finally:
             current_parent_run_id.reset(token)
 
     @functools.wraps(func)
     async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-        client = get_global_client()
+        client = None
+        try:
+            client = get_global_client()
+        except Exception:
+            pass
+
         run_id = str(uuid.uuid4())
         parent_id = current_parent_run_id.get()
         token = current_parent_run_id.set(run_id)
@@ -186,25 +208,29 @@ def _make_decorator(
         }
 
         # Start Event
-        client.emit(
-            {
-                "event_id": run_id,
-                "session_id": "",
-                "parent_event_id": parent_id,
-                "event_type": "chain_start",
-                "agent_name": name,
-                "agent_type": agent_type,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "latency_ms": None,
-                "status": "running",
-                "payload": {
-                    "chain_type": name,
-                    "inputs": inputs,
-                    "outputs": None,
-                    "error": None,
-                },
-            }
-        )
+        if client:
+            try:
+                client.emit(
+                    {
+                        "event_id": run_id,
+                        "session_id": "",
+                        "parent_event_id": parent_id,
+                        "event_type": "chain_start",
+                        "agent_name": name,
+                        "agent_type": agent_type,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "latency_ms": None,
+                        "status": "running",
+                        "payload": {
+                            "chain_type": name,
+                            "inputs": inputs,
+                            "outputs": None,
+                            "error": None,
+                        },
+                    }
+                )
+            except Exception:
+                pass
 
         start_time = time.perf_counter()
         try:
@@ -212,49 +238,57 @@ def _make_decorator(
             latency = int((time.perf_counter() - start_time) * 1000)
 
             # End Event
-            client.emit(
-                {
-                    "event_id": run_id,
-                    "session_id": "",
-                    "parent_event_id": parent_id,
-                    "event_type": "chain_end",
-                    "agent_name": name,
-                    "agent_type": agent_type,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "latency_ms": latency,
-                    "status": "completed",
-                    "payload": {
-                        "chain_type": name,
-                        "inputs": {},
-                        "outputs": {"result": str(result)},
-                        "error": None,
-                    },
-                }
-            )
+            if client:
+                try:
+                    client.emit(
+                        {
+                            "event_id": run_id,
+                            "session_id": "",
+                            "parent_event_id": parent_id,
+                            "event_type": "chain_end",
+                            "agent_name": name,
+                            "agent_type": agent_type,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "latency_ms": latency,
+                            "status": "completed",
+                            "payload": {
+                                "chain_type": name,
+                                "inputs": {},
+                                "outputs": {"result": str(result)},
+                                "error": None,
+                            },
+                        }
+                    )
+                except Exception:
+                    pass
             return result
         except Exception as e:
             latency = int((time.perf_counter() - start_time) * 1000)
 
             # Error Event
-            client.emit(
-                {
-                    "event_id": run_id,
-                    "session_id": "",
-                    "parent_event_id": parent_id,
-                    "event_type": "chain_error",
-                    "agent_name": name,
-                    "agent_type": agent_type,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "latency_ms": latency,
-                    "status": "error",
-                    "payload": {
-                        "chain_type": name,
-                        "inputs": {},
-                        "outputs": None,
-                        "error": str(e),
-                    },
-                }
-            )
+            if client:
+                try:
+                    client.emit(
+                        {
+                            "event_id": run_id,
+                            "session_id": "",
+                            "parent_event_id": parent_id,
+                            "event_type": "chain_error",
+                            "agent_name": name,
+                            "agent_type": agent_type,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "latency_ms": latency,
+                            "status": "error",
+                            "payload": {
+                                "chain_type": name,
+                                "inputs": {},
+                                "outputs": None,
+                                "error": str(e),
+                            },
+                        }
+                    )
+                except Exception:
+                    pass
             raise e
         finally:
             current_parent_run_id.reset(token)
