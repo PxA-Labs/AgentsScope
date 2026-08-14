@@ -21,6 +21,9 @@ def get_model_pricing(model_name: str) -> dict[str, float] | None:
         return None
 
     model_name_lower = model_name.lower()
+    if "/" in model_name_lower:
+        model_name_lower = model_name_lower.split("/")[-1]
+
     if model_name_lower in PRICING_TABLE:
         return PRICING_TABLE[model_name_lower]
 

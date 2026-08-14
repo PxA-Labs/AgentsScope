@@ -638,7 +638,9 @@ def test_server_pricing():
     # Prefix match checks
     assert get_model_pricing("gpt-4o-2024-05-13") == prices
     assert get_model_pricing("gpt-4o-mini-2024-07-18") == mini_prices
+    assert get_model_pricing("openai/gpt-4o") == prices
     assert get_model_pricing("gpt-4orange") is None
+    assert get_model_pricing("openai/gpt-4orange") is None
 
     # Calculate cost checks
     assert calculate_cost("gpt-4o", 1000, 2000) == (
