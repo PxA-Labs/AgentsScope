@@ -20,6 +20,8 @@ import {
   HelpCircle,
   RefreshCw,
   Search,
+  Trash2,
+  Brain,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765";
@@ -50,6 +52,13 @@ export default function Dashboard() {
     {}
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"execution" | "memories">("execution");
+  const [memories, setMemories] = useState<any[]>([]);
+  const [memoryQuery, setMemoryQuery] = useState("");
+  const [isSearchingMemories, setIsSearchingMemories] = useState(false);
+  const [newMemoryText, setNewMemoryText] = useState("");
+  const [isAddingMemory, setIsAddingMemory] = useState(false);
+  const [mem0Error, setMem0Error] = useState<string | null>(null);
 
   const eventFeedEndRef = useRef<HTMLDivElement>(null);
 
@@ -174,6 +183,113 @@ export default function Dashboard() {
       console.warn("Refresh stats failed", e);
     }
   };
+
+  const fetchMemories = async () => {
+    if (!activeSession) return;
+    try {
+      setMem0Error(null);
+      const res = await fetch(getApiUrl(`/api/sessions/${activeSession.session_id}/memories`));
+      if (res.ok) {
+        const data = await res.json();
+        setMemories(data.results || []);
+      } else {
+        const errData = await res.json();
+        setMem0Error(errData.detail || "Failed to load memories");
+      }
+    } catch (e) {
+      console.warn("Failed to fetch memories", e);
+      setMem0Error("Could not connect to memories endpoint.");
+    }
+  };
+
+  const handleSearchMemories = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeSession) return;
+    if (!memoryQuery.trim()) {
+      fetchMemories();
+      return;
+    }
+    try {
+      setIsSearchingMemories(true);
+      setMem0Error(null);
+      const res = await fetch(
+        getApiUrl(`/api/sessions/${activeSession.session_id}/memories/search`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: memoryQuery }),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setMemories(data.results || []);
+      } else {
+        const errData = await res.json();
+        setMem0Error(errData.detail || "Failed to search memories");
+      }
+    } catch (e) {
+      console.warn("Failed to search memories", e);
+      setMem0Error("Could not connect to memories search endpoint.");
+    } finally {
+      setIsSearchingMemories(false);
+    }
+  };
+
+  const handleAddMemory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeSession || !newMemoryText.trim()) return;
+    try {
+      setIsAddingMemory(true);
+      setMem0Error(null);
+      const res = await fetch(
+        getApiUrl(`/api/sessions/${activeSession.session_id}/memories`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: newMemoryText }),
+        }
+      );
+      if (res.ok) {
+        setNewMemoryText("");
+        setTimeout(fetchMemories, 1000);
+      } else {
+        const errData = await res.json();
+        setMem0Error(errData.detail || "Failed to add memory");
+      }
+    } catch (e) {
+      console.warn("Failed to add memory", e);
+      setMem0Error("Could not connect to memories creation endpoint.");
+    } finally {
+      setIsAddingMemory(false);
+    }
+  };
+
+  const handleDeleteMemory = async (memoryId: string) => {
+    if (!activeSession) return;
+    try {
+      const res = await fetch(
+        getApiUrl(`/api/sessions/${activeSession.session_id}/memories/${memoryId}`),
+        {
+          method: "DELETE",
+        }
+      );
+      if (res.ok) {
+        setMemories((prev) => prev.filter((m) => m.id !== memoryId));
+      } else {
+        const errData = await res.json();
+        setMem0Error(errData.detail || "Failed to delete memory");
+      }
+    } catch (e) {
+      console.warn("Failed to delete memory", e);
+      setMem0Error("Could not connect to memories deletion endpoint.");
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "memories" && activeSession) {
+      fetchMemories();
+    }
+  }, [activeTab, activeSession]);
 
   const toggleExpandEvent = (eventId: string) => {
     setExpandedEvents((prev) => ({
@@ -336,7 +452,29 @@ export default function Dashboard() {
                   Session ID: {activeSession.session_id}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
+                <div className="flex bg-secondary/60 p-0.5 rounded-lg border border-border">
+                  <button
+                    onClick={() => setActiveTab("execution")}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                      activeTab === "execution"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-muted-foreground hover:text-white"
+                    }`}
+                  >
+                    Execution Flow
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("memories")}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      activeTab === "memories"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-muted-foreground hover:text-white"
+                    }`}
+                  >
+                    <Brain className="w-3.5 h-3.5" /> Mem0 Memories
+                  </button>
+                </div>
                 {getStatusBadge(activeSession.status)}
               </div>
             </header>
@@ -416,171 +554,310 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Split Screen Workspace */}
-            <div className="flex-1 flex overflow-hidden p-4 pt-0 gap-4">
-              {/* Chronological Event Feed */}
-              <section className="flex-1 flex flex-col overflow-hidden glass-panel rounded-2xl border border-border">
-                <div className="p-4 border-b border-border bg-card/40 flex items-center justify-between">
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-white">
-                    Live Execution Feed
-                  </h3>
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {events.length} Events Received
-                  </span>
-                </div>
+            {activeTab === "execution" ? (
+              /* Split Screen Workspace */
+              <div className="flex-1 flex overflow-hidden p-4 pt-0 gap-4">
+                {/* Chronological Event Feed */}
+                <section className="flex-1 flex flex-col overflow-hidden glass-panel rounded-2xl border border-border">
+                  <div className="p-4 border-b border-border bg-card/40 flex items-center justify-between">
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-white">
+                      Live Execution Feed
+                    </h3>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {events.length} Events Received
+                    </span>
+                  </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {events.map((event) => {
-                    const isExpanded = !!expandedEvents[event.event_id];
-                    return (
-                      <div
-                        key={event.event_id}
-                        className="border border-border/80 bg-secondary/10 rounded-xl overflow-hidden"
-                      >
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {events.map((event) => {
+                      const isExpanded = !!expandedEvents[event.event_id];
+                      return (
                         <div
-                          onClick={() => toggleExpandEvent(event.event_id)}
-                          className="p-3 flex items-center justify-between cursor-pointer hover:bg-secondary/20 transition-colors"
+                          key={event.event_id}
+                          className="border border-border/80 bg-secondary/10 rounded-xl overflow-hidden"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-1.5 rounded-lg bg-secondary">
-                              {getEventIcon(event.event_type)}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-xs text-white">
-                                  {event.agent_name || "System"}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground font-mono bg-secondary px-1.5 py-0.5 rounded">
-                                  {event.event_type}
+                          <div
+                            onClick={() => toggleExpandEvent(event.event_id)}
+                            className="p-3 flex items-center justify-between cursor-pointer hover:bg-secondary/20 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="p-1.5 rounded-lg bg-secondary">
+                                {getEventIcon(event.event_type)}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-xs text-white">
+                                    {event.agent_name || "System"}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground font-mono bg-secondary px-1.5 py-0.5 rounded">
+                                    {event.event_type}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground font-mono">
+                                  {formatTimestamp(event.timestamp)}
                                 </span>
                               </div>
-                              <span className="text-[10px] text-muted-foreground font-mono">
-                                {formatTimestamp(event.timestamp)}
-                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {getStatusBadge(event.status)}
+                              {isExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                              )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(event.status)}
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                            )}
-                          </div>
+
+                          {/* Expandable Details Drawer */}
+                          {isExpanded && (
+                            <div className="border-t border-border/50 bg-secondary/5 p-3 text-xs space-y-3 font-mono">
+                              {event.payload && (
+                                <div className="space-y-2">
+                                  {Object.entries(event.payload).map(([k, v]) => {
+                                    if (v === null || v === undefined) return null;
+                                    return (
+                                      <div key={k} className="grid grid-cols-4 gap-2">
+                                        <span className="text-muted-foreground font-bold">{k}:</span>
+                                        <span className="col-span-3 text-white break-all whitespace-pre-wrap">
+                                          {typeof v === "object" ? JSON.stringify(v, null, 2) : String(v)}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
+                      );
+                    })}
+                    <div ref={eventFeedEndRef} />
+                  </div>
+                </section>
 
-                        {/* Expandable Details Drawer */}
-                        {isExpanded && (
-                          <div className="border-t border-border/50 bg-secondary/5 p-3 text-xs space-y-3 font-mono">
-                            {event.payload && (
-                              <div className="space-y-2">
-                                {Object.entries(event.payload).map(([k, v]) => {
-                                  if (v === null || v === undefined) return null;
-                                  return (
-                                    <div key={k} className="grid grid-cols-4 gap-2">
-                                      <span className="text-muted-foreground font-bold">{k}:</span>
-                                      <span className="col-span-3 text-white break-all whitespace-pre-wrap">
-                                        {typeof v === "object" ? JSON.stringify(v, null, 2) : String(v)}
-                                      </span>
+                {/* Agent Call Graph Visualization */}
+                <section className="w-[450px] flex flex-col overflow-hidden glass-panel rounded-2xl border border-border">
+                  <div className="p-4 border-b border-border bg-card/40 flex items-center justify-between">
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-white">
+                      Agent Call Hierarchy
+                    </h3>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {graphData && graphData.nodes?.length > 0 ? (
+                      <>
+                        <div className="text-[10px] text-muted-foreground mb-2">
+                          {graphData.nodes.length} agents, {graphData.edges?.length ?? 0} calls
+                        </div>
+                        {graphData.nodes.map((node) => {
+                          const childEdges = graphData.edges?.filter(
+                            (e) => e.source === node.id
+                          ) ?? [];
+                          return (
+                            <div key={node.id}>
+                              <div
+                                className={`p-3 rounded-xl border flex items-center justify-between ${
+                                  node.data.status === "error"
+                                    ? "bg-rose-500/10 border-rose-500/30"
+                                    : node.data.status === "running"
+                                    ? "bg-purple-500/10 border-purple-500/30"
+                                    : "bg-secondary/20 border-border"
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                                  <div>
+                                    <div className="text-xs font-bold text-white">{node.data.agentName}</div>
+                                    <div className="text-[10px] text-muted-foreground font-mono">
+                                      Type: {node.data.eventType}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div ref={eventFeedEndRef} />
-                </div>
-              </section>
-
-              {/* Agent Call Graph Visualization */}
-              <section className="w-[450px] flex flex-col overflow-hidden glass-panel rounded-2xl border border-border">
-                <div className="p-4 border-b border-border bg-card/40 flex items-center justify-between">
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-white">
-                    Agent Call Hierarchy
-                  </h3>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {graphData && graphData.nodes?.length > 0 ? (
-                    <>
-                      <div className="text-[10px] text-muted-foreground mb-2">
-                        {graphData.nodes.length} agents, {graphData.edges?.length ?? 0} calls
-                      </div>
-                      {graphData.nodes.map((node) => {
-                        const childEdges = graphData.edges?.filter(
-                          (e) => e.source === node.id
-                        ) ?? [];
-                        return (
-                          <div key={node.id}>
-                            <div
-                              className={`p-3 rounded-xl border flex items-center justify-between ${
-                                node.data.status === "error"
-                                  ? "bg-rose-500/10 border-rose-500/30"
-                                  : node.data.status === "running"
-                                  ? "bg-purple-500/10 border-purple-500/30"
-                                  : "bg-secondary/20 border-border"
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
-                                <div>
-                                  <div className="text-xs font-bold text-white">{node.data.agentName}</div>
-                                  <div className="text-[10px] text-muted-foreground font-mono">
-                                    Type: {node.data.eventType}
+                                  </div>
+                                </div>
+                                <div className="text-right text-[10px] font-mono">
+                                  <div className="text-white">
+                                    {node.data.durationMs ? `${(node.data.durationMs / 1000).toFixed(2)}s` : "0.00s"}
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    {node.data.tokenCount ? `${node.data.tokenCount} tokens` : ""}
                                   </div>
                                 </div>
                               </div>
-                              <div className="text-right text-[10px] font-mono">
-                                <div className="text-white">
-                                  {node.data.durationMs ? `${(node.data.durationMs / 1000).toFixed(2)}s` : "0.00s"}
+                              {childEdges.length > 0 && (
+                                <div className="ml-6 border-l-2 border-purple-500/20 pl-4 mt-1 space-y-1">
+                                  {childEdges.map((edge) => {
+                                    const child = graphData.nodes.find(
+                                      (n) => n.id === edge.target
+                                    );
+                                    if (!child) return null;
+                                    return (
+                                      <div
+                                        key={edge.id}
+                                        className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground py-1"
+                                      >
+                                        <div className="w-1.5 h-1.5 rounded-full bg-purple-400/50" />
+                                        <span className="text-white">{child.data.agentName}</span>
+                                        <span className="text-[9px] opacity-60">
+                                          {child.data.eventType ?? ""}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                                <div className="text-muted-foreground">
-                                  {node.data.tokenCount ? `${node.data.tokenCount} tokens` : ""}
-                                </div>
-                              </div>
+                              )}
                             </div>
-                            {childEdges.length > 0 && (
-                              <div className="ml-6 border-l-2 border-purple-500/20 pl-4 mt-1 space-y-1">
-                                {childEdges.map((edge) => {
-                                  const child = graphData.nodes.find(
-                                    (n) => n.id === edge.target
-                                  );
-                                  if (!child) return null;
-                                  return (
-                                    <div
-                                      key={edge.id}
-                                      className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground py-1"
-                                    >
-                                      <div className="w-1.5 h-1.5 rounded-full bg-purple-400/50" />
-                                      <span className="text-white">{child.data.agentName}</span>
-                                      <span className="text-[9px] opacity-60">
-                                        {edge.data?.eventType ?? ""}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-                      <Layers className="w-12 h-12 text-muted-foreground/30 mb-2" />
-                      <p className="text-xs">No call hierarchy data for this session yet.</p>
-                      <p className="text-[10px] mt-1 opacity-60">
-                        Run an agent pipeline to populate the call graph.
-                      </p>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+                        <Layers className="w-12 h-12 text-muted-foreground/30 mb-2" />
+                        <p className="text-xs">No call hierarchy data for this session yet.</p>
+                        <p className="text-[10px] mt-1 opacity-60">
+                          Run an agent pipeline to populate the call graph.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </div>
+            ) : (
+              /* Memories Workspace */
+              <div className="flex-1 flex flex-col overflow-hidden p-4 pt-0 gap-4">
+                {/* Search & Add Controls */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-shrink-0">
+                  {/* Search Memories */}
+                  <form onSubmit={handleSearchMemories} className="glass-panel p-4 rounded-2xl border border-border flex items-center gap-3 bg-card/40">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Semantic search memories..."
+                        value={memoryQuery}
+                        onChange={(e) => setMemoryQuery(e.target.value)}
+                        className="w-full bg-secondary/40 text-xs pl-9 pr-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
+                      />
                     </div>
-                  )}
+                    <button
+                      type="submit"
+                      disabled={isSearchingMemories}
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 font-bold text-xs text-white transition-all duration-200 disabled:opacity-50"
+                    >
+                      {isSearchingMemories ? "Searching..." : "Search"}
+                    </button>
+                    {memoryQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMemoryQuery("");
+                          fetchMemories();
+                        }}
+                        className="text-xs text-muted-foreground hover:text-white underline"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </form>
+
+                  {/* Add Memory */}
+                  <form onSubmit={handleAddMemory} className="glass-panel p-4 rounded-2xl border border-border flex items-center gap-3 bg-card/40">
+                    <input
+                      type="text"
+                      placeholder="Add a new custom memory..."
+                      value={newMemoryText}
+                      onChange={(e) => setNewMemoryText(e.target.value)}
+                      className="flex-1 bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isAddingMemory || !newMemoryText.trim()}
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 font-bold text-xs text-white transition-all duration-200 disabled:opacity-50"
+                    >
+                      {isAddingMemory ? "Adding..." : "Add Memory"}
+                    </button>
+                  </form>
                 </div>
-              </section>
-            </div>
+
+                {/* Memories Display Panel */}
+                <section className="flex-1 flex flex-col overflow-hidden glass-panel rounded-2xl border border-border">
+                  <div className="p-4 border-b border-border bg-card/40 flex items-center justify-between">
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-white flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-purple-400" /> Extracted Session Memories
+                    </h3>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {memories.length} Memories Stored
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {mem0Error && (
+                      <div className="mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-3">
+                        <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                        <div>
+                          <p className="font-bold mb-1">Configuration Warning</p>
+                          <p>{mem0Error}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {memories.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {memories.map((m) => {
+                          const dateStr = m.created_at ? new Date(m.created_at).toLocaleString() : "";
+                          const agentName = m.metadata?.agent_name || m.metadata?.agent;
+                          return (
+                            <div
+                              key={m.id}
+                              className="p-4 rounded-xl border border-border bg-secondary/10 hover:bg-secondary/20 transition-all duration-200 flex flex-col justify-between gap-3 group relative"
+                            >
+                              <div className="pr-8">
+                                <p className="text-xs font-medium text-white leading-relaxed whitespace-pre-wrap">
+                                  {m.memory}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground font-mono mt-2 pt-2 border-t border-border/30">
+                                {dateStr && (
+                                  <span className="bg-secondary px-2 py-0.5 rounded-md">
+                                    {dateStr}
+                                  </span>
+                                )}
+                                {agentName && (
+                                  <span className="bg-purple-900/30 text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-md">
+                                    Agent: {agentName}
+                                  </span>
+                                )}
+                                {m.categories && m.categories.length > 0 && (
+                                  <span className="bg-blue-900/30 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-md">
+                                    {m.categories.join(", ")}
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => handleDeleteMemory(m.id)}
+                                className="absolute top-4 right-4 p-1.5 rounded-lg bg-transparent hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                                title="Delete memory"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+                        <Brain className="w-12 h-12 text-muted-foreground/30 mb-2 animate-pulse" />
+                        <p className="text-xs font-bold text-white mb-1">No Memories Found</p>
+                        <p className="text-[10px] max-w-sm leading-relaxed opacity-60">
+                          Memories are automatically extracted from agent LLM conversations in real-time when <code>llm_end</code> events are logged.
+                        </p>
+                        <p className="text-[10px] max-w-sm mt-1 leading-relaxed opacity-60">
+                          You can also inject memories manually using the inputs above.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground text-center p-8">
