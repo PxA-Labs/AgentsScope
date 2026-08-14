@@ -8,8 +8,15 @@ from agentscope.decorators import get_global_client, trace
 
 
 def test_calculate_cost():
-    # gpt-4o price: 2.50 input / 10.00 output per 1M tokens
+    # Base match
     assert calculate_cost("gpt-4o", 1_000_000, 1_000_000) == 12.50
+    # Versioned/pinned match (Issue #25)
+    assert calculate_cost("gpt-4o-2024-05-13", 1_000_000, 1_000_000) == 12.50
+    assert calculate_cost("anthropic/claude-3-5-sonnet", 1_000_000, 1_000_000) == 18.00
+    # Newly added models (Issue #29)
+    assert calculate_cost("claude-3-haiku-20240307", 1_000_000, 1_000_000) == 1.50
+    assert calculate_cost("gemini-1.5-flash-latest", 1_000_000, 1_000_000) == 0.375
+    # Unknown model fallback
     assert calculate_cost("unknown-model", 100, 100) == 0.0
 
     # New model pricing checks
@@ -37,6 +44,18 @@ def test_calculate_cost():
     with pytest.raises(ValueError, match="completion_tokens cannot be negative"):
         calculate_cost("gpt-4o", 100, -1)
 
+    # Custom programmatic updates
+    from agentscope._pricing import update_pricing_table
+    update_pricing_table({"custom-model-x": {"input": 1.0, "output": 2.0}})
+    assert calculate_cost("custom-model-x-v1", 1_000_000, 1_000_000) == 3.0
+
+    # Environment variable overrides
+    import os
+    from agentscope._pricing import _load_env_overrides
+    os.environ["AGENTSCOPE_CUSTOM_PRICING"] = '{"custom-env-y": {"input": 5.0, "output": 10.0}}'
+    _load_env_overrides()
+    assert calculate_cost("custom-env-y", 1_000_000, 1_000_000) == 15.0
+    del os.environ["AGENTSCOPE_CUSTOM_PRICING"]
 
 
 @trace(name="test_sync")
@@ -270,4 +289,36 @@ def test_client_pending_status_patch():
         )
     finally:
         urllib.request.urlopen = original_urlopen
+
+
+def test_decorators_resilience():
+    client = get_global_client()
+
+    # Mock emit to throw an error
+    def failing_emit(event):
+        raise RuntimeError("Websocket connection lost")
+
+    original_emit = client.emit
+    client.emit = failing_emit
+
+    try:
+        # Should execute successfully and not crash the user function
+        @trace(name="resilient_sync")
+        def sync_hello(x):
+            return x * 10
+
+        assert sync_hello(4) == 40
+
+        # Test async wrapper resilience
+        @trace(name="resilient_async")
+        async def async_hello(y):
+            return y + 10
+
+        import asyncio
+
+        res = asyncio.run(async_hello(5))
+        assert res == 15
+    finally:
+        client.emit = original_emit
+
 

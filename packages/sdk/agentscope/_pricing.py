@@ -1,7 +1,10 @@
-# Hardcoded token pricing table for LLM cost estimation
-# Prices are represented in USD per 1,000,000 (1M) tokens.
+import json
+import os
+from typing import Dict, Optional
 
-PRICING_TABLE = {
+# Base pricing table (in USD per 1M tokens)
+# We support prefix-matching so pinned/versioned variants resolve correctly.
+PRICING_TABLE: Dict[str, Dict[str, float]] = {
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4": {"input": 30.00, "output": 60.00},
     "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
@@ -13,12 +16,15 @@ PRICING_TABLE = {
 }
 
 
-def get_model_pricing(model_name: str) -> dict[str, float] | None:
+def get_model_pricing(model_name: str) -> Optional[dict[str, float]]:
     """Lookup pricing configuration for a given model name, including minor/date-pinned versions."""
     if not model_name:
         return None
 
     model_name_lower = model_name.lower()
+    if "/" in model_name_lower:
+        model_name_lower = model_name_lower.split("/")[-1]
+
     if model_name_lower in PRICING_TABLE:
         return PRICING_TABLE[model_name_lower]
 
@@ -29,13 +35,44 @@ def get_model_pricing(model_name: str) -> dict[str, float] | None:
     return None
 
 
+def update_pricing_table(custom_pricing: Dict[str, Dict[str, float]]) -> None:
+    """Programmatically update or override the model pricing table.
+
+    Args:
+        custom_pricing: Dictionary of model names to dicts containing 'input' and 'output' rates.
+    """
+    for model_name, rates in custom_pricing.items():
+        if "input" in rates and "output" in rates:
+            PRICING_TABLE[model_name.lower()] = {
+                "input": float(rates["input"]),
+                "output": float(rates["output"]),
+            }
+
+
+def _load_env_overrides() -> None:
+    """Load custom pricing overrides from AGENTSCOPE_CUSTOM_PRICING environment variable."""
+    env_pricing = os.getenv("AGENTSCOPE_CUSTOM_PRICING")
+    if env_pricing:
+        try:
+            custom_pricing = json.loads(env_pricing)
+            if isinstance(custom_pricing, dict):
+                update_pricing_table(custom_pricing)
+        except Exception:
+            # Silently ignore parsing errors in environment configurations
+            pass
+
+
+# Automatically load any environment overrides on import
+_load_env_overrides()
+
+
 def calculate_cost(
-    model_name: str, prompt_tokens: int | None, completion_tokens: int | None
+    model_name: str, prompt_tokens: Optional[int], completion_tokens: Optional[int]
 ) -> float:
     """Calculate the estimated USD cost of an LLM call.
 
     Args:
-        model_name: The name of the LLM model used.
+        model_name: The name/identifier of the LLM model.
         prompt_tokens: Number of prompt (input) tokens.
         completion_tokens: Number of completion (output) tokens.
 
@@ -58,4 +95,3 @@ def calculate_cost(
     output_cost = (output_tokens / 1_000_000) * prices["output"]
 
     return input_cost + output_cost
-
