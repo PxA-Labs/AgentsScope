@@ -52,5 +52,5 @@ htmlcov/
 *.tgz
 
 # Developer & AI Agent Docs
-docs/
+# docs/
 
