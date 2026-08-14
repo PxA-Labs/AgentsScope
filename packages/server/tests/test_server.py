@@ -616,6 +616,45 @@ def test_list_events_pagination():
         assert data["total_count"] == 1
         assert len(data["events"]) == 1
         assert data["total_pages"] == 1
+def test_server_pricing():
+    from pricing import calculate_cost, get_model_pricing
+
+    # Model configuration check
+    prices = get_model_pricing("gpt-4o")
+    assert prices is not None
+    assert prices["input"] == 2.50
+    assert prices["output"] == 10.00
+
+    # gpt-4o-mini explicit pricing
+    mini_prices = get_model_pricing("gpt-4o-mini")
+    assert mini_prices["input"] == 0.15
+    assert mini_prices["output"] == 0.60
+
+    # gpt-4-turbo explicit pricing
+    turbo_prices = get_model_pricing("gpt-4-turbo")
+    assert turbo_prices["input"] == 10.00
+    assert turbo_prices["output"] == 30.00
+
+    # Prefix match checks
+    assert get_model_pricing("gpt-4o-2024-05-13") == prices
+    assert get_model_pricing("gpt-4o-mini-2024-07-18") == mini_prices
+    assert get_model_pricing("openai/gpt-4o") == prices
+    assert get_model_pricing("gpt-4orange") is None
+    assert get_model_pricing("openai/gpt-4orange") is None
+
+    # Calculate cost checks
+    assert calculate_cost("gpt-4o", 1000, 2000) == (
+        (1000 / 1_000_000 * 2.50) + (2000 / 1_000_000 * 10.00)
+    )
+
+    assert calculate_cost("gpt-4o-mini", 1_000_000, 1_000_000) == (
+        (1_000_000 / 1_000_000 * 0.15) + (1_000_000 / 1_000_000 * 0.60)
+    )
+
+    assert calculate_cost("unknown-model", 100, 100) == 0.0
+
+    with pytest.raises(ValueError, match="prompt_tokens cannot be negative"):
+        calculate_cost("gpt-4o", -1, 100)
 
 
 
