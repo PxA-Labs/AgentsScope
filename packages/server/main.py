@@ -12,8 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from database import engine, Base, async_session_maker
 from models import SessionModel, EventModel
 from ws_manager import manager
-from routers import sessions, events
-from agentscope._pricing import calculate_cost as _calculate_llm_cost
+from routers import sessions, events, memories
+from pricing import calculate_cost as _calculate_llm_cost
 
 # Configure logging
 logging.basicConfig(
@@ -123,6 +123,7 @@ app.add_middleware(
 # Mount REST routers
 app.include_router(sessions.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
+app.include_router(memories.router, prefix="/api")
 
 
 @app.get("/health")
@@ -321,6 +322,24 @@ async def handle_sdk_event(message: dict) -> None:
             await db.commit()
             await db.refresh(session)
             await db.refresh(db_event)
+
+            # Trigger memory extraction asynchronously if this was an llm_end event
+            if db_event.event_type == "llm_end":
+                try:
+                    from mem0_integration import add_memory_async
+                    merged_payload = db_event.payload or {}
+                    prompts = merged_payload.get("prompts") or []
+                    completion = merged_payload.get("completion") or ""
+                    if prompts and completion:
+                        prompt_text = "\n".join(prompts) if isinstance(prompts, list) else str(prompts)
+                        combined_text = f"Input:\n{prompt_text}\n\nOutput:\n{completion}"
+                        await add_memory_async(
+                            combined_text,
+                            session_id=sess_id,
+                            agent_name=db_event.agent_name
+                        )
+                except Exception as ex:
+                    logging.error(f"Error triggering Mem0 async memory addition: {ex}")
             # 5. Broadcast updated event to session UI subscribers
             ui_event = {
                 "event_id": db_event.event_id,
