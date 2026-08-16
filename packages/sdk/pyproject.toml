@@ -19,6 +19,9 @@ dependencies = [
     "pydantic>=2.13.4",
 ]
 
+[project.scripts]
+agentscope = "agentscope.cli:main"
+
 [project.optional-dependencies]
 langchain = [
     "langchain-core>=1.5.3",
