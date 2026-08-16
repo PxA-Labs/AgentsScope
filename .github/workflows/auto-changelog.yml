@@ -1,0 +1,43 @@
+name: Auto Update Changelog
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Run changelog generator
+        run: python .github/scripts/update_changelog.py
+
+      - name: Create or Update Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update CHANGELOG.md"
+          title: "chore: update CHANGELOG.md"
+          body: |
+            This is an automated pull request to update the `CHANGELOG.md` file with the latest changes from the default branch.
+            
+            Review the changes below and merge this PR once verified.
+          branch: "automation/update-changelog"
+          base: main
+          delete-branch: true
