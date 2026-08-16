@@ -2,6 +2,15 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
+## [Unreleased] - 2026-08-16
+
+### Added
+- Implement CLI launcher for local and Docker services
+- **ci**: Add auto update changelog workflow and script
+
+### Fixed
+- **ci**: Update changelog generator logic and workflow configuration
+
 ## [1.0.0] - 2026-08-10
 
 ### Added
