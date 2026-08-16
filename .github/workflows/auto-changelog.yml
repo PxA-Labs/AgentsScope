@@ -41,3 +41,8 @@ jobs:
           branch: "automation/update-changelog"
           base: main
           delete-branch: true
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          add-paths: |
+            CHANGELOG.md
+
