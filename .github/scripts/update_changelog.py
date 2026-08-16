@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+import os
 import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 
 def run_cmd(args):
-    result = subprocess.run(args, capture_output=True, text=True, check=True)
+    result = subprocess.run(args, capture_output=True, text=True, check=True, encoding="utf-8")
     return result.stdout.strip()
 
 def get_last_changelog_commit():
@@ -13,15 +14,16 @@ def get_last_changelog_commit():
         # Get the hash of the last commit that touched CHANGELOG.md
         commit = run_cmd(["git", "log", "-1", "--format=%H", "--", "CHANGELOG.md"])
         if commit:
-            return commit
-    except subprocess.CalledProcessError:
+            return commit.splitlines()[0]
+    except (subprocess.CalledProcessError, IndexError):
         pass
     
     # Fallback to the first commit of the repository
     try:
         commit = run_cmd(["git", "rev-list", "--max-parents=0", "HEAD"])
-        return commit
-    except subprocess.CalledProcessError:
+        if commit:
+            return commit.splitlines()[0]
+    except (subprocess.CalledProcessError, IndexError):
         print("Error: Could not retrieve git history.", file=sys.stderr)
         sys.exit(1)
 
@@ -46,10 +48,10 @@ def get_commits_since(commit_hash):
             continue
         parts = record.split("\x00")
         if len(parts) >= 2:
-            commit_hash = parts[0]
+            c_hash = parts[0]
             subject = parts[1]
             body = parts[2] if len(parts) > 2 else ""
-            commits.append({"hash": commit_hash, "subject": subject, "body": body})
+            commits.append({"hash": c_hash, "subject": subject, "body": body})
     return commits
 
 def parse_commit(subject):
@@ -83,9 +85,15 @@ def format_changelog(commits):
     # Filter and categorize
     for commit in commits:
         subj = commit["subject"]
-        # Skip changelog update commits to avoid recursion/clutter
-        subj_lower = subj.lower()
-        if "changelog" in subj_lower or "release" in subj_lower or "merge pull request" in subj_lower:
+        subj_lower = subj.lower().strip()
+        
+        # Skip automated changelog commits and merge PR commits to avoid recursion
+        if (
+            subj_lower.startswith("chore: update changelog")
+            or subj_lower == "chore: update changelog.md"
+            or "merge pull request" in subj_lower
+            or "merge branch" in subj_lower
+        ):
             continue
             
         c_type, scope, msg = parse_commit(subj)
@@ -120,39 +128,60 @@ def format_changelog(commits):
         
     return "\n".join(lines).strip()
 
-def update_changelog_file(new_content):
+def update_changelog_file(new_content, filepath="CHANGELOG.md"):
     if not new_content:
         print("No new changes to add to CHANGELOG.md.")
         return False
         
-    with open("CHANGELOG.md", "r") as f:
-        content = f.read()
+    if os.path.exists(filepath):
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+    else:
+        content = "# Changelog\n\nAll notable changes to the **AgentScope** project will be documented in this file.\n\n"
         
-    # Get current date in UTC
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     header = f"## [Unreleased] - {date_str}"
+    section = f"{header}\n\n{new_content}"
     
-    section = f"{header}\n\n{new_content}\n\n"
-    
-    # Find the first heading starting with "## "
     lines = content.splitlines()
-    insert_idx = -1
+    
+    unreleased_idx = -1
     for idx, line in enumerate(lines):
-        if line.startswith("## "):
-            insert_idx = idx
+        if line.startswith("## [Unreleased]"):
+            unreleased_idx = idx
             break
             
-    if insert_idx != -1:
-        # Insert before the first version heading
-        new_lines = lines[:insert_idx] + [section.strip()] + [""] + lines[insert_idx:]
+    if unreleased_idx != -1:
+        # Find end of existing [Unreleased] section (next '## ' header or end of file)
+        end_idx = len(lines)
+        for idx in range(unreleased_idx + 1, len(lines)):
+            if lines[idx].startswith("## "):
+                end_idx = idx
+                break
+        new_lines = lines[:unreleased_idx] + section.splitlines() + [""] + lines[end_idx:]
     else:
-        # Append to the end if no version headers exist
-        new_lines = lines + ["", section.strip()]
+        # Insert before first version header starting with "## "
+        first_version_idx = -1
+        for idx, line in enumerate(lines):
+            if line.startswith("## "):
+                first_version_idx = idx
+                break
+                
+        if first_version_idx != -1:
+            new_lines = lines[:first_version_idx] + section.splitlines() + [""] + lines[first_version_idx:]
+        else:
+            new_lines = lines + ["", section]
+            
+    final_content = "\n".join(new_lines).strip() + "\n"
+    
+    if os.path.exists(filepath) and final_content == content:
+        print("CHANGELOG.md is already up to date.")
+        return False
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(final_content)
         
-    with open("CHANGELOG.md", "w") as f:
-        f.write("\n".join(new_lines) + "\n")
-        
-    print("CHANGELOG.md updated successfully.")
+    print(f"{filepath} updated successfully.")
     return True
 
 def main():
@@ -174,3 +203,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
