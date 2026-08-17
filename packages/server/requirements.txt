@@ -3,7 +3,7 @@ uvicorn>=0.52.1
 sqlalchemy>=2.0.51
 pydantic>=2.13.4
 websockets>=16.1.1
-python-dotenv>=1.0.0
+python-dotenv>=1.2.2
 aiosqlite>=0.22.1
 greenlet
 mem0ai>=0.1.0
