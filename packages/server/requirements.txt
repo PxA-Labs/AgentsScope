@@ -6,6 +6,6 @@ websockets>=16.1.1
 python-dotenv>=1.0.0
 aiosqlite>=0.22.1
 greenlet
-mem0ai>=0.1.0
+mem0ai>=2.0.18
 
 
