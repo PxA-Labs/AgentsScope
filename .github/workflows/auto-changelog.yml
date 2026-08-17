@@ -29,7 +29,7 @@ jobs:
         run: python .github/scripts/update_changelog.py
 
       - name: Commit and push CHANGELOG.md
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "chore: update CHANGELOG.md [skip ci]"
           file_pattern: "CHANGELOG.md"
