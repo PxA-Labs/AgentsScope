@@ -5,10 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-08-17
 
 ### Miscellaneous
-- Build(deps): update python-dotenv requirement in /packages/server
-- Build(deps-dev): update setuptools requirement in /packages/sdk
-- Build(deps): update uvicorn requirement in /packages/server
-- Build(deps): bump actions/setup-python from 5 to 7
+- Build(deps): update sqlalchemy requirement in /packages/server
 
 ## [1.0.0] - 2026-08-10
 
