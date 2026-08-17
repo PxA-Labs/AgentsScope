@@ -5,7 +5,10 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-08-17
 
 ### Miscellaneous
-- Build(deps-dev): bump @types/node from 26.1.2 to 26.2.0 in /packages/ui
+- Build(deps): update python-dotenv requirement in /packages/server
+- Build(deps-dev): update setuptools requirement in /packages/sdk
+- Build(deps): update uvicorn requirement in /packages/server
+- Build(deps): bump actions/setup-python from 5 to 7
 
 ## [1.0.0] - 2026-08-10
 
