@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-08-17
 
 ### Miscellaneous
-- Build(deps): bump actions/checkout from 4 to 7
+- Build(deps-dev): update langchain-core requirement in /packages/sdk
 
 ## [1.0.0] - 2026-08-10
 
