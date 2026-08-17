@@ -2,15 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-16
+## [Unreleased] - 2026-08-17
 
-### Added
-- Implement CLI launcher for local and Docker services
-- **ci**: Add auto update changelog workflow and script
-
-### Fixed
-- **ci**: Switch auto-changelog workflow to direct auto-commit on main
-- **ci**: Update changelog generator logic and workflow configuration
+### Miscellaneous
+- Build(deps): bump stefanzweifel/git-auto-commit-action from 5 to 7
 
 ## [1.0.0] - 2026-08-10
 
