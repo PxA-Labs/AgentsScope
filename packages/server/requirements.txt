@@ -1,6 +1,6 @@
 fastapi>=0.141.1,<1.0.0
 uvicorn>=0.52.3
-sqlalchemy>=2.0.51
+sqlalchemy>=2.0.52
 pydantic>=2.13.4
 websockets>=16.1.1
 python-dotenv>=1.2.2
