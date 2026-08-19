@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-17
+## [Unreleased] - 2026-08-19
 
-### Miscellaneous
-- Build(deps): update sqlalchemy requirement in /packages/server
+### Maintenance
+- Upgrade CI Node version to 20 for Next.js 16 compatibility (#118)
 
 ## [1.0.0] - 2026-08-10
 
