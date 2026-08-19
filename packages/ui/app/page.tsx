@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import { PromptDiffViewer } from "../components/PromptDiffViewer";
 import { useSessionStore } from "../store/sessionStore";
 import { Session, AgentEvent, ReactFlowNode, ReactFlowEdge } from "../types";
 import {
@@ -625,6 +626,14 @@ export default function Dashboard() {
                                     );
                                   })}
                                 </div>
+                              )}
+
+                              {/* Prompt Diff Viewer — only for LLM events */}
+                              {event.agent_type === "llm" && (
+                                <PromptDiffViewer
+                                  currentEvent={event}
+                                  allEvents={events}
+                                />
                               )}
                             </div>
                           )}
