@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-17
+## [Unreleased] - 2026-08-19
 
 ### Miscellaneous
-- Build(deps): update sqlalchemy requirement in /packages/server
+- Build(deps): bump next from 14.2.35 to 16.3.1 in /packages/ui (#109)
 
 ## [1.0.0] - 2026-08-10
 
