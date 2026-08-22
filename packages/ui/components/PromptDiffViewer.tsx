@@ -24,10 +24,19 @@ function getPromptText(event: AgentEvent): string {
   if (!event) return "";
   const payload = event.payload as LLMPayload | undefined;
   if (!payload) return "";
+
+  // 1. Check if prompts is a single string
+  if (typeof (payload as any).prompts === "string" && (payload as any).prompts.trim()) {
+    return (payload as any).prompts;
+  }
+  // 2. Check if prompt is a single string (singular 'prompt')
+  if (typeof (payload as any).prompt === "string" && (payload as any).prompt.trim()) {
+    return (payload as any).prompt;
+  }
+
+  // 3. Standard array handling
   const prompts = payload.prompts;
   if (!prompts || !Array.isArray(prompts) || prompts.length === 0) return "";
-  // Join multiple prompts with a visible separator so diffing multi-prompt
-  // payloads is readable. Each prompt string is preserved as-is.
   return prompts.map((p) => String(p)).join("\n\n--- prompt separator ---\n\n");
 }
 
@@ -38,6 +47,14 @@ function isLLMEventWithPrompts(event: AgentEvent): boolean {
   if (!event || event.agent_type !== "llm") return false;
   const payload = event.payload as LLMPayload | undefined;
   if (!payload) return false;
+  
+  if (typeof (payload as any).prompts === "string" && (payload as any).prompts.trim()) {
+    return true;
+  }
+  if (typeof (payload as any).prompt === "string" && (payload as any).prompt.trim()) {
+    return true;
+  }
+
   const prompts = payload.prompts;
   return Array.isArray(prompts) && prompts.length > 0;
 }

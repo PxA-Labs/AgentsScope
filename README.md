@@ -218,7 +218,7 @@ We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) fi
 - [ ] CrewAI integration
 - [ ] AutoGen integration
 - [ ] Live DAG updates
-- [ ] Prompt diff view
+- [x] Prompt diff view
 - [ ] Export to JSON/CSV
 
 ## FAQ
