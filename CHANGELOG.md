@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-19
+## [Unreleased] - 2026-08-22
 
-### Miscellaneous
-- Build(deps): bump next from 14.2.35 to 16.3.1 in /packages/ui (#109)
+### Added
+- **ui**: Visual prompt template diff viewer in inspector panel (#124)
 
 ## [1.0.0] - 2026-08-10
 
