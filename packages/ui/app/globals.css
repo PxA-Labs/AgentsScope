@@ -70,3 +70,30 @@ body {
   box-shadow: 0 0 15px rgba(147, 51, 234, 0.05);
   transition: all 0.2s ease-in-out;
 }
+
+/* Prompt Diff Viewer — react-diff-viewer-continued overrides */
+.prompt-diff-viewer table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.prompt-diff-viewer td {
+  border: none !important;
+  vertical-align: top;
+}
+.prompt-diff-viewer pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.prompt-diff-viewer ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.prompt-diff-viewer ::-webkit-scrollbar-thumb {
+  background: rgba(147, 51, 234, 0.3);
+  border-radius: 9999px;
+}
