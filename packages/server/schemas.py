@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, AliasChoices
+from pydantic import BaseModel, Field, AliasChoices, ConfigDict
 
 
 class SessionStatus(str, Enum):
@@ -22,6 +22,8 @@ class SessionUpdate(BaseModel):
 
 
 class SessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     session_id: str
     name: str
     status: str
@@ -36,11 +38,10 @@ class SessionResponse(BaseModel):
         validation_alias=AliasChoices("metadata_", "metadata"),
     )
 
-    class Config:
-        from_attributes = True
-
 
 class EventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     event_id: str
     session_id: str
     parent_event_id: Optional[str] = None
@@ -52,8 +53,18 @@ class EventResponse(BaseModel):
     status: str
     payload: Optional[Dict[str, Any]] = None
 
-    class Config:
-        from_attributes = True
+
+class SessionExport(BaseModel):
+    version: str = "1.0"
+    exported_at: datetime
+    session: SessionResponse
+    events: List[EventResponse]
+
+
+class SessionImportPayload(BaseModel):
+    version: Optional[str] = "1.0"
+    session: SessionResponse
+    events: List[EventResponse]
 
 
 class NodePosition(BaseModel):
@@ -119,4 +130,3 @@ class PaginatedEventsResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
-

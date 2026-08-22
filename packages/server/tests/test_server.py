@@ -19,7 +19,6 @@ async def test_session_lifecycle():
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
-
         # 1. Create a session
         create_res = await ac.post(
             "/api/sessions",
@@ -191,13 +190,17 @@ def test_websocket_event_upsert_and_merge():
                     break
                 time.sleep(0.1)
 
-            assert res_start is not None, f"Start event {run_id} not found in database within timeout"
+            assert res_start is not None, (
+                f"Start event {run_id} not found in database within timeout"
+            )
             assert res_start.status_code == 200
             start_data = res_start.json()
             assert start_data["event_type"] == "llm_start"
             assert start_data["status"] == "running"
             assert start_data["payload"]["model"] == "gpt-4o"
-            assert start_data["payload"]["prompts"] == ["Draft a short story about antigravity."]
+            assert start_data["payload"]["prompts"] == [
+                "Draft a short story about antigravity."
+            ]
 
             # 2. Send llm_end event (model is empty, prompts is empty, completion is set)
             websocket.send_json(
@@ -223,7 +226,7 @@ def test_websocket_event_upsert_and_merge():
                     },
                 }
             )
-            
+
             # Wait for websocket worker task to finish DB operations
             for _ in range(30):
                 response = client.get(f"/api/sessions/{session_id}")
@@ -245,7 +248,10 @@ def test_websocket_event_upsert_and_merge():
         payload = end_data["payload"]
         assert payload["model"] == "gpt-4o"
         assert payload["prompts"] == ["Draft a short story about antigravity."]
-        assert payload["completion"] == "Once upon a time, weightlessness was discovered..."
+        assert (
+            payload["completion"]
+            == "Once upon a time, weightlessness was discovered..."
+        )
         assert payload["total_tokens"] == 30
 
         # Verify session aggregates are correct
@@ -414,9 +420,7 @@ def test_sdk_client_integration(db_engine):
 
         with TestClient(app) as test_client:
             for _ in range(40):
-                r = test_client.get(
-                    f"/api/sessions/{session_id}/events/{event_id}"
-                )
+                r = test_client.get(f"/api/sessions/{session_id}/events/{event_id}")
                 if r.status_code == 200:
                     res_event = r.json()
                     break
@@ -472,9 +476,7 @@ async def test_session_retention_pruning(db_session):
         await prune_old_sessions()
 
         # Verify old session is deleted, new session remains
-        stmt = select(SessionModel).where(
-            SessionModel.session_id.in_([old_id, new_id])
-        )
+        stmt = select(SessionModel).where(SessionModel.session_id.in_([old_id, new_id]))
         res = await db_session.execute(stmt)
         remaining = res.scalars().all()
 
@@ -518,9 +520,7 @@ async def test_session_max_limit_pruning(db_session):
         await prune_old_sessions()
 
         # Verify only the 2 newest sessions remain (limit-2 and limit-3)
-        stmt = select(SessionModel).where(
-            SessionModel.session_id.in_(session_ids)
-        )
+        stmt = select(SessionModel).where(SessionModel.session_id.in_(session_ids))
         res = await db_session.execute(stmt)
         remaining = res.scalars().all()
 
@@ -531,6 +531,7 @@ async def test_session_max_limit_pruning(db_session):
     finally:
         if "MAX_SESSIONS" in os.environ:
             del os.environ["MAX_SESSIONS"]
+
 
 def test_list_events_pagination():
     import uuid
@@ -571,9 +572,7 @@ def test_list_events_pagination():
 
             for _ in range(30):
                 # Retrieve first page with limit=2
-                res = client.get(
-                    f"/api/sessions/{session_id}/events?page=1&limit=2"
-                )
+                res = client.get(f"/api/sessions/{session_id}/events?page=1&limit=2")
                 if res.status_code == 200 and res.json()["total_count"] == 5:
                     break
                 time.sleep(0.1)
@@ -616,6 +615,8 @@ def test_list_events_pagination():
         assert data["total_count"] == 1
         assert len(data["events"]) == 1
         assert data["total_pages"] == 1
+
+
 def test_server_pricing():
     from pricing import calculate_cost, get_model_pricing
 
@@ -655,8 +656,3 @@ def test_server_pricing():
 
     with pytest.raises(ValueError, match="prompt_tokens cannot be negative"):
         calculate_cost("gpt-4o", -1, 100)
-
-
-
-
-

@@ -14,6 +14,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./agentscope.db")
 # Create asynchronous engine
 engine = create_async_engine(DATABASE_URL, echo=False)
 
+
 # Listen to connect event to configure SQLite options (WAL & Foreign Keys)
 @event.listens_for(engine.sync_engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
@@ -27,6 +28,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA busy_timeout=5000;")
     finally:
         cursor.close()
+
 
 # Async session factory
 async_session_maker = async_sessionmaker(

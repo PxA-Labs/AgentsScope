@@ -23,6 +23,8 @@ import {
   Search,
   Trash2,
   Brain,
+  Download,
+  Upload,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765";
@@ -60,6 +62,14 @@ export default function Dashboard() {
   const [newMemoryText, setNewMemoryText] = useState("");
   const [isAddingMemory, setIsAddingMemory] = useState(false);
   const [mem0Error, setMem0Error] = useState<string | null>(null);
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<{
+    text: string;
+    type: "success" | "error";
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eventFeedEndRef = useRef<HTMLDivElement>(null);
 
@@ -286,6 +296,81 @@ export default function Dashboard() {
     }
   };
 
+  const handleExportSession = async () => {
+    if (!activeSession) return;
+    try {
+      setIsExporting(true);
+      const res = await fetch(getApiUrl(`/api/sessions/${activeSession.session_id}/export`));
+      if (!res.ok) throw new Error("Failed to export session");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const safeName = (activeSession.name || "session").replace(/[^a-zA-Z0-9_-]/g, "_");
+      link.download = `${safeName}_${activeSession.session_id.slice(0, 8)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("Export error:", err);
+      alert("Failed to export session telemetry data.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsImporting(true);
+      setImportMessage(null);
+      const text = await file.text();
+      let jsonPayload: any;
+      try {
+        jsonPayload = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid JSON file format");
+      }
+
+      if (!jsonPayload.session || !Array.isArray(jsonPayload.events)) {
+        throw new Error("Invalid session export structure: missing session or events");
+      }
+
+      const res = await fetch(getApiUrl("/api/sessions/import"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(jsonPayload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to import session");
+      }
+
+      const importedSession = await res.json();
+      await fetchSessionsList();
+      handleSelectSession(importedSession);
+      setImportMessage({
+        text: `Imported "${importedSession.name}" successfully!`,
+        type: "success",
+      });
+      setTimeout(() => setImportMessage(null), 4000);
+    } catch (err: any) {
+      console.error("Import error:", err);
+      setImportMessage({
+        text: err.message || "Failed to import session",
+        type: "error",
+      });
+      setTimeout(() => setImportMessage(null), 5000);
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "memories" && activeSession) {
       fetchMemories();
@@ -379,13 +464,44 @@ export default function Dashboard() {
               </span>
             </div>
           </div>
-          <button
-            onClick={fetchSessionsList}
-            className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-white"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportFile}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting}
+              className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-white"
+              title="Import Session JSON"
+            >
+              <Upload className={`w-4 h-4 ${isImporting ? "animate-spin text-purple-400" : ""}`} />
+            </button>
+            <button
+              onClick={fetchSessionsList}
+              className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-white"
+              title="Refresh Sessions"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+
+        {/* Import Notification Banner */}
+        {importMessage && (
+          <div
+            className={`mx-3 mt-2 px-3 py-2 rounded-lg text-xs font-semibold border ${
+              importMessage.type === "success"
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+            }`}
+          >
+            {importMessage.text}
+          </div>
+        )}
 
         {/* Search */}
         <div className="p-3 border-b border-border">
@@ -453,7 +569,18 @@ export default function Dashboard() {
                   Session ID: {activeSession.session_id}
                 </p>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleExportSession}
+                  disabled={isExporting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                             text-purple-300 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20
+                             transition-colors disabled:opacity-50"
+                  title="Export session and telemetry events as JSON"
+                >
+                  <Download className={`w-3.5 h-3.5 ${isExporting ? "animate-bounce" : ""}`} />
+                  {isExporting ? "Exporting..." : "Export JSON"}
+                </button>
                 <div className="flex bg-secondary/60 p-0.5 rounded-lg border border-border">
                   <button
                     onClick={() => setActiveTab("execution")}

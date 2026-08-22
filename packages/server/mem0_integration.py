@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Optional
 from mem0 import MemoryClient
 
 logger = logging.getLogger(__name__)
@@ -17,24 +17,32 @@ if MEM0_API_KEY:
     except Exception as e:
         logger.error(f"Failed to initialize Mem0 client: {e}")
 else:
-    logger.warning("MEM0_API_KEY is not configured in environment. Mem0 memory integration is disabled.")
+    logger.warning(
+        "MEM0_API_KEY is not configured in environment. Mem0 memory integration is disabled."
+    )
+
 
 def get_mem0_client() -> Optional[MemoryClient]:
     return client
 
-async def add_memory_async(text: str, session_id: str, agent_name: Optional[str] = None) -> None:
+
+async def add_memory_async(
+    text: str, session_id: str, agent_name: Optional[str] = None
+) -> None:
     """Asynchronously send memory to Mem0 without blocking the server request/telemetry ingestion."""
     if not client:
         logger.debug("Mem0 client not configured, skipping memory addition.")
         return
-    
+
     def _add():
         try:
             metadata = {}
             if agent_name:
                 metadata["agent_name"] = agent_name
-            
-            logger.info(f"Extracting memory for session {session_id} from text: {text[:60]}...")
+
+            logger.info(
+                f"Extracting memory for session {session_id} from text: {text[:60]}..."
+            )
             res = client.add(text, user_id=session_id, metadata=metadata)
             logger.info(f"Mem0 add response: {res}")
         except Exception as e:

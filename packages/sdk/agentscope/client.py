@@ -23,6 +23,8 @@ class AgentScopeClient:
         port: int = 8765,
         session_name: Optional[str] = None,
         session_metadata: Optional[Dict[str, Any]] = None,
+        batch_size: int = 50,
+        flush_interval_seconds: float = 0.1,
     ):
         self.host = host
         self.port = port
@@ -30,6 +32,8 @@ class AgentScopeClient:
             session_name or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         )
         self.session_metadata = session_metadata or {}
+        self.batch_size = max(1, batch_size)
+        self.flush_interval_seconds = max(0.01, flush_interval_seconds)
         self.session_id: Optional[str] = None
         self.pending_status: Optional[str] = None
         self.queue: queue.Queue = queue.Queue(maxsize=5000)
@@ -50,7 +54,7 @@ class AgentScopeClient:
             )
             self.thread.start()
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 2.0) -> None:
         """Stop the background client and close resources."""
         with self._lock:
             if not self.running:
@@ -60,7 +64,7 @@ class AgentScopeClient:
             if self.loop and self.loop.is_running():
                 self.loop.call_soon_threadsafe(self.loop.stop)
             if self.thread:
-                self.thread.join(timeout=2.0)
+                self.thread.join(timeout=timeout)
 
     def emit(self, event: Dict[str, Any]) -> None:
         """Queue an event payload to be sent to the server.
@@ -80,6 +84,7 @@ class AgentScopeClient:
                     self.queue.task_done()
                 except queue.Empty:
                     pass
+
     def patch_session_status(self, status: str) -> None:
         """Update the session status on the server.
 
@@ -114,8 +119,7 @@ class AgentScopeClient:
             try:
                 with urllib.request.urlopen(req, timeout=5):
                     logging.info(
-                        f"AgentScope session {session_id} "
-                        f"patched to status: {status}"
+                        f"AgentScope session {session_id} patched to status: {status}"
                     )
             except Exception as e:
                 logging.warning(
@@ -128,6 +132,7 @@ class AgentScopeClient:
             name="AgentScopeSessionPatchThread",
             daemon=True,
         ).start()
+
     def _run_loop(self) -> None:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -143,7 +148,7 @@ class AgentScopeClient:
 
         backoff = 1.0
         max_backoff = 30.0
-        failed_event = None
+        failed_batch = []
 
         while self.running:
             try:
@@ -152,6 +157,8 @@ class AgentScopeClient:
                     await self.loop.run_in_executor(None, self._create_session_sync)
                     if not self.session_id:
                         # Server is down, wait and retry session creation
+                        if not self.running:
+                            break
                         await asyncio.sleep(backoff)
                         backoff = min(backoff * 2, max_backoff)
                         continue
@@ -163,35 +170,55 @@ class AgentScopeClient:
                     self.ws_connected = True
                     backoff = 1.0  # Reset backoff on connection success
 
-                    # 3. Read events from the queue and send them
+                    # 3. Read events from the queue in batches and send them
                     while self.running:
-                        # If a prior send failed, retry it first to preserve ordering
-                        if failed_event is not None:
-                            event = failed_event
-                            failed_event = None
+                        batch = []
+                        if failed_batch:
+                            batch = failed_batch
+                            failed_batch = []
                         else:
                             event = await self.loop.run_in_executor(
                                 None, self.queue.get
                             )
                             if event is None:
                                 break
+                            batch.append(event)
+                            while len(batch) < self.batch_size:
+                                try:
+                                    nxt = self.queue.get_nowait()
+                                    if nxt is None:
+                                        self.queue.put(None)
+                                        break
+                                    batch.append(nxt)
+                                except queue.Empty:
+                                    break
 
-                        # Encapsulate event into ingestion schema
-                        message = {
-                            "type": "event",
-                            "session_id": self.session_id,
-                            "event": event,
-                        }
+                        if not batch:
+                            continue
+
+                        if len(batch) == 1:
+                            message = {
+                                "type": "event",
+                                "session_id": self.session_id,
+                                "event": batch[0],
+                            }
+                        else:
+                            message = {
+                                "type": "events_batch",
+                                "session_id": self.session_id,
+                                "events": batch,
+                            }
 
                         try:
                             await websocket.send(json.dumps(message))
-                            self.queue.task_done()
+                            for _ in range(len(batch)):
+                                self.queue.task_done()
                         except Exception as e:
                             logging.warning(
-                                "Failed to send event to AgentScope "
+                                "Failed to send event batch to AgentScope "
                                 f"server: {e}. Re-queueing."
                             )
-                            failed_event = event
+                            failed_batch = batch
                             raise e  # Trigger reconnection and retry
 
             except (
@@ -200,15 +227,25 @@ class AgentScopeClient:
                 ConnectionRefusedError,
             ) as e:
                 self.ws_connected = False
+                if not self.running:
+                    break
                 logging.warning(
                     "AgentScope server connection failed: "
                     f"{e}. Retrying in {backoff}s..."
                 )
-                await asyncio.sleep(backoff)
+                try:
+                    await asyncio.sleep(backoff)
+                except Exception:
+                    break
                 backoff = min(backoff * 2, max_backoff)
             except Exception as e:
+                if not self.running:
+                    break
                 logging.error(f"Unexpected error in SDK client loop: {e}")
-                await asyncio.sleep(1.0)
+                try:
+                    await asyncio.sleep(1.0)
+                except Exception:
+                    break
 
     def _create_session_sync(self) -> None:
         """Issue synchronous POST request to initialize a session on the server."""

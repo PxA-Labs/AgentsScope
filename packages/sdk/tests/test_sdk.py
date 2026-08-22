@@ -25,13 +25,17 @@ def test_calculate_cost():
     # claude-3-opus: 15.00 input / 75.00 output per 1M tokens
     assert calculate_cost("claude-3-opus", 1_000_000, 1_000_000) == 90.00
     # gemini-1.5-flash: 0.075 input / 0.30 output per 1M tokens
-    assert calculate_cost("gemini-1.5-flash", 1_000_000, 1_000_000) == pytest.approx(0.375)
+    assert calculate_cost("gemini-1.5-flash", 1_000_000, 1_000_000) == pytest.approx(
+        0.375
+    )
 
     # Date-pinned & minor version matching
     assert calculate_cost("claude-3-haiku-20240307", 1_000_000, 1_000_000) == 1.50
     assert calculate_cost("CLAUDE-3-HAIKU-20240307", 1_000_000, 1_000_000) == 1.50
     assert calculate_cost("claude-3-opus-20240229", 1_000_000, 1_000_000) == 90.00
-    assert calculate_cost("gemini-1.5-flash-001", 1_000_000, 1_000_000) == pytest.approx(0.375)
+    assert calculate_cost(
+        "gemini-1.5-flash-001", 1_000_000, 1_000_000
+    ) == pytest.approx(0.375)
     assert calculate_cost("gpt-4o-2024-05-13", 1_000_000, 1_000_000) == 12.50
 
     # Ensure non-delimited model names do not false match
@@ -46,13 +50,18 @@ def test_calculate_cost():
 
     # Custom programmatic updates
     from agentscope._pricing import update_pricing_table
+
     update_pricing_table({"custom-model-x": {"input": 1.0, "output": 2.0}})
     assert calculate_cost("custom-model-x-v1", 1_000_000, 1_000_000) == 3.0
 
     # Environment variable overrides
     import os
+
     from agentscope._pricing import _load_env_overrides
-    os.environ["AGENTSCOPE_CUSTOM_PRICING"] = '{"custom-env-y": {"input": 5.0, "output": 10.0}}'
+
+    os.environ["AGENTSCOPE_CUSTOM_PRICING"] = (
+        '{"custom-env-y": {"input": 5.0, "output": 10.0}}'
+    )
     _load_env_overrides()
     assert calculate_cost("custom-env-y", 1_000_000, 1_000_000) == 15.0
     del os.environ["AGENTSCOPE_CUSTOM_PRICING"]
@@ -251,6 +260,7 @@ async def test_callback_handler():
 
 def test_client_pending_status_patch():
     from unittest.mock import MagicMock
+
     from agentscope.client import AgentScopeClient
 
     client = AgentScopeClient(host="localhost", port=8765, session_name="test_session")
@@ -284,9 +294,7 @@ def test_client_pending_status_patch():
         # Verify pending_status was cleared
         assert client.pending_status is None
         # Verify _send_status_patch was called with enqueued status
-        client._send_status_patch.assert_called_once_with(
-            "test-uuid-123", "completed"
-        )
+        client._send_status_patch.assert_called_once_with("test-uuid-123", "completed")
     finally:
         urllib.request.urlopen = original_urlopen
 
@@ -320,5 +328,3 @@ def test_decorators_resilience():
         assert res == 15
     finally:
         client.emit = original_emit
-
-

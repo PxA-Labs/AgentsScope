@@ -5,21 +5,25 @@ from mem0_integration import get_mem0_client
 
 router = APIRouter(prefix="/sessions/{session_id}/memories", tags=["memories"])
 
+
 class MemoryCreateRequest(BaseModel):
     text: str
     metadata: Optional[Dict[str, Any]] = None
 
+
 class MemorySearchRequest(BaseModel):
     query: str
+
 
 def verify_mem0_client():
     client = get_mem0_client()
     if not client:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mem0 integration is disabled. Please configure MEM0_API_KEY in the server environment (.env file)."
+            detail="Mem0 integration is disabled. Please configure MEM0_API_KEY in the server environment (.env file).",
         )
     return client
+
 
 @router.get("")
 async def list_session_memories(session_id: str):
@@ -32,8 +36,9 @@ async def list_session_memories(session_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve memories from Mem0: {e}"
+            detail=f"Failed to retrieve memories from Mem0: {e}",
         )
+
 
 @router.post("")
 async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
@@ -46,8 +51,9 @@ async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to add memory to Mem0: {e}"
+            detail=f"Failed to add memory to Mem0: {e}",
         )
+
 
 @router.post("/search")
 async def search_session_memories(session_id: str, payload: MemorySearchRequest):
@@ -59,8 +65,9 @@ async def search_session_memories(session_id: str, payload: MemorySearchRequest)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to search memories in Mem0: {e}"
+            detail=f"Failed to search memories in Mem0: {e}",
         )
+
 
 @router.delete("/{memory_id}")
 async def delete_session_memory(session_id: str, memory_id: str):
@@ -72,5 +79,5 @@ async def delete_session_memory(session_id: str, memory_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete memory from Mem0: {e}"
+            detail=f"Failed to delete memory from Mem0: {e}",
         )

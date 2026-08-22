@@ -50,7 +50,9 @@ async def prune_old_sessions() -> None:
                             f"(cutoff: {cutoff.isoformat()})"
                         )
                 except ValueError:
-                    logging.warning(f"Invalid RETENTION_DAYS value: {retention_days_raw}")
+                    logging.warning(
+                        f"Invalid RETENTION_DAYS value: {retention_days_raw}"
+                    )
 
             # 2. Prune by max session limit
             if max_sessions_raw:
@@ -145,10 +147,22 @@ def merge_payloads(existing: dict, incoming: dict) -> dict:
 
 async def handle_sdk_event(message: dict) -> None:
     sess_id = message.get("session_id")
-    event_data = message.get("event")
-    if not sess_id or not event_data:
+    msg_type = message.get("type")
+    if not sess_id:
         return
 
+    if msg_type == "event":
+        event_data = message.get("event")
+        if event_data:
+            await process_single_event(event_data, sess_id)
+    elif msg_type == "events_batch":
+        events = message.get("events") or []
+        for event_data in events:
+            if event_data:
+                await process_single_event(event_data, sess_id)
+
+
+async def process_single_event(event_data: dict, sess_id: str) -> None:
     required_fields = ["event_id", "event_type", "agent_name", "agent_type", "status"]
     if not all(field in event_data for field in required_fields):
         logging.warning("Skipping malformed event due to missing required fields")
@@ -192,7 +206,7 @@ async def handle_sdk_event(message: dict) -> None:
                 async with db.begin_nested():
                     event_stmt = select(EventModel).where(
                         EventModel.session_id == sess_id,
-                        EventModel.event_id == event_data["event_id"]
+                        EventModel.event_id == event_data["event_id"],
                     )
                     event_res = await db.execute(event_stmt)
                     db_event = event_res.scalars().first()
@@ -202,19 +216,25 @@ async def handle_sdk_event(message: dict) -> None:
                         if db_event.event_type == "llm_end":
                             merged_payload = db_event.payload or {}
                             prompt_tokens = merged_payload.get("prompt_tokens") or 0
-                            completion_tokens = merged_payload.get("completion_tokens") or 0
+                            completion_tokens = (
+                                merged_payload.get("completion_tokens") or 0
+                            )
                             prev_tokens = merged_payload.get("total_tokens") or (
                                 prompt_tokens + completion_tokens
                             )
                             model = merged_payload.get("model") or ""
-                            prev_cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
+                            prev_cost = _calculate_llm_cost(
+                                model, prompt_tokens, completion_tokens
+                            )
 
                         # Update existing event properties
                         db_event.event_type = event_data["event_type"]
                         db_event.status = event_data["status"]
                         if event_data.get("latency_ms") is not None:
                             db_event.latency_ms = event_data["latency_ms"]
-                        db_event.payload = merge_payloads(db_event.payload or {}, payload)
+                        db_event.payload = merge_payloads(
+                            db_event.payload or {}, payload
+                        )
                     else:
                         is_new_event = True
                         db_event = EventModel(
@@ -235,7 +255,7 @@ async def handle_sdk_event(message: dict) -> None:
                 # Concurrent insert collision; retry the lookup-and-merge
                 event_stmt = select(EventModel).where(
                     EventModel.session_id == sess_id,
-                    EventModel.event_id == event_data["event_id"]
+                    EventModel.event_id == event_data["event_id"],
                 )
                 event_res = await db.execute(event_stmt)
                 db_event = event_res.scalars().first()
@@ -249,7 +269,9 @@ async def handle_sdk_event(message: dict) -> None:
                             prompt_tokens + completion_tokens
                         )
                         model = merged_payload.get("model") or ""
-                        prev_cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
+                        prev_cost = _calculate_llm_cost(
+                            model, prompt_tokens, completion_tokens
+                        )
 
                     is_new_event = False
                     db_event.event_type = event_data["event_type"]
@@ -303,7 +325,9 @@ async def handle_sdk_event(message: dict) -> None:
                         prompt_tokens + completion_tokens
                     )
                     model = merged_payload.get("model") or ""
-                    new_cost = _calculate_llm_cost(model, prompt_tokens, completion_tokens)
+                    new_cost = _calculate_llm_cost(
+                        model, prompt_tokens, completion_tokens
+                    )
 
                     token_delta = new_tokens - prev_tokens
                     cost_delta = new_cost - prev_cost
@@ -327,16 +351,23 @@ async def handle_sdk_event(message: dict) -> None:
             if db_event.event_type == "llm_end":
                 try:
                     from mem0_integration import add_memory_async
+
                     merged_payload = db_event.payload or {}
                     prompts = merged_payload.get("prompts") or []
                     completion = merged_payload.get("completion") or ""
                     if prompts and completion:
-                        prompt_text = "\n".join(prompts) if isinstance(prompts, list) else str(prompts)
-                        combined_text = f"Input:\n{prompt_text}\n\nOutput:\n{completion}"
+                        prompt_text = (
+                            "\n".join(prompts)
+                            if isinstance(prompts, list)
+                            else str(prompts)
+                        )
+                        combined_text = (
+                            f"Input:\n{prompt_text}\n\nOutput:\n{completion}"
+                        )
                         await add_memory_async(
                             combined_text,
                             session_id=sess_id,
-                            agent_name=db_event.agent_name
+                            agent_name=db_event.agent_name,
                         )
                 except Exception as ex:
                     logging.error(f"Error triggering Mem0 async memory addition: {ex}")
@@ -348,7 +379,9 @@ async def handle_sdk_event(message: dict) -> None:
                 "event_type": db_event.event_type,
                 "agent_name": db_event.agent_name,
                 "agent_type": db_event.agent_type,
-                "timestamp": db_event.timestamp.replace(tzinfo=timezone.utc).isoformat(),
+                "timestamp": db_event.timestamp.replace(
+                    tzinfo=timezone.utc
+                ).isoformat(),
                 "latency_ms": db_event.latency_ms,
                 "status": db_event.status,
                 "payload": db_event.payload,
@@ -390,7 +423,7 @@ async def websocket_route(
             while True:
                 data = await websocket.receive_text()
                 message = json.loads(data)
-                if message.get("type") == "event":
+                if message.get("type") in ("event", "events_batch"):
                     await handle_sdk_event(message)
         except WebSocketDisconnect:
             manager.disconnect_sdk(websocket)
