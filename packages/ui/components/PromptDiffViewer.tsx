@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import ReactDiffViewer, { DiffMethod } from "react-diff-viewer-continued";
 import { AgentEvent, LLMPayload } from "../types";
 import {
@@ -21,6 +21,7 @@ interface PromptDiffViewerProps {
  * Handles cases where prompts may be missing, empty, or not an array.
  */
 function getPromptText(event: AgentEvent): string {
+  if (!event) return "";
   const payload = event.payload as LLMPayload | undefined;
   if (!payload) return "";
   const prompts = payload.prompts;
@@ -34,7 +35,7 @@ function getPromptText(event: AgentEvent): string {
  * Check if an event is an LLM event that has non-empty prompts.
  */
 function isLLMEventWithPrompts(event: AgentEvent): boolean {
-  if (event.agent_type !== "llm") return false;
+  if (!event || event.agent_type !== "llm") return false;
   const payload = event.payload as LLMPayload | undefined;
   if (!payload) return false;
   const prompts = payload.prompts;
@@ -42,9 +43,10 @@ function isLLMEventWithPrompts(event: AgentEvent): boolean {
 }
 
 /** Format a timestamp string for display in the dropdown */
-function formatTime(iso: string): string {
+function formatTime(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -111,18 +113,80 @@ export function PromptDiffViewer({
   const [compareEventId, setCompareEventId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"split" | "unified">("split");
 
-  // Filter to LLM events with prompts, excluding the current event
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Close dropdown on click outside or Escape key
+  useEffect(() => {
+    if (!showDropdown) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(target)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showDropdown]);
+
+  // Filter to LLM events with prompts, excluding the current event, sorted reverse-chronologically (newest first)
   const comparableEvents = useMemo(() => {
-    return allEvents.filter((e) => {
-      if (e.event_id === currentEvent.event_id) return false;
+    const events = (allEvents || []).filter((e) => {
+      if (!e || e.event_id === currentEvent?.event_id) return false;
       return isLLMEventWithPrompts(e);
     });
-  }, [allEvents, currentEvent.event_id]);
+
+    return [...events].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      const validA = isNaN(timeA) ? 0 : timeA;
+      const validB = isNaN(timeB) ? 0 : timeB;
+      return validB - validA;
+    });
+  }, [allEvents, currentEvent?.event_id]);
 
   const compareEvent = useMemo(() => {
     if (!compareEventId) return null;
     return comparableEvents.find((e) => e.event_id === compareEventId) || null;
   }, [compareEventId, comparableEvents]);
+
+  const currentPromptText = useMemo(
+    () => (currentEvent ? getPromptText(currentEvent) : ""),
+    [currentEvent]
+  );
+  const comparePromptText = useMemo(
+    () => (compareEvent ? getPromptText(compareEvent) : ""),
+    [compareEvent]
+  );
+  const isDiffVisible = compareEventId !== null && compareEvent !== null;
+
+  const handleSelectEvent = useCallback((eventId: string) => {
+    setCompareEventId(eventId);
+    setShowDropdown(false);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setCompareEventId(null);
+    setShowDropdown(false);
+  }, []);
 
   // If there are no other LLM events to compare with, show disabled state
   if (comparableEvents.length === 0) {
@@ -143,27 +207,17 @@ export function PromptDiffViewer({
     );
   }
 
-  const currentPromptText = getPromptText(currentEvent);
-  const comparePromptText = compareEvent ? getPromptText(compareEvent) : "";
-  const isDiffVisible = compareEventId !== null && compareEvent !== null;
-
-  const handleSelectEvent = (eventId: string) => {
-    setCompareEventId(eventId);
-    setShowDropdown(false);
-  };
-
-  const handleClose = () => {
-    setCompareEventId(null);
-    setShowDropdown(false);
-  };
-
   return (
     <div className="mt-3 border-t border-border/50 pt-3">
       {/* Compare Prompt Button + Close */}
       <div className="flex items-center gap-2 flex-wrap">
         <button
+          ref={triggerRef}
           id="compare-prompt-btn"
           type="button"
+          aria-expanded={showDropdown}
+          aria-haspopup="listbox"
+          aria-controls="prompt-compare-dropdown"
           onClick={() => setShowDropdown(!showDropdown)}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 ${
             showDropdown
@@ -200,7 +254,13 @@ export function PromptDiffViewer({
 
       {/* In-flow Selection Panel: never clipped by overflow-hidden */}
       {showDropdown && (
-        <div className="mt-3 rounded-xl border border-purple-500/30 bg-[#0d0d16] p-2.5 shadow-xl">
+        <div
+          ref={dropdownRef}
+          id="prompt-compare-dropdown"
+          role="listbox"
+          aria-label="Select prompt to compare with"
+          className="mt-3 rounded-xl border border-purple-500/30 bg-[#0d0d16] p-2.5 shadow-xl"
+        >
           <div className="px-2 py-1.5 flex items-center justify-between border-b border-border/60 mb-2">
             <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
               <GitCompareArrows className="w-3 h-3" /> Select Prompt to Compare With:
@@ -224,6 +284,8 @@ export function PromptDiffViewer({
                 <button
                   key={e.event_id}
                   type="button"
+                  role="option"
+                  aria-selected={isSelected}
                   onClick={() => handleSelectEvent(e.event_id)}
                   className={`w-full text-left p-2.5 rounded-lg text-xs transition-all border ${
                     isSelected
