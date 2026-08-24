@@ -8,6 +8,12 @@ from fastapi import WebSocket
 class ConnectionManager:
     """Manages WebSocket connections for SDK publishers and UI subscribers."""
 
+    @staticmethod
+    def _sanitize_for_log(value: str | None) -> str:
+        if value is None:
+            return "None"
+        return value.replace("\r", "").replace("\n", "")
+
     def __init__(self):
         # Pool for SDK publishers
         self.sdk_connections: Set[WebSocket] = set()
@@ -41,8 +47,9 @@ class ConnectionManager:
             if session_id not in self.ui_connections:
                 self.ui_connections[session_id] = set()
             self.ui_connections[session_id].add(websocket)
+            safe_session_id = self._sanitize_for_log(session_id)
             logging.info(
-                f"UI client subscribed to session {session_id}. "
+                f"UI client subscribed to session {safe_session_id}. "
                 f"Active subscribers: {len(self.ui_connections[session_id])}"
             )
         else:
@@ -60,7 +67,8 @@ class ConnectionManager:
                 self.ui_connections[session_id].discard(websocket)
                 if not self.ui_connections[session_id]:
                     del self.ui_connections[session_id]
-            logging.info(f"UI client unsubscribed from session {session_id}")
+            safe_session_id = self._sanitize_for_log(session_id)
+            logging.info(f"UI client unsubscribed from session {safe_session_id}")
         else:
             self.global_ui_connections.discard(websocket)
             logging.info("Global UI client disconnected")
@@ -74,9 +82,10 @@ class ConnectionManager:
                 try:
                     await connection.send_text(message_str)
                 except Exception as e:
+                    safe_session_id = self._sanitize_for_log(session_id)
                     logging.warning(
                         "Failed to send websocket message to UI client for "
-                        f"session {session_id}: {e}"
+                        f"session {safe_session_id}: {e}"
                     )
                     disconnected.add(connection)
 
