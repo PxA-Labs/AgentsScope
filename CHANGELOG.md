@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-08-24
 
 ### Miscellaneous
-- Build(deps-dev): update ruff requirement in /packages/sdk
+- Build(deps): update uvicorn requirement in /packages/server
 
 ## [1.0.0] - 2026-08-10
 
