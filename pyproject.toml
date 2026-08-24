@@ -1,0 +1,54 @@
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.next
+  | node_modules
+  | venv
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+exclude = [
+    ".git",
+    ".next",
+    "node_modules",
+    "venv",
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "S", "B"]
+ignore = [
+    "S104", # Possible binding to all interfaces (0.0.0.0 is used intentionally for local containers)
+    "S311", # Standard pseudo-random generators
+    "S603", # subprocess call - check for execution of untrusted input
+    "S607", # Starting a process with a partial executable path
+    "B008", # Do not perform function calls in argument defaults (standard in FastAPI Depends)
+    "B904", # Within except clause, raise exceptions with raise ... from err
+    "S110", # try-except-pass in wait loops
+    "S108", # Probable insecure usage of temp file/directory
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["S101", "S105", "S106"] # Allow assert and mock tokens in tests
+"packages/server/tests/*" = ["S101", "S105", "S106"]
+"packages/sdk/tests/*" = ["S101", "S105", "S106"]
+".github/scripts/tests/*" = ["S101", "S105", "S106"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/sdk/tests", "packages/server/tests", ".github/scripts/tests"]
+asyncio_mode = "strict"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

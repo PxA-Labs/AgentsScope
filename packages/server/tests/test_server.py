@@ -1,6 +1,5 @@
 import pytest
-from httpx import AsyncClient, ASGITransport
-
+from httpx import ASGITransport, AsyncClient
 from main import app
 
 
@@ -19,6 +18,7 @@ async def test_session_lifecycle():
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
+
         # 1. Create a session
         create_res = await ac.post(
             "/api/sessions",
@@ -143,8 +143,9 @@ def test_websocket_sdk_ingest():
 
 
 def test_websocket_event_upsert_and_merge():
-    import uuid
     import time
+    import uuid
+
     from fastapi.testclient import TestClient
 
     session_id = f"upsert-test-session-{uuid.uuid4()}"
@@ -181,7 +182,7 @@ def test_websocket_event_upsert_and_merge():
                     },
                 }
             )
-            # Check that database has the start event with correct fields (using bounded retry polling)
+            # Check that database has start event with correct fields
             res_start = None
             for _ in range(30):
                 response = client.get(f"/api/sessions/{session_id}/events/{run_id}")
@@ -190,9 +191,9 @@ def test_websocket_event_upsert_and_merge():
                     break
                 time.sleep(0.1)
 
-            assert res_start is not None, (
-                f"Start event {run_id} not found in database within timeout"
-            )
+            assert (
+                res_start is not None
+            ), f"Start event {run_id} not found in database within timeout"
             assert res_start.status_code == 200
             start_data = res_start.json()
             assert start_data["event_type"] == "llm_start"
@@ -202,7 +203,7 @@ def test_websocket_event_upsert_and_merge():
                 "Draft a short story about antigravity."
             ]
 
-            # 2. Send llm_end event (model is empty, prompts is empty, completion is set)
+            # 2. Send llm_end event
             websocket.send_json(
                 {
                     "type": "event",
@@ -218,7 +219,9 @@ def test_websocket_event_upsert_and_merge():
                         "payload": {
                             "model": "",
                             "prompts": [],
-                            "completion": "Once upon a time, weightlessness was discovered...",
+                            "completion": (
+                                "Once upon a time, weightlessness was discovered..."
+                            ),
                             "prompt_tokens": 10,
                             "completion_tokens": 20,
                             "total_tokens": 30,
@@ -244,7 +247,7 @@ def test_websocket_event_upsert_and_merge():
         assert end_data["status"] == "completed"
         assert end_data["latency_ms"] == 2000
 
-        # Verify that start payload fields (model, prompts) were NOT overwritten by empty fields in end event!
+        # Verify start payload fields were NOT overwritten by empty fields
         payload = end_data["payload"]
         assert payload["model"] == "gpt-4o"
         assert payload["prompts"] == ["Draft a short story about antigravity."]
@@ -268,8 +271,9 @@ def test_websocket_event_upsert_and_merge():
 
 def test_set_sqlite_pragma_bypasses_non_sqlite():
     from unittest.mock import MagicMock
-    from database import set_sqlite_pragma
+
     import database
+    from database import set_sqlite_pragma
 
     # Mock engine.dialect.name to "postgresql"
     original_engine = database.engine
@@ -281,7 +285,7 @@ def test_set_sqlite_pragma_bypasses_non_sqlite():
         mock_conn = MagicMock()
         # Call set_sqlite_pragma hook
         set_sqlite_pragma(mock_conn, None)
-        # Verify that cursor was never called on the connection (because it was skipped!)
+        # Verify that cursor was never called on the connection
         mock_conn.cursor.assert_not_called()
     finally:
         # Restore original engine
@@ -289,8 +293,9 @@ def test_set_sqlite_pragma_bypasses_non_sqlite():
 
 
 def test_implicit_session_status_synchronization():
-    import uuid
     import time
+    import uuid
+
     from fastapi.testclient import TestClient
 
     session_id = f"status-sync-session-{uuid.uuid4()}"
@@ -334,7 +339,7 @@ def test_implicit_session_status_synchronization():
                 }
             )
 
-            # Wait for websocket ingestion to process and implicitly update session status
+            # Wait for websocket ingestion to update session status
             for _ in range(30):
                 response = client.get(f"/api/sessions/{session_id}")
                 if response.status_code == 200:
@@ -352,12 +357,14 @@ def test_implicit_session_status_synchronization():
 
 
 def test_sdk_client_integration(db_engine):
-    import uvicorn
-    import threading
+    import asyncio
     import socket
+    import threading
     import time
-    import uuid
     import urllib.request
+    import uuid
+
+    import uvicorn
     from agentscope.client import AgentScopeClient
 
     # Get a free port
@@ -366,23 +373,72 @@ def test_sdk_client_integration(db_engine):
     port = s.getsockname()[1]
     s.close()
 
+    # Clear any leftover single-thread dependency overrides for the live server
+    app.dependency_overrides.clear()
+
+    import os
+
+    import database
+    import main
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+
+    orig_db_engine = database.engine
+    orig_db_maker = database.async_session_maker
+    orig_main_engine = main.engine
+    orig_main_maker = main.async_session_maker
+
+    live_db_file = f"./test_live_{port}.db"
+    live_db_url = f"sqlite+aiosqlite:///{live_db_file}"
+    live_engine = create_async_engine(live_db_url)
+    live_session_maker = async_sessionmaker(
+        bind=live_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    database.engine = live_engine
+    database.async_session_maker = live_session_maker
+    main.engine = live_engine
+    main.async_session_maker = live_session_maker
+
     # Boot local server in background thread
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
+    server.install_signal_handlers = lambda: None
+    server_error = None
+
+    def _target():
+        nonlocal server_error
+        try:
+            asyncio.run(server.serve())
+        except Exception:
+            import traceback
+
+            server_error = traceback.format_exc()
+
+    thread = threading.Thread(target=_target, daemon=True)
     thread.start()
 
     # Wait for the server to be ready
-    for _ in range(30):
+    server_ready = False
+    for _ in range(50):
         try:
             with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/health", timeout=0.1
+                f"http://127.0.0.1:{port}/health", timeout=0.2
             ) as r:
                 if r.status == 200:
+                    server_ready = True
                     break
         except Exception:
             pass
-        time.sleep(0.05)
+        time.sleep(0.1)
+
+    assert (
+        server_ready
+    ), f"Test server failed to start within timeout. Error: {server_error}"
 
     client = AgentScopeClient(
         host="127.0.0.1", port=port, session_name="IntegrationTestSession"
@@ -432,8 +488,20 @@ def test_sdk_client_integration(db_engine):
 
     finally:
         client.stop()
-        server.should_exit = True
+        if server:
+            server.should_exit = True
         thread.join(timeout=2.0)
+        database.engine = orig_db_engine
+        database.async_session_maker = orig_db_maker
+        main.engine = orig_main_engine
+        main.async_session_maker = orig_main_maker
+        for suffix in ["", "-journal", "-wal"]:
+            path = f"{live_db_file}{suffix}"
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
 @pytest.mark.asyncio
@@ -441,9 +509,10 @@ async def test_session_retention_pruning(db_session):
     import os
     import uuid
     from datetime import datetime, timedelta
-    from models import SessionModel
+
     from main import prune_old_sessions
-    from sqlalchemy import select, delete
+    from models import SessionModel
+    from sqlalchemy import delete, select
 
     # Clear existing database sessions to ensure isolated counts
     await db_session.execute(delete(SessionModel))
@@ -492,9 +561,10 @@ async def test_session_max_limit_pruning(db_session):
     import os
     import uuid
     from datetime import datetime, timedelta
-    from models import SessionModel
+
     from main import prune_old_sessions
-    from sqlalchemy import select, delete
+    from models import SessionModel
+    from sqlalchemy import delete, select
 
     # Clear existing database sessions to ensure isolated counts
     await db_session.execute(delete(SessionModel))
@@ -535,6 +605,7 @@ async def test_session_max_limit_pruning(db_session):
 
 def test_list_events_pagination():
     import uuid
+
     from fastapi.testclient import TestClient
 
     session_id = f"pagination-test-{uuid.uuid4()}"

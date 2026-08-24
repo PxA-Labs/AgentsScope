@@ -41,8 +41,8 @@ class AgentScopeCallback(AsyncCallbackHandler):
             host: The AgentScope server host.
             port: The AgentScope server port.
             session_name: Custom name for this run session.
-            session_metadata: Arbitrary tags or configurations for the session.
-            budget_limit_usd: Optional maximum cumulative cost in USD. Halts execution when exceeded.
+            session_metadata: Arbitrary tags or configurations.
+            budget_limit_usd: Optional max cumulative cost in USD.
         """
         super().__init__()
         self.client = AgentScopeClient(
@@ -142,7 +142,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "chain_end",
                 "agent_name": agent_name,
-                "agent_type": "chain",
+                "agent_type": agent_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "completed",
@@ -183,7 +183,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "chain_error",
                 "agent_name": agent_name,
-                "agent_type": "chain",
+                "agent_type": agent_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "error",
@@ -218,10 +218,12 @@ class AgentScopeCallback(AsyncCallbackHandler):
         if self.budget_limit_usd is not None:
             with self._cost_lock:
                 if self.cumulative_cost_usd > self.budget_limit_usd:
-                    raise BudgetExceededError(
-                        f"AgentScope budget limit of ${self.budget_limit_usd:.4f} USD "
-                        f"exceeded. Cumulative cost reached ${self.cumulative_cost_usd:.4f} USD."
+                    msg = (
+                        f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
+                        f"USD exceeded. Cumulative cost: "
+                        f"${self.cumulative_cost_usd:.4f} USD."
                     )
+                    raise BudgetExceededError(msg)
         try:
             agent_name = self._resolve_name(serialized, metadata, default="LLM")
             model = ""
@@ -340,7 +342,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "llm_end",
                 "agent_name": agent_name,
-                "agent_type": "llm",
+                "agent_type": agent_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "completed",
@@ -359,10 +361,12 @@ class AgentScopeCallback(AsyncCallbackHandler):
 
             if exceeded:
                 self.client.patch_session_status("failed")
-                raise BudgetExceededError(
-                    f"AgentScope budget limit of ${self.budget_limit_usd:.4f} USD "
-                    f"exceeded. Cumulative cost reached ${self.cumulative_cost_usd:.4f} USD."
+                msg = (
+                    f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
+                    f"USD exceeded. Cumulative cost: "
+                    f"${self.cumulative_cost_usd:.4f} USD."
                 )
+                raise BudgetExceededError(msg)
         except BudgetExceededError:
             raise
         except Exception as e:
@@ -392,7 +396,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "llm_error",
                 "agent_name": agent_name,
-                "agent_type": "llm",
+                "agent_type": agent_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "error",
@@ -405,6 +409,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                     "total_tokens": None,
                     "temperature": temperature,
                     "streaming": streaming,
+                    "error": str(error),
                 },
             }
             self.client.emit(event)
@@ -426,7 +431,8 @@ class AgentScopeCallback(AsyncCallbackHandler):
     ) -> None:
         try:
             tool_name = self._resolve_name(serialized, metadata, default="Tool")
-            tool_description = serialized.get("description")
+            tool_description = serialized.get("description") if serialized else None
+
             with self._metadata_lock:
                 self._run_metadata[run_id] = {
                     "agent_name": tool_name,
@@ -481,7 +487,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "tool_end",
                 "agent_name": agent_name,
-                "agent_type": "tool",
+                "agent_type": agent_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "completed",
@@ -520,7 +526,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "tool_error",
                 "agent_name": agent_name,
-                "agent_type": "tool",
+                "agent_type": agent_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "latency_ms": None,
                 "status": "error",

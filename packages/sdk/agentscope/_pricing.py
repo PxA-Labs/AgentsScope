@@ -17,7 +17,7 @@ PRICING_TABLE: Dict[str, Dict[str, float]] = {
 
 
 def get_model_pricing(model_name: str) -> Optional[dict[str, float]]:
-    """Lookup pricing configuration for a given model name, including minor/date-pinned versions."""
+    """Lookup pricing config for a given model, including date-pinned versions."""
     if not model_name:
         return None
 
@@ -39,7 +39,7 @@ def update_pricing_table(custom_pricing: Dict[str, Dict[str, float]]) -> None:
     """Programmatically update or override the model pricing table.
 
     Args:
-        custom_pricing: Dictionary of model names to dicts containing 'input' and 'output' rates.
+        custom_pricing: Dict of model names to dicts with 'input'/'output' rates.
     """
     for model_name, rates in custom_pricing.items():
         if "input" in rates and "output" in rates:
@@ -50,7 +50,7 @@ def update_pricing_table(custom_pricing: Dict[str, Dict[str, float]]) -> None:
 
 
 def _load_env_overrides() -> None:
-    """Load custom pricing overrides from AGENTSCOPE_CUSTOM_PRICING environment variable."""
+    """Load custom pricing overrides from AGENTSCOPE_CUSTOM_PRICING env var."""
     env_pricing = os.getenv("AGENTSCOPE_CUSTOM_PRICING")
     if env_pricing:
         try:

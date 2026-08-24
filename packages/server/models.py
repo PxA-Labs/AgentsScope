@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, JSON
-from sqlalchemy.orm import relationship
 
 from database import Base
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
 
 
 class SessionModel(Base):

@@ -1,11 +1,12 @@
 import json
 import logging
 from typing import Dict, Set
+
 from fastapi import WebSocket
 
 
 class ConnectionManager:
-    """Manages active WebSocket connections for both SDK publishers and UI subscribers."""
+    """Manages WebSocket connections for SDK publishers and UI subscribers."""
 
     def __init__(self):
         # Pool for SDK publishers
@@ -14,20 +15,22 @@ class ConnectionManager:
         # Pool for UI subscribers: session_id -> Set[WebSocket]
         self.ui_connections: Dict[str, Set[WebSocket]] = {}
 
-        # Pool for global UI subscribers (watching the session list sidebar, dashboard stats, etc.)
+        # Pool for global UI subscribers (watching sidebar, stats, etc.)
         self.global_ui_connections: Set[WebSocket] = set()
 
     async def connect_sdk(self, websocket: WebSocket) -> None:
         await websocket.accept()
         self.sdk_connections.add(websocket)
         logging.info(
-            f"SDK client connected. Active SDK connections: {len(self.sdk_connections)}"
+            "SDK client connected. Active SDK connections: "
+            f"{len(self.sdk_connections)}"
         )
 
     def disconnect_sdk(self, websocket: WebSocket) -> None:
         self.sdk_connections.discard(websocket)
         logging.info(
-            f"SDK client disconnected. Active SDK connections: {len(self.sdk_connections)}"
+            "SDK client disconnected. Active SDK connections: "
+            f"{len(self.sdk_connections)}"
         )
 
     async def connect_ui(
@@ -39,12 +42,14 @@ class ConnectionManager:
                 self.ui_connections[session_id] = set()
             self.ui_connections[session_id].add(websocket)
             logging.info(
-                f"UI client subscribed to session {session_id}. Active subscribers: {len(self.ui_connections[session_id])}"
+                f"UI client subscribed to session {session_id}. "
+                f"Active subscribers: {len(self.ui_connections[session_id])}"
             )
         else:
             self.global_ui_connections.add(websocket)
             logging.info(
-                f"UI client subscribed globally. Active global subscribers: {len(self.global_ui_connections)}"
+                "UI client subscribed globally. "
+                f"Active global subscribers: {len(self.global_ui_connections)}"
             )
 
     def disconnect_ui(
@@ -70,7 +75,8 @@ class ConnectionManager:
                     await connection.send_text(message_str)
                 except Exception as e:
                     logging.warning(
-                        f"Failed to send websocket message to UI client for session {session_id}: {e}"
+                        "Failed to send websocket message to UI client for "
+                        f"session {session_id}: {e}"
                     )
                     disconnected.add(connection)
 
@@ -80,10 +86,7 @@ class ConnectionManager:
     async def broadcast_session_update(
         self, session_id: str, session_data: dict
     ) -> None:
-        """Broadcast a session status update (e.g., tokens, completed state) to all global UI dashboards
-
-        and target session UIs.
-        """
+        """Broadcast session status update (e.g. tokens, completed state)."""
         payload = {
             "type": "session_update",
             "session_id": session_id,
