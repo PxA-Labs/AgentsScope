@@ -403,8 +403,10 @@ async def process_single_event(event_data: dict, sess_id: str) -> None:
 
         except IntegrityError as ie:
             await db.rollback()
+            raw_event_id = event_data.get("event_id")
+            safe_event_id = str(raw_event_id).replace("\r", "").replace("\n", "")
             logging.info(
-                f"Skipping event_id {event_data.get('event_id')} as it is an "
+                f"Skipping event_id {safe_event_id} as it is an "
                 f"idempotent duplicate or constraint failure: {ie}."
             )
         except Exception as e:
