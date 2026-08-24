@@ -15,7 +15,7 @@
     "react-diff-viewer-continued": "^4.4.0",
     "reactflow": "^11.10.3",
     "recharts": "^3.10.1",
-    "zustand": "^4.5.1",
+    "zustand": "^5.0.15",
     "swr": "^2.5.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^3.6.0",
