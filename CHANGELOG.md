@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-08-24
 
 ### Miscellaneous
-- Build(deps-dev): bump postcss from 8.5.23 to 8.5.26 in /packages/ui
+- Build(deps): update python-dotenv requirement in /packages/server
 
 ## [1.0.0] - 2026-08-10
 
