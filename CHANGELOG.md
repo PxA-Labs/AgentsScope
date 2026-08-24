@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-22
+## [Unreleased] - 2026-08-24
 
 ### Added
-- **ui**: Visual prompt template diff viewer in inspector panel (#124)
+- **telemetry**: Session export/import, cost budget enforcement, and async batching (#97, #95, #119)
 
 ## [1.0.0] - 2026-08-10
 
