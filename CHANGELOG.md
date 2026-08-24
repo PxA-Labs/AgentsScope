@@ -4,8 +4,8 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-08-24
 
-### Added
-- **telemetry**: Session export/import, cost budget enforcement, and async batching (#97, #95, #119)
+### Miscellaneous
+- Build(deps-dev): bump postcss from 8.5.23 to 8.5.26 in /packages/ui
 
 ## [1.0.0] - 2026-08-10
 
