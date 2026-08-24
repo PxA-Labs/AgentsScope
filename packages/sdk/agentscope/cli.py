@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import sys
-import subprocess
-import threading
 import shutil
+import subprocess
+import sys
+import threading
 import time
+
 
 def log_reader(pipe, prefix):
     """Reads lines from a subprocess pipe and prints them with a prefix."""
@@ -20,6 +21,7 @@ def log_reader(pipe, prefix):
         except Exception:
             pass
 
+
 def find_repo_paths():
     """Finds the paths to the server and UI directories."""
     # 1. Check relative to this script's file location (monorepo structure)
@@ -29,8 +31,10 @@ def find_repo_paths():
         server_dir = os.path.join(repo_root, "packages", "server")
         ui_dir = os.path.join(repo_root, "packages", "ui")
         docker_compose = os.path.join(repo_root, "docker-compose.yml")
-        
-        if os.path.exists(os.path.join(server_dir, "main.py")) and os.path.exists(ui_dir):
+
+        if os.path.exists(os.path.join(server_dir, "main.py")) and os.path.exists(
+            ui_dir
+        ):
             return repo_root, server_dir, ui_dir, docker_compose
     except Exception:
         pass
@@ -45,16 +49,20 @@ def find_repo_paths():
 
     return None, None, None, None
 
+
 def run_docker(docker_compose_path):
     """Runs the services using Docker Compose."""
     if not shutil.which("docker"):
-        print("Error: 'docker' command is not available. Please install Docker.", file=sys.stderr)
+        print(
+            "Error: 'docker' command is not available. Please install Docker.",
+            file=sys.stderr,
+        )
         sys.exit(1)
-        
+
     cmd = ["docker", "compose", "up", "--build"]
-    print(f"[*] Starting AgentScope services via Docker Compose...")
+    print("[*] Starting AgentScope services via Docker Compose...")
     print(f"[*] Command: {' '.join(cmd)}")
-    
+
     cwd = os.path.dirname(docker_compose_path)
     try:
         subprocess.run(cmd, cwd=cwd, check=True)
@@ -62,8 +70,12 @@ def run_docker(docker_compose_path):
         print("\n[*] Stopping Docker containers...")
         subprocess.run(["docker", "compose", "down"], cwd=cwd)
     except subprocess.CalledProcessError as e:
-        print(f"Error: Docker Compose failed with exit code {e.returncode}", file=sys.stderr)
+        print(
+            f"Error: Docker Compose failed with exit code {e.returncode}",
+            file=sys.stderr,
+        )
         sys.exit(1)
+
 
 def run_local(server_dir, ui_dir, host, port, ui_port):
     """Runs the services locally using Python and Node.js subprocesses."""
@@ -72,13 +84,19 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
     try:
         import uvicorn
     except ImportError:
-        print("Error: 'uvicorn' is not installed in the current environment.", file=sys.stderr)
+        print(
+            "Error: 'uvicorn' is not installed in the current environment.",
+            file=sys.stderr,
+        )
         print("Please install it with: pip install uvicorn", file=sys.stderr)
         sys.exit(1)
 
     # Check if npm is installed for UI
     if not shutil.which("npm"):
-        print("Error: 'npm' command is not found. Node.js/npm is required to run the UI locally.", file=sys.stderr)
+        print(
+            "Error: 'npm' command is not found. Node.js/npm is required to run the UI locally.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Check if UI node_modules are installed
@@ -86,9 +104,14 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
         print(f"[*] node_modules not found in {ui_dir}. Running 'npm install'...")
         try:
             # We use --legacy-peer-deps to avoid peer dependency conflicts
-            subprocess.run(["npm", "install", "--legacy-peer-deps"], cwd=ui_dir, check=True)
+            subprocess.run(
+                ["npm", "install", "--legacy-peer-deps"], cwd=ui_dir, check=True
+            )
         except subprocess.CalledProcessError as e:
-            print(f"Error: 'npm install' failed with exit code {e.returncode}", file=sys.stderr)
+            print(
+                f"Error: 'npm install' failed with exit code {e.returncode}",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
     # Define color prefixes for console output
@@ -112,14 +135,23 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
     ui_env["NEXT_PUBLIC_WS_URL"] = f"ws://{host}:{port}"
 
     # Start Backend Server
-    server_cmd = [sys.executable, "-m", "uvicorn", "main:app", "--host", host, "--port", str(port)]
+    server_cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
     p_server = subprocess.Popen(
         server_cmd,
         cwd=server_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1
+        bufsize=1,
     )
 
     # Start UI Frontend
@@ -131,15 +163,23 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1
+        bufsize=1,
     )
 
     threads = []
     # Start log readers
-    t_server_out = threading.Thread(target=log_reader, args=(p_server.stdout, backend_prefix), daemon=True)
-    t_server_err = threading.Thread(target=log_reader, args=(p_server.stderr, backend_err_prefix), daemon=True)
-    t_ui_out = threading.Thread(target=log_reader, args=(p_ui.stdout, ui_prefix), daemon=True)
-    t_ui_err = threading.Thread(target=log_reader, args=(p_ui.stderr, ui_err_prefix), daemon=True)
+    t_server_out = threading.Thread(
+        target=log_reader, args=(p_server.stdout, backend_prefix), daemon=True
+    )
+    t_server_err = threading.Thread(
+        target=log_reader, args=(p_server.stderr, backend_err_prefix), daemon=True
+    )
+    t_ui_out = threading.Thread(
+        target=log_reader, args=(p_ui.stdout, ui_prefix), daemon=True
+    )
+    t_ui_err = threading.Thread(
+        target=log_reader, args=(p_ui.stderr, ui_err_prefix), daemon=True
+    )
 
     for t in [t_server_out, t_server_err, t_ui_out, t_ui_err]:
         t.start()
@@ -153,12 +193,18 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
             ui_exit = p_ui.poll()
 
             if server_exit is not None:
-                print(f"Error: Backend server exited unexpectedly with code {server_exit}", file=sys.stderr)
+                print(
+                    f"Error: Backend server exited unexpectedly with code {server_exit}",
+                    file=sys.stderr,
+                )
                 break
             if ui_exit is not None:
-                print(f"Error: UI server exited unexpectedly with code {ui_exit}", file=sys.stderr)
+                print(
+                    f"Error: UI server exited unexpectedly with code {ui_exit}",
+                    file=sys.stderr,
+                )
                 break
-            
+
             time.sleep(1)
 
     except KeyboardInterrupt:
@@ -182,6 +228,7 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
 
         print("[*] Services stopped successfully.")
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="AgentScope CLI: Observability suite management."
@@ -191,26 +238,26 @@ def main():
     # Start command parser
     start_parser = subparsers.add_parser("start", help="Start AgentScope services")
     start_parser.add_argument(
-        "--host", 
-        default="127.0.0.1", 
-        help="Host address for the FastAPI backend (default: 127.0.0.1)"
+        "--host",
+        default="127.0.0.1",
+        help="Host address for the FastAPI backend (default: 127.0.0.1)",
     )
     start_parser.add_argument(
-        "--port", 
-        type=int, 
-        default=8765, 
-        help="Port for the FastAPI backend (default: 8765)"
+        "--port",
+        type=int,
+        default=8765,
+        help="Port for the FastAPI backend (default: 8765)",
     )
     start_parser.add_argument(
-        "--ui-port", 
-        type=int, 
-        default=3000, 
-        help="Port for the Next.js UI dashboard (default: 3000)"
+        "--ui-port",
+        type=int,
+        default=3000,
+        help="Port for the Next.js UI dashboard (default: 3000)",
     )
     start_parser.add_argument(
-        "--docker", 
-        action="store_true", 
-        help="Run using Docker Compose instead of local Python/Node.js"
+        "--docker",
+        action="store_true",
+        help="Run using Docker Compose instead of local Python/Node.js",
     )
 
     args = parser.parse_args()
@@ -228,17 +275,27 @@ def main():
                 if os.path.exists(local_dc):
                     run_docker(local_dc)
                 else:
-                    print("Error: Could not find docker-compose.yml file.", file=sys.stderr)
+                    print(
+                        "Error: Could not find docker-compose.yml file.",
+                        file=sys.stderr,
+                    )
                     sys.exit(1)
         else:
             if server_dir and ui_dir:
                 run_local(server_dir, ui_dir, args.host, args.port, args.ui_port)
             else:
-                print("Error: Could not locate 'packages/server' and 'packages/ui' directories.", file=sys.stderr)
-                print("Please ensure you run this command from the repository root or a valid monorepo path.", file=sys.stderr)
+                print(
+                    "Error: Could not locate 'packages/server' and 'packages/ui' directories.",
+                    file=sys.stderr,
+                )
+                print(
+                    "Please ensure you run this command from the repository root or a valid monorepo path.",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

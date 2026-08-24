@@ -13,7 +13,9 @@ class SessionModel(Base):
     session_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
     status = Column(String, nullable=False)  # "running", "completed", "failed"
-    started_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
     ended_at = Column(DateTime, nullable=True)
     total_tokens = Column(Integer, default=0)
     total_cost_usd = Column(Float, default=0.0)

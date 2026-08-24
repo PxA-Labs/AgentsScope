@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID
 
+from agentscope._pricing import calculate_cost
 from agentscope.client import AgentScopeClient
+from agentscope.exceptions import BudgetExceededError
 
 # Gracefully handle missing langchain-core dependencies
 try:
@@ -31,6 +33,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
         port: int = 8765,
         session_name: Optional[str] = None,
         session_metadata: Optional[Dict[str, Any]] = None,
+        budget_limit_usd: Optional[float] = None,
     ):
         """Initialize the callback handler.
 
@@ -39,6 +42,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
             port: The AgentScope server port.
             session_name: Custom name for this run session.
             session_metadata: Arbitrary tags or configurations for the session.
+            budget_limit_usd: Optional maximum cumulative cost in USD. Halts execution when exceeded.
         """
         super().__init__()
         self.client = AgentScopeClient(
@@ -47,6 +51,9 @@ class AgentScopeCallback(AsyncCallbackHandler):
             session_name=session_name,
             session_metadata=session_metadata,
         )
+        self.budget_limit_usd = budget_limit_usd
+        self.cumulative_cost_usd: float = 0.0
+        self._cost_lock = threading.Lock()
         self._run_metadata: Dict[UUID, Dict[str, Any]] = {}
         self._metadata_lock = threading.Lock()
 
@@ -83,9 +90,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
     ) -> None:
         try:
             agent_name = self._resolve_name(serialized, metadata, default="Chain")
-            chain_type = (
-                serialized.get("name") or serialized.get("id", ["Chain"])[-1]
-            )
+            chain_type = serialized.get("name") or serialized.get("id", ["Chain"])[-1]
             with self._metadata_lock:
                 self._run_metadata[run_id] = {
                     "agent_name": agent_name,
@@ -97,9 +102,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
             event = {
                 "event_id": str(run_id),
                 "session_id": "",  # populated client-side / server-side
-                "parent_event_id": (
-                    str(parent_run_id) if parent_run_id else None
-                ),
+                "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "chain_start",
                 "agent_name": agent_name,
                 "agent_type": "chain",
@@ -136,9 +139,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
-                "parent_event_id": (
-                    str(parent_run_id) if parent_run_id else None
-                ),
+                "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "chain_end",
                 "agent_name": agent_name,
                 "agent_type": "chain",
@@ -179,9 +180,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
-                "parent_event_id": (
-                    str(parent_run_id) if parent_run_id else None
-                ),
+                "parent_event_id": (str(parent_run_id) if parent_run_id else None),
                 "event_type": "chain_error",
                 "agent_name": agent_name,
                 "agent_type": "chain",
@@ -216,6 +215,13 @@ class AgentScopeCallback(AsyncCallbackHandler):
         metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
+        if self.budget_limit_usd is not None:
+            with self._cost_lock:
+                if self.cumulative_cost_usd > self.budget_limit_usd:
+                    raise BudgetExceededError(
+                        f"AgentScope budget limit of ${self.budget_limit_usd:.4f} USD "
+                        f"exceeded. Cumulative cost reached ${self.cumulative_cost_usd:.4f} USD."
+                    )
         try:
             agent_name = self._resolve_name(serialized, metadata, default="LLM")
             model = ""
@@ -264,6 +270,8 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 },
             }
             self.client.emit(event)
+        except BudgetExceededError:
+            raise
         except Exception as e:
             logging.warning(f"AgentScope callback error in on_llm_start: {e}")
 
@@ -315,6 +323,17 @@ class AgentScopeCallback(AsyncCallbackHandler):
                         else None
                     )
 
+            # Calculate and accumulate cost
+            call_cost = calculate_cost(model, prompt_tokens, completion_tokens)
+            exceeded = False
+            with self._cost_lock:
+                self.cumulative_cost_usd += call_cost
+                if (
+                    self.budget_limit_usd is not None
+                    and self.cumulative_cost_usd > self.budget_limit_usd
+                ):
+                    exceeded = True
+
             event = {
                 "event_id": str(run_id),
                 "session_id": "",
@@ -337,6 +356,15 @@ class AgentScopeCallback(AsyncCallbackHandler):
                 },
             }
             self.client.emit(event)
+
+            if exceeded:
+                self.client.patch_session_status("failed")
+                raise BudgetExceededError(
+                    f"AgentScope budget limit of ${self.budget_limit_usd:.4f} USD "
+                    f"exceeded. Cumulative cost reached ${self.cumulative_cost_usd:.4f} USD."
+                )
+        except BudgetExceededError:
+            raise
         except Exception as e:
             logging.warning(f"AgentScope callback error in on_llm_end: {e}")
 

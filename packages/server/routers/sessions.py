@@ -11,6 +11,9 @@ from schemas import (
     SessionCreate,
     SessionUpdate,
     SessionResponse,
+    EventResponse,
+    SessionExport,
+    SessionImportPayload,
     GraphResponse,
     StatsResponse,
     AgentStats,
@@ -315,3 +318,124 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
         agents=agents_list,
         token_timeline=timeline,
     )
+
+
+@router.get("/{session_id}/export", response_model=SessionExport)
+async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Export an entire session and all of its telemetry events as a portable JSON payload."""
+    sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
+    sess_res = await db.execute(sess_stmt)
+    db_session = sess_res.scalars().first()
+    if not db_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
+
+    event_stmt = (
+        select(EventModel)
+        .where(EventModel.session_id == session_id)
+        .order_by(EventModel.timestamp.asc())
+    )
+    event_res = await db.execute(event_stmt)
+    events = event_res.scalars().all()
+
+    return SessionExport(
+        version="1.0",
+        exported_at=datetime.now(timezone.utc),
+        session=SessionResponse.model_validate(db_session),
+        events=[EventResponse.model_validate(ev) for ev in events],
+    )
+
+
+@router.post(
+    "/import", response_model=SessionResponse, status_code=status.HTTP_201_CREATED
+)
+async def import_session(
+    payload: SessionImportPayload, db: AsyncSession = Depends(get_db)
+):
+    """Import a session and its associated events from a JSON telemetry export."""
+    imported_sess = payload.session
+    session_id = imported_sess.session_id
+
+    # Check if session exists; if so, create with a unique disambiguated ID
+    existing_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
+    existing_res = await db.execute(existing_stmt)
+    existing_session = existing_res.scalars().first()
+
+    target_session_id = session_id
+    if existing_session:
+        target_session_id = f"{session_id}_imported_{uuid.uuid4().hex[:6]}"
+
+    # Check for any conflicting event_ids in the database
+    incoming_event_ids = [ev.event_id for ev in payload.events]
+    existing_event_ids = set()
+    if incoming_event_ids:
+        chk_stmt = select(EventModel.event_id).where(
+            EventModel.event_id.in_(incoming_event_ids)
+        )
+        chk_res = await db.execute(chk_stmt)
+        existing_event_ids = set(chk_res.scalars().all())
+
+    # Map original event IDs to new unique event IDs if any conflict or if session is re-imported
+    event_id_map: Dict[str, str] = {}
+    for ev in payload.events:
+        if ev.event_id in existing_event_ids or existing_session:
+            event_id_map[ev.event_id] = f"{ev.event_id}_{uuid.uuid4().hex[:6]}"
+
+    db_session = SessionModel(
+        session_id=target_session_id,
+        name=imported_sess.name
+        if not existing_session
+        else f"{imported_sess.name} (Imported)",
+        status=imported_sess.status,
+        started_at=imported_sess.started_at,
+        ended_at=imported_sess.ended_at,
+        total_tokens=imported_sess.total_tokens,
+        total_cost_usd=imported_sess.total_cost_usd,
+        error_count=imported_sess.error_count,
+        agent_count=imported_sess.agent_count,
+        metadata_=imported_sess.metadata or {},
+    )
+    db.add(db_session)
+    await db.flush()
+
+    for ev in payload.events:
+        new_event_id = event_id_map.get(ev.event_id, ev.event_id)
+        new_parent_id = (
+            event_id_map.get(ev.parent_event_id, ev.parent_event_id)
+            if ev.parent_event_id
+            else None
+        )
+
+        db_event = EventModel(
+            event_id=new_event_id,
+            session_id=target_session_id,
+            parent_event_id=new_parent_id,
+            event_type=ev.event_type,
+            agent_name=ev.agent_name,
+            agent_type=ev.agent_type,
+            timestamp=ev.timestamp,
+            latency_ms=ev.latency_ms,
+            status=ev.status,
+            payload=ev.payload,
+        )
+        db.add(db_event)
+
+    await db.commit()
+    await db.refresh(db_session)
+
+    # Broadcast imported session to UI clients
+    session_data = {
+        "session_id": db_session.session_id,
+        "name": db_session.name,
+        "status": db_session.status,
+        "started_at": db_session.started_at.isoformat(),
+        "total_tokens": db_session.total_tokens,
+        "total_cost_usd": db_session.total_cost_usd,
+        "error_count": db_session.error_count,
+        "agent_count": db_session.agent_count,
+        "metadata": db_session.metadata_,
+    }
+    await manager.broadcast_session_update(db_session.session_id, session_data)
+
+    return db_session
