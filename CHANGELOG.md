@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-08-24
 
 ### Miscellaneous
-- Build(deps): bump zustand from 4.5.7 to 5.0.15 in /packages/ui
+- Build(deps-dev): update langchain-core requirement in /packages/sdk
 
 ## [1.0.0] - 2026-08-10
 
