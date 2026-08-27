@@ -1,6 +1,5 @@
 import pytest
-from httpx import AsyncClient, ASGITransport
-
+from httpx import ASGITransport, AsyncClient
 from main import app
 
 
@@ -143,8 +142,9 @@ def test_websocket_sdk_ingest():
 
 
 def test_websocket_event_upsert_and_merge():
-    import uuid
     import time
+    import uuid
+
     from fastapi.testclient import TestClient
 
     session_id = f"upsert-test-session-{uuid.uuid4()}"
@@ -190,9 +190,9 @@ def test_websocket_event_upsert_and_merge():
                     break
                 time.sleep(0.1)
 
-            assert res_start is not None, (
-                f"Start event {run_id} not found in database within timeout"
-            )
+            assert (
+                res_start is not None
+            ), f"Start event {run_id} not found in database within timeout"
             assert res_start.status_code == 200
             start_data = res_start.json()
             assert start_data["event_type"] == "llm_start"
@@ -268,8 +268,9 @@ def test_websocket_event_upsert_and_merge():
 
 def test_set_sqlite_pragma_bypasses_non_sqlite():
     from unittest.mock import MagicMock
-    from database import set_sqlite_pragma
+
     import database
+    from database import set_sqlite_pragma
 
     # Mock engine.dialect.name to "postgresql"
     original_engine = database.engine
@@ -289,8 +290,9 @@ def test_set_sqlite_pragma_bypasses_non_sqlite():
 
 
 def test_implicit_session_status_synchronization():
-    import uuid
     import time
+    import uuid
+
     from fastapi.testclient import TestClient
 
     session_id = f"status-sync-session-{uuid.uuid4()}"
@@ -352,12 +354,13 @@ def test_implicit_session_status_synchronization():
 
 
 def test_sdk_client_integration(db_engine):
-    import uvicorn
-    import threading
     import socket
+    import threading
     import time
-    import uuid
     import urllib.request
+    import uuid
+
+    import uvicorn
     from agentscope.client import AgentScopeClient
 
     # Get a free port
@@ -440,10 +443,11 @@ def test_sdk_client_integration(db_engine):
 async def test_session_retention_pruning(db_session):
     import os
     import uuid
-    from datetime import datetime, timedelta
-    from models import SessionModel
+    from datetime import datetime, timedelta, timezone
+
     from main import prune_old_sessions
-    from sqlalchemy import select, delete
+    from models import SessionModel
+    from sqlalchemy import delete, select
 
     # Clear existing database sessions to ensure isolated counts
     await db_session.execute(delete(SessionModel))
@@ -457,13 +461,13 @@ async def test_session_retention_pruning(db_session):
         session_id=old_id,
         name="Old Session",
         status="completed",
-        started_at=datetime.utcnow() - timedelta(days=10),
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10),
     )
     new_sess = SessionModel(
         session_id=new_id,
         name="New Session",
         status="completed",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
     db_session.add(old_sess)
@@ -491,10 +495,11 @@ async def test_session_retention_pruning(db_session):
 async def test_session_max_limit_pruning(db_session):
     import os
     import uuid
-    from datetime import datetime, timedelta
-    from models import SessionModel
+    from datetime import datetime, timedelta, timezone
+
     from main import prune_old_sessions
-    from sqlalchemy import select, delete
+    from models import SessionModel
+    from sqlalchemy import delete, select
 
     # Clear existing database sessions to ensure isolated counts
     await db_session.execute(delete(SessionModel))
@@ -508,7 +513,8 @@ async def test_session_max_limit_pruning(db_session):
             session_id=sid,
             name=f"Session {i}",
             status="completed",
-            started_at=datetime.utcnow() - timedelta(minutes=10 - i),
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None)
+            - timedelta(minutes=10 - i),
         )
         db_session.add(sess)
         session_ids.append(sid)
@@ -535,6 +541,7 @@ async def test_session_max_limit_pruning(db_session):
 
 def test_list_events_pagination():
     import uuid
+
     from fastapi.testclient import TestClient
 
     session_id = f"pagination-test-{uuid.uuid4()}"

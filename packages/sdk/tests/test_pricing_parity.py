@@ -13,6 +13,8 @@ def canonical_pricing():
 
 
 def test_sdk_pricing_matches_canonical_file(canonical_pricing):
+    package_path = Path(__file__).resolve().parents[1] / "agentscope" / "pricing.json"
+    assert json.loads(package_path.read_text(encoding="utf-8")) == canonical_pricing
     assert PRICING_TABLE == canonical_pricing
 
 

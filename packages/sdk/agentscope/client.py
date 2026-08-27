@@ -61,9 +61,10 @@ class AgentScopeClient:
                 return
             self.running = False
             self.queue.put(None)  # Sentinel to exit queue readers
-            if self.loop and self.loop.is_running():
-                self.loop.call_soon_threadsafe(self.loop.stop)
-            if self.thread:
+            # Let the async loop consume the sentinel and unwind the websocket
+            # context manager. Calling loop.stop() here can leave the underlying
+            # websockets keepalive task pending during shutdown.
+            if self.thread and self.thread is not threading.current_thread():
                 self.thread.join(timeout=timeout)
 
     def emit(self, event: Dict[str, Any]) -> None:
@@ -275,7 +276,8 @@ class AgentScopeClient:
                 with self._lock:
                     self.session_id = new_session_id
                     logging.info(
-                        f"AgentScope session successfully registered. ID: {self.session_id}"
+                        "AgentScope session successfully registered. "
+                        f"ID: {self.session_id}"
                     )
                     if self.pending_status:
                         status_to_patch = self.pending_status

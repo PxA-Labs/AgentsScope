@@ -4,16 +4,16 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
+
+from database import Base, async_session_maker, engine
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, func
-from sqlalchemy.exc import IntegrityError
-
-from database import engine, Base, async_session_maker
-from models import SessionModel, EventModel
-from ws_manager import manager
-from routers import sessions, events, memories
+from models import EventModel, SessionModel
 from pricing import calculate_cost as _calculate_llm_cost
+from routers import events, memories, sessions
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from ws_manager import manager
 
 # Configure logging
 logging.basicConfig(
@@ -30,7 +30,8 @@ async def prune_old_sessions() -> None:
     if not retention_days_raw and not max_sessions_raw:
         return
 
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
+
     from sqlalchemy import delete
 
     async with async_session_maker() as db:
@@ -39,7 +40,9 @@ async def prune_old_sessions() -> None:
             if retention_days_raw:
                 try:
                     days = int(retention_days_raw)
-                    cutoff = datetime.utcnow() - timedelta(days=days)
+                    cutoff = datetime.now(timezone.utc).replace(
+                        tzinfo=None
+                    ) - timedelta(days=days)
                     stmt = delete(SessionModel).where(SessionModel.started_at < cutoff)
                     res = await db.execute(stmt)
                     await db.commit()

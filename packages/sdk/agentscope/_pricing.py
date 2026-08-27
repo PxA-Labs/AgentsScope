@@ -43,8 +43,10 @@ def _load_pricing_table() -> dict[str, dict[str, float]]:
     candidate_paths = []
     if configured_path:
         candidate_paths.append(Path(configured_path))
-    # The repository-level file is the canonical source while developing from
-    # the monorepo. Installed distributions use the embedded fallback above.
+    # Prefer package data for normal wheel installations. The repository-level
+    # file remains the editable-monorepo source, and the embedded fallback keeps
+    # damaged or minimal installations operational.
+    candidate_paths.append(Path(__file__).resolve().parent / "pricing.json")
     candidate_paths.append(Path(__file__).resolve().parents[2] / ".." / "pricing.json")
 
     for path in candidate_paths:

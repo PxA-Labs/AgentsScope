@@ -382,7 +382,10 @@ class EventModel(Base):
 | `gpt-4` | $30.00 | $60.00 |
 | `gpt-3.5-turbo` | $0.50 | $1.50 |
 | `claude-3-5-sonnet` | $3.00 | $15.00 |
+| `claude-3-haiku` | $0.25 | $1.25 |
+| `claude-3-opus` | $15.00 | $75.00 |
 | `gemini-1.5-pro` | $1.25 | $5.00 |
+| `gemini-1.5-flash` | $0.075 | $0.30 |
 
 ## 9. Enums & Constants
 

@@ -42,8 +42,11 @@ def _load_pricing_table() -> dict[str, dict[str, float]]:
     candidate_paths = []
     if configured_path:
         candidate_paths.append(Path(configured_path))
-    # The repository-level file is the canonical source while developing from
-    # the monorepo. The embedded fallback is used by the standalone image.
+    # The package-local file is copied into the Docker image and is the runtime
+    # artifact for standalone server deployments. The repository-level file is
+    # retained for editable monorepo development, with an embedded fallback for
+    # minimal or damaged installations.
+    candidate_paths.append(Path(__file__).resolve().parent / "pricing.json")
     candidate_paths.append(Path(__file__).resolve().parents[2] / "pricing.json")
 
     for path in candidate_paths:

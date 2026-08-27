@@ -12,11 +12,11 @@
   <a href="https://nodejs.org/">
     <img src="https://img.shields.io/badge/node-18+-green.svg" alt="Node Version">
   </a>
-  <a href="https://github.com/archittmittal/AgentsScope/pulls">
+  <a href="https://github.com/PxA-Labs/AgentsScope/pulls">
     <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
   </a>
-  <a href="https://github.com/archittmittal/AgentsScope/stargazers">
-    <img src="https://img.shields.io/github/stars/archittmittal/AgentsScope?style=social" alt="GitHub Stars">
+  <a href="https://github.com/PxA-Labs/AgentsScope/stargazers">
+    <img src="https://img.shields.io/github/stars/PxA-Labs/AgentsScope?style=social" alt="GitHub Stars">
   </a>
 
   <p>Add two lines of Python and see everything your AI agents are doing.</p>
@@ -69,7 +69,7 @@ agent.run(input, callbacks=[cb])
 The easiest way to run the backend and UI:
 
 ```bash
-git clone https://github.com/archittmittal/AgentsScope.git
+git clone https://github.com/PxA-Labs/AgentsScope.git
 cd AgentsScope
 docker compose up
 ```
