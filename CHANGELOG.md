@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-24
+## [Unreleased] - 2026-08-27
 
-### Miscellaneous
-- Build(deps-dev): update langchain-core requirement in /packages/sdk
+### Added
+- **ui**: Implement WebSocket exponential backoff and connection status indicator
 
 ## [1.0.0] - 2026-08-10
 
