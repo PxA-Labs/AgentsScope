@@ -69,6 +69,7 @@ export default function Dashboard() {
     text: string;
     type: "success" | "error";
   } | null>(null);
+  const [wsStatus, setWsStatus] = useState<"connected" | "connecting" | "disconnected">("connecting");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eventFeedEndRef = useRef<HTMLDivElement>(null);
@@ -149,38 +150,74 @@ export default function Dashboard() {
     }
   };
 
-  // WebSocket event stream
+  // WebSocket event stream with exponential backoff
   useEffect(() => {
     if (!activeSession) return;
 
-    let ws: WebSocket;
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let isCancelled = false;
+    let currentDelay = 2000;
+    const maxDelay = 30000;
+
     const connectWS = () => {
-      ws = new WebSocket(`${WS_BASE}/ws?client_type=ui`);
+      if (isCancelled) return;
+      setWsStatus("connecting");
+      try {
+        ws = new WebSocket(`${WS_BASE}/ws?client_type=ui`);
 
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          if (message.type === "event" && message.session_id === activeSession.session_id) {
-            addEvent(message.event);
-            // Refresh graph & stats when new terminal event lands
-            if (message.event.event_type.endsWith("_end") || message.event.event_type.endsWith("_error")) {
-              fetchGraphAndStats(activeSession.session_id);
+        ws.onopen = () => {
+          if (isCancelled) return;
+          setWsStatus("connected");
+          currentDelay = 2000; // Reset backoff delay upon successful connection
+        };
+
+        ws.onmessage = (event) => {
+          if (isCancelled) return;
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === "event" && message.session_id === activeSession.session_id) {
+              addEvent(message.event);
+              // Refresh graph & stats when new terminal event lands
+              if (message.event.event_type.endsWith("_end") || message.event.event_type.endsWith("_error")) {
+                fetchGraphAndStats(activeSession.session_id);
+              }
+            } else if (message.type === "session_update" && message.session_id === activeSession.session_id) {
+              updateSessionMeta(message.session_id, message.session);
             }
-          } else if (message.type === "session_update" && message.session_id === activeSession.session_id) {
-            updateSessionMeta(message.session_id, message.session);
+          } catch (err) {
+            console.error("Error processing websocket payload:", err);
           }
-        } catch (err) {
-          console.error("Error processing websocket payload:", err);
-        }
-      };
+        };
 
-      ws.onclose = () => {
-        setTimeout(connectWS, 2000);
-      };
+        ws.onerror = (err) => {
+          if (isCancelled) return;
+          console.warn("WebSocket encountered error:", err);
+          setWsStatus("disconnected");
+        };
+
+        ws.onclose = () => {
+          if (isCancelled) return;
+          setWsStatus("connecting");
+          const nextDelay = currentDelay;
+          currentDelay = Math.min(currentDelay * 2, maxDelay);
+          reconnectTimeout = setTimeout(connectWS, nextDelay);
+        };
+      } catch (err) {
+        if (isCancelled) return;
+        setWsStatus("disconnected");
+        const nextDelay = currentDelay;
+        currentDelay = Math.min(currentDelay * 2, maxDelay);
+        reconnectTimeout = setTimeout(connectWS, nextDelay);
+      }
     };
 
     connectWS();
-    return () => ws?.close();
+    return () => {
+      isCancelled = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) ws.close();
+    };
   }, [activeSession]);
 
   const fetchGraphAndStats = async (sessionId: string) => {
@@ -437,6 +474,47 @@ export default function Dashboard() {
     }
   };
 
+  const getWsStatusBadge = (status: "connected" | "connecting" | "disconnected") => {
+    switch (status) {
+      case "connected":
+        return (
+          <span
+            className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full font-medium"
+            title="Live WebSocket telemetry connection established"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            Live Connected
+          </span>
+        );
+      case "connecting":
+        return (
+          <span
+            className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full font-medium"
+            title="Connecting or reconnecting to WebSocket server..."
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </span>
+            Reconnecting...
+          </span>
+        );
+      case "disconnected":
+        return (
+          <span
+            className="flex items-center gap-1.5 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-full font-medium"
+            title="WebSocket connection disconnected or server offline"
+          >
+            <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+            Offline
+          </span>
+        );
+    }
+  };
+
   const formatTimestamp = (iso: string) => {
     if (!iso) return "";
     const d = new Date(iso);
@@ -570,6 +648,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                {getWsStatusBadge(wsStatus)}
                 <button
                   onClick={handleExportSession}
                   disabled={isExporting}
