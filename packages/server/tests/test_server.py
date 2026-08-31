@@ -508,7 +508,7 @@ def test_sdk_client_integration(db_engine):
 async def test_session_retention_pruning(db_session):
     import os
     import uuid
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from main import prune_old_sessions
     from models import SessionModel
@@ -526,13 +526,13 @@ async def test_session_retention_pruning(db_session):
         session_id=old_id,
         name="Old Session",
         status="completed",
-        started_at=datetime.utcnow() - timedelta(days=10),
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10),
     )
     new_sess = SessionModel(
         session_id=new_id,
         name="New Session",
         status="completed",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
     db_session.add(old_sess)
@@ -560,7 +560,7 @@ async def test_session_retention_pruning(db_session):
 async def test_session_max_limit_pruning(db_session):
     import os
     import uuid
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from main import prune_old_sessions
     from models import SessionModel
@@ -578,7 +578,8 @@ async def test_session_max_limit_pruning(db_session):
             session_id=sid,
             name=f"Session {i}",
             status="completed",
-            started_at=datetime.utcnow() - timedelta(minutes=10 - i),
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None)
+            - timedelta(minutes=10 - i),
         )
         db_session.add(sess)
         session_ids.append(sid)

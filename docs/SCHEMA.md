@@ -372,15 +372,20 @@ class EventModel(Base):
 ## 8. Token Pricing Table
 
 > [!NOTE]  
-> This pricing table is hardcoded and used for estimated cost calculations during an active session based on LLM usage.
+> This pricing table is maintained in the repository-level [`pricing.json`](../pricing.json) file and loaded by both the SDK and Server, with embedded fallbacks for standalone package/container installations. Rates are estimates used for cost calculations during an active session.
 
 | Model | Input Price ($ / 1M tokens) | Output Price ($ / 1M tokens) |
 |---|---|---|
 | `gpt-4o` | $2.50 | $10.00 |
+| `gpt-4o-mini` | $0.15 | $0.60 |
+| `gpt-4-turbo` | $10.00 | $30.00 |
 | `gpt-4` | $30.00 | $60.00 |
 | `gpt-3.5-turbo` | $0.50 | $1.50 |
 | `claude-3-5-sonnet` | $3.00 | $15.00 |
+| `claude-3-haiku` | $0.25 | $1.25 |
+| `claude-3-opus` | $15.00 | $75.00 |
 | `gemini-1.5-pro` | $1.25 | $5.00 |
+| `gemini-1.5-flash` | $0.075 | $0.30 |
 
 ## 9. Enums & Constants
 

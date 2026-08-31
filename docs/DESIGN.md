@@ -73,19 +73,15 @@ graph TD
 
 ### 3.3 UI (`packages/ui/`)
 
-- **State Management**: Uses a Zustand store to hold the session list, the active session details, and a live events map. A custom WebSocket hook listens for incoming broadcasts and dispatches updates to the store.
-- **Data Fetching**: Utilizes SWR for interacting with REST endpoints. Configured to auto-revalidate running sessions every 2 seconds. Merges historical data fetched via REST with live events streaming via WebSockets.
-- **Pages**:
-  - `/` — Session list view with a data table, status badges (Running, Completed, Error), and total cost/token information.
-  - `/sessions/[id]` — Detailed session layout with a persistent header showing name, status, and token counter. Includes tab navigation for sub-views.
-  - `/sessions/[id]/graph` — Full-width canvas rendering the React Flow DAG.
-  - `/sessions/[id]/events` — Filterable, chronological event feed with a slide-in inspector panel.
-  - `/sessions/[id]/stats` — Dashboards powered by Recharts (token usage bar charts, latency timelines).
+- **State Management**: Uses a Zustand store to hold the session list, active session details, and live events. The main dashboard page dispatches incoming WebSocket messages directly to the store.
+- **Data Fetching**: Uses the browser `fetch` API for REST endpoints, polling the session list every 4 seconds and fetching events, graph data, statistics, and memories when a session or tab changes. Historical REST data is merged with live WebSocket events.
+- **Pages**: The current UI exposes a single `/` dashboard route. It combines the session list, execution event feed, graph, statistics, prompt-diff view, import/export controls, and memory-management tab in one page rather than using separate dynamic session routes.
+- **WebSocket behavior**: The dashboard connects to the UI WebSocket for the active session, filters messages by `session_id`, and retries after a fixed 2-second delay when the connection closes.
 - **Key Components**:
-  - `AgentGraph.tsx` — React Flow implementation with custom node types (`ChainNode`, `LLMNode`, `ToolNode`, `RetrieverNode`).
-  - `EventFeed.tsx` — Real-time scrolling list. Includes an auto-scroll mechanism with a pause toggle.
-  - `EventInspector.tsx` — Slide-in panel displaying the full raw event JSON and syntax-highlighted prompt/response texts.
-  - `TokenCounter.tsx` — Sticky header component that updates live as events arrive.
+  - `app/page.tsx` — Main dashboard implementation containing session selection, event feed, graph/statistics rendering, memory management, and WebSocket handling.
+  - `components/PromptDiffViewer.tsx` — Prompt/completion difference viewer used by the event inspector.
+  - `store/sessionStore.ts` — Zustand state for sessions, the active session, events, and session metadata updates.
+  - `types/index.ts` — Shared TypeScript contracts for sessions, events, graph nodes, and graph edges.
 
 ## 4. Key Design Decisions
 

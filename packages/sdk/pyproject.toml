@@ -8,10 +8,9 @@ version = "0.1.0"
 description = "Lightweight tracing SDK for AgentScope observability dashboard"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -47,6 +46,9 @@ ignore = []
 
 [tool.setuptools]
 packages = ["agentscope"]
+
+[tool.setuptools.package-data]
+agentscope = ["pricing.json"]
 
 
 

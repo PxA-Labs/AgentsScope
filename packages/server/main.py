@@ -30,7 +30,7 @@ async def prune_old_sessions() -> None:
     if not retention_days_raw and not max_sessions_raw:
         return
 
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from sqlalchemy import delete
 
@@ -40,7 +40,9 @@ async def prune_old_sessions() -> None:
             if retention_days_raw:
                 try:
                     days = int(retention_days_raw)
-                    cutoff = datetime.utcnow() - timedelta(days=days)
+                    cutoff = datetime.now(timezone.utc).replace(
+                        tzinfo=None
+                    ) - timedelta(days=days)
                     stmt = delete(SessionModel).where(SessionModel.started_at < cutoff)
                     res = await db.execute(stmt)
                     await db.commit()

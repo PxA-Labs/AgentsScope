@@ -49,6 +49,7 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["packages/sdk/tests", "packages/server/tests", ".github/scripts/tests"]
 asyncio_mode = "strict"
+addopts = "--import-mode=importlib"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
