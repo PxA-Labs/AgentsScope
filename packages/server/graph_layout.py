@@ -1,6 +1,7 @@
 from collections import deque
 from typing import Any, Dict, List
-from schemas import ReactFlowEdge, ReactFlowNode, NodePosition, NodeData
+
+from schemas import NodeData, NodePosition, ReactFlowEdge, ReactFlowNode
 
 
 def compute_graph_layout(events: List[Any]) -> Dict[str, Any]:
@@ -94,7 +95,8 @@ def compute_graph_layout(events: List[Any]) -> Dict[str, Any]:
         curr = queue.popleft()
         curr_layer = layer_map[curr]
         for child in adj[curr]:
-            # Layer is maximum distance from roots (ensures child is always below all parents)
+            # Layer is maximum distance from roots
+            # (ensures child is always below all parents)
             new_layer = curr_layer + 1
             if new_layer < len(node_ids):
                 if child not in layer_map or new_layer > layer_map[child]:

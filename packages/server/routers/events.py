@@ -1,11 +1,11 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from models import EventModel, SessionModel
 from schemas import EventResponse, PaginatedEventsResponse
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Router prefix matches the session-event hierarchy
 router = APIRouter(prefix="/sessions/{session_id}/events", tags=["events"])
@@ -20,7 +20,7 @@ async def list_session_events(
     limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrieve logged telemetry events for a session with optional filters and offset pagination."""
+    """Retrieve logged telemetry events with filters and pagination."""
     # First, verify session exists
     sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
     sess_res = await db.execute(sess_stmt)

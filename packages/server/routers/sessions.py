@@ -1,27 +1,27 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, delete, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import SessionModel, EventModel
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from graph_layout import compute_graph_layout
+from models import EventModel, SessionModel
+from pricing import calculate_cost as _calculate_llm_cost
 from schemas import (
-    SessionCreate,
-    SessionUpdate,
-    SessionResponse,
+    AgentStats,
     EventResponse,
+    GraphResponse,
+    SessionCreate,
     SessionExport,
     SessionImportPayload,
-    GraphResponse,
+    SessionResponse,
+    SessionUpdate,
     StatsResponse,
-    AgentStats,
     TokenTimelinePoint,
 )
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from ws_manager import manager
-from graph_layout import compute_graph_layout
-from pricing import calculate_cost as _calculate_llm_cost
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -209,7 +209,7 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{session_id}/graph", response_model=GraphResponse)
 async def get_session_graph(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Generate layout-positioned nodes and edges representing the agent call execution DAG."""
+    """Generate layout nodes and edges representing the execution DAG."""
     # Ensure session exists
     sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
     sess_res = await db.execute(sess_stmt)
@@ -228,7 +228,7 @@ async def get_session_graph(session_id: str, db: AsyncSession = Depends(get_db))
 
 @router.get("/{session_id}/stats", response_model=StatsResponse)
 async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Compute aggregate execution stats, cost estimates, and token timelines for a session."""
+    """Compute aggregate execution stats, costs, and token timelines."""
     sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
     sess_res = await db.execute(sess_stmt)
     db_session = sess_res.scalars().first()
@@ -322,7 +322,7 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
 
 @router.get("/{session_id}/export", response_model=SessionExport)
 async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Export an entire session and all of its telemetry events as a portable JSON payload."""
+    """Export an entire session and all telemetry events as JSON."""
     sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
     sess_res = await db.execute(sess_stmt)
     db_session = sess_res.scalars().first()
@@ -353,7 +353,7 @@ async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
 async def import_session(
     payload: SessionImportPayload, db: AsyncSession = Depends(get_db)
 ):
-    """Import a session and its associated events from a JSON telemetry export."""
+    """Import a session and its associated events from a JSON export."""
     imported_sess = payload.session
     session_id = imported_sess.session_id
 
@@ -376,7 +376,7 @@ async def import_session(
         chk_res = await db.execute(chk_stmt)
         existing_event_ids = set(chk_res.scalars().all())
 
-    # Map original event IDs to new unique event IDs if any conflict or if session is re-imported
+    # Map original event IDs to new unique event IDs if conflict exists
     event_id_map: Dict[str, str] = {}
     for ev in payload.events:
         if ev.event_id in existing_event_ids or existing_session:
@@ -384,9 +384,11 @@ async def import_session(
 
     db_session = SessionModel(
         session_id=target_session_id,
-        name=imported_sess.name
-        if not existing_session
-        else f"{imported_sess.name} (Imported)",
+        name=(
+            imported_sess.name
+            if not existing_session
+            else f"{imported_sess.name} (Imported)"
+        ),
         status=imported_sess.status,
         started_at=imported_sess.started_at,
         ended_at=imported_sess.ended_at,

@@ -9,19 +9,20 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   update-changelog:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: '3.10'
 
@@ -29,12 +30,10 @@ jobs:
         run: python .github/scripts/update_changelog.py
 
       - name: Commit and push CHANGELOG.md
-        uses: stefanzweifel/git-auto-commit-action@v7
+        uses: stefanzweifel/git-auto-commit-action@e348103e9026cc0eee72ae06630dbe30c80f00ac # v5.0.0
         with:
           commit_message: "chore: update CHANGELOG.md [skip ci]"
           file_pattern: "CHANGELOG.md"
           commit_user_name: "github-actions[bot]"
           commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
           commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
-
-

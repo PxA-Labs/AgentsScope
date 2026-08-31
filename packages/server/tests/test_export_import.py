@@ -1,12 +1,12 @@
-import pytest
 import uuid
 from datetime import datetime, timezone
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from main import app
+import pytest
 from database import get_db
-from models import SessionModel, EventModel
+from httpx import ASGITransport, AsyncClient
+from main import app
+from models import EventModel, SessionModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio

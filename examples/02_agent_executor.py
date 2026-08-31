@@ -1,9 +1,10 @@
 import time
+
+from agentscope.callback import AgentScopeCallback
 from langchain.agents import AgentExecutor, create_react_agent
+from langchain_community.llms.fake import FakeListLLM
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
-from langchain_community.llms.fake import FakeListLLM
-from agentscope.callback import AgentScopeCallback
 
 # 1. Initialize callback handler
 callback = AgentScopeCallback(
@@ -12,10 +13,11 @@ callback = AgentScopeCallback(
     session_name="AgentExecutor Telemetry Session",
 )
 
+
 # 2. Define custom developer tool
 @tool
 def calculate_velocity(mass_and_force: str) -> float:
-    """Calculate velocity based on force and mass inputs. The input should be 'mass, force'."""
+    """Calculate velocity based on force and mass ('mass, force')."""
     time.sleep(0.3)
     try:
         mass_str, force_str = mass_and_force.split(",")
@@ -29,13 +31,18 @@ tools = [calculate_velocity]
 # 3. Create reactive LLM and prompt
 llm = FakeListLLM(
     responses=[
-        "Thought: I need to calculate the velocity using the tool.\nAction: calculate_velocity\nAction Input: 10.0, 50.0",
+        (
+            "Thought: I need to calculate the velocity using the tool.\n"
+            "Action: calculate_velocity\n"
+            "Action Input: 10.0, 50.0"
+        ),
         "Final Answer: The calculated velocity is 5.0 m/s.",
     ]
 )
 
 prompt = PromptTemplate.from_template(
-    "Answer the following questions as best you can. You have access to the following tools:\n\n"
+    "Answer the following questions as best you can. "
+    "You have access to the following tools:\n\n"
     "{tools}\n\nUse the following format:\n\n"
     "Question: the input question you must answer\n"
     "Thought: you should always think about what to do\n"

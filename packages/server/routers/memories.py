@@ -1,7 +1,8 @@
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
 from mem0_integration import get_mem0_client
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/sessions/{session_id}/memories", tags=["memories"])
 
@@ -20,7 +21,10 @@ def verify_mem0_client():
     if not client:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mem0 integration is disabled. Please configure MEM0_API_KEY in the server environment (.env file).",
+            detail=(
+                "Mem0 integration is disabled. Please configure MEM0_API_KEY "
+                "in the server environment (.env file)."
+            ),
         )
     return client
 

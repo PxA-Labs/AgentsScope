@@ -84,8 +84,8 @@ async def prune_old_sessions() -> None:
                             await db.execute(del_stmt)
                             await db.commit()
                             logging.info(
-                                f"Pruned {len(ids_to_delete)} oldest sessions to enforce "
-                                f"MAX_SESSIONS limit of {limit}."
+                                f"Pruned {len(ids_to_delete)} oldest sessions "
+                                f"to enforce MAX_SESSIONS limit of {limit}."
                             )
                 except ValueError:
                     logging.warning(f"Invalid MAX_SESSIONS value: {max_sessions_raw}")
@@ -138,7 +138,7 @@ def health_check():
 
 
 def merge_payloads(existing: dict, incoming: dict) -> dict:
-    """Merge incoming event payload with existing, avoiding overwrites with empty values."""
+    """Merge incoming event payload with existing without overwriting empties."""
     merged = dict(existing)
     for k, v in incoming.items():
         if v is not None and v != "" and v != []:
@@ -338,7 +338,7 @@ async def process_single_event(event_data: dict, sess_id: str) -> None:
                     session.total_tokens += token_delta
                     session.total_cost_usd += cost_delta
 
-            # Implicit session status synchronization from root terminal events (Sub-Issue 5.2)
+            # Implicit session status synchronization from root terminal events
             if db_event.event_type == "chain_end" and not db_event.parent_event_id:
                 session.status = "completed"
                 session.ended_at = ts
@@ -405,8 +405,11 @@ async def process_single_event(event_data: dict, sess_id: str) -> None:
 
         except IntegrityError as ie:
             await db.rollback()
+            raw_event_id = event_data.get("event_id")
+            safe_event_id = str(raw_event_id).replace("\r", "").replace("\n", "")
             logging.info(
-                f"Skipping event_id {event_data.get('event_id')} as it is an idempotent duplicate or constraint failure: {ie}."
+                f"Skipping event_id {safe_event_id} as it is an "
+                f"idempotent duplicate or constraint failure: {ie}."
             )
         except Exception as e:
             await db.rollback()

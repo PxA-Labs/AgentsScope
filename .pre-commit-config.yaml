@@ -1,0 +1,42 @@
+# Pre-commit configuration for AgentScope
+# See: https://pre-commit.com/
+# To install: pip install pre-commit && pre-commit install
+# To run manually: pre-commit run --all-files
+
+repos:
+  # General sanity and file structure hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.min\.(js|css)$'
+      - id: end-of-file-fixer
+        exclude: '\.min\.(js|css)$'
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # Python linter & security rules (Ruff)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  # Python code formatter (Black)
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+
+  # Formatting for JSON, Markdown, and Web assets (Prettier)
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        types_or: [json, markdown, yaml]
+        exclude: '(package-lock\.json|CHANGELOG\.md)'
