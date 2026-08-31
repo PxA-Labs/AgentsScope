@@ -23,7 +23,7 @@ agentscope = "agentscope.cli:main"
 
 [project.optional-dependencies]
 langchain = [
-    "langchain-core>=1.6.0",
+    "langchain-core>=1.6.1",
 ]
 dev = [
     "pytest>=9.1.1",
