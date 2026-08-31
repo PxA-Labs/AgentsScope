@@ -1,7 +1,8 @@
 import time
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.llms.fake import FakeListLLM
+
 from agentscope.callback import AgentScopeCallback
+from langchain_community.llms.fake import FakeListLLM
+from langchain_core.prompts import ChatPromptTemplate
 
 # 1. Initialize AgentScope callback handler
 callback = AgentScopeCallback(
@@ -22,9 +23,7 @@ chain = prompt | llm
 if __name__ == "__main__":
     print("Executing LangChain pipeline with AgentScope telemetry...")
     # Run the chain passing the callback handler
-    result = chain.invoke(
-        {"topic": "antigravity"}, config={"callbacks": [callback]}
-    )
+    result = chain.invoke({"topic": "antigravity"}, config={"callbacks": [callback]})
     print(f"Result: {result}")
 
     # Wait briefly for client logs to flush

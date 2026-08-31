@@ -1,11 +1,10 @@
-import sys
 from unittest.mock import MagicMock, patch
 
 from agentscope.cli import find_repo_paths, main
 
 
 def test_find_repo_paths():
-    """Verify that find_repo_paths executes without crashing and returns either paths or None."""
+    """Verify that find_repo_paths executes and returns either paths or None."""
     root, server, ui, docker_compose = find_repo_paths()
     # Should be tuple of 4 elements
     assert len((root, server, ui, docker_compose)) == 4
@@ -14,7 +13,7 @@ def test_find_repo_paths():
 @patch("agentscope.cli.find_repo_paths")
 @patch("argparse.ArgumentParser.parse_args")
 def test_cli_main_start_docker(mock_parse_args, mock_find_paths):
-    """Test that running 'agentscope start --docker' invokes docker compose command."""
+    """Test that running 'agentscope start --docker' invokes docker compose."""
     mock_args = MagicMock()
     mock_args.command = "start"
     mock_args.docker = True
@@ -35,6 +34,7 @@ def test_cli_main_start_docker(mock_parse_args, mock_find_paths):
         patch("os.path.exists", return_value=True),
         patch("subprocess.run") as mock_run,
     ):
+
         main()
         mock_run.assert_any_call(
             ["docker", "compose", "up", "--build"], cwd="/root", check=True
@@ -44,7 +44,7 @@ def test_cli_main_start_docker(mock_parse_args, mock_find_paths):
 @patch("agentscope.cli.find_repo_paths")
 @patch("argparse.ArgumentParser.parse_args")
 def test_cli_main_start_local(mock_parse_args, mock_find_paths):
-    """Test that running 'agentscope start' spawns local uvicorn and next.js processes."""
+    """Test that running 'agentscope start' spawns local processes."""
     mock_args = MagicMock()
     mock_args.command = "start"
     mock_args.docker = False
@@ -60,15 +60,14 @@ def test_cli_main_start_local(mock_parse_args, mock_find_paths):
         "/root/docker-compose.yml",
     )
 
-    # Mock sys.modules['uvicorn'] to bypass ImportError
-    sys.modules["uvicorn"] = MagicMock()
-
     with (
+        patch.dict("sys.modules", {"uvicorn": MagicMock()}),
         patch("shutil.which", return_value="/usr/bin/npm"),
         patch("os.path.exists", return_value=True),
         patch("subprocess.Popen") as mock_popen,
-        patch("time.sleep") as mock_sleep,
+        patch("time.sleep"),
     ):
+
         # Mock subprocess instances returning from Popen
         mock_proc_server = MagicMock()
         mock_proc_ui = MagicMock()

@@ -1,0 +1,54 @@
+# OpenSSF Scorecard Security Analysis
+# See: https://github.com/ossf/scorecard-action#scorecard-action
+# Scorecard assesses open-source projects for security risks and supply chain best practices.
+
+name: OpenSSF Scorecard
+
+on:
+  schedule:
+    # Run every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Declare default permissions as read only
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard Security Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to upload the results to code scanning dashboard
+      security-events: write
+      # Needed to publish results to OpenSSF Scorecard API
+      id-token: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Run OpenSSF Scorecard Analysis
+        uses: ossf/scorecard-action@62b2cac7ed8198b15735db800459828253a1b017 # v2.4.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Public repositories can publish results to OpenSSF REST API
+          publish_results: true
+
+      - name: Upload Scorecard Artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: OpenSSF Scorecard Report
+          path: results.sarif
+          retention-days: 14
+
+      - name: Upload to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d # v3.28.10
+        with:
+          sarif_file: results.sarif

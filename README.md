@@ -10,9 +10,15 @@
     <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python Version">
   </a>
   <a href="https://nodejs.org/">
-    <img src="https://img.shields.io/badge/node-18+-green.svg" alt="Node Version">
+    <img src="https://img.shields.io/badge/node-20+-green.svg" alt="Node Version">
   </a>
-  <a href="https://github.com/archittmittal/AgentsScope/pulls">
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/PxA-Labs/AgentsScope">
+    <img src="https://api.securityscorecards.dev/projects/github.com/PxA-Labs/AgentsScope/badge" alt="OpenSSF Scorecard">
+  </a>
+  <a href="SECURITY.md">
+    <img src="https://img.shields.io/badge/Security-OpenSSF%20Standard-brightgreen.svg" alt="Security Policy">
+  </a>
+  <a href="https://github.com/PxA-Labs/AgentsScope/pulls">
     <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
   </a>
   <a href="https://github.com/archittmittal/AgentsScope/stargazers">

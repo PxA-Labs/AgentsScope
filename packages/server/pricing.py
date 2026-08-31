@@ -16,7 +16,7 @@ PRICING_TABLE = {
 
 
 def get_model_pricing(model_name: str) -> dict[str, float] | None:
-    """Lookup pricing configuration for a given model name, including minor/date-pinned versions."""
+    """Lookup pricing configuration including date-pinned versions."""
     if not model_name:
         return None
 

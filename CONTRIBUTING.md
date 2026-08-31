@@ -59,8 +59,33 @@ To keep the codebase clean, consistent, and maintainable, please follow these st
 - Format code using **Prettier** and lint with **ESLint**.
 - Ensure TypeScript is running in **strict mode** with no implicit `any` types.
 
-### Pre-Commit Checks
-- Run formatters and linters before committing your changes to prevent CI pipeline failures.
+### Pre-Commit & Pre-PR Quality Checks
+- Install pre-commit hooks to automatically format and validate code on commit:
+  ```bash
+  pip install pre-commit
+  pre-commit install
+  ```
+- Run the full **Pre-PR Quality Suite** before opening a pull request:
+  ```bash
+  make pre-pr
+  # or directly: ./scripts/pre_pr_check.sh
+  ```
+- Automatically auto-format the entire codebase:
+  ```bash
+  make format
+  ```
+
+---
+
+## Security & OpenSSF Standards
+
+AgentScope adheres to **Open Source Security Foundation (OpenSSF)** standards and best practices:
+
+- **Security Policy:** Review [`SECURITY.md`](SECURITY.md) for vulnerability disclosure guidelines, supported versions, and response SLAs.
+- **Scorecard Analysis:** Automated weekly security health checks via `.github/workflows/scorecard.yml`.
+- **Static Analysis (SAST):** Code scanned via GitHub CodeQL and Ruff security rules.
+- **Supply Chain Security:** Automated dependency monitoring and security updates via Dependabot.
+- **Least Privilege:** CI/CD workflows run under explicit, minimal GitHub token permissions.
 
 ---
 
@@ -74,9 +99,9 @@ Follow this step-by-step workflow when submitting code or documentation changes:
    git checkout -b feature/my-feature
    ```
 3. **Make your changes** cleanly within your feature branch.
-4. **Run tests** to verify your changes:
+4. **Run the Pre-PR Quality Suite**:
    ```bash
-   make test
+   make pre-pr
    ```
 5. **Commit with conventional commits**:
    ```bash
@@ -96,6 +121,7 @@ We enforce the [Conventional Commits](https://www.conventionalcommits.org/) spec
 - `chore:` Maintenance, dependency updates, or build tasks
 - `refactor:` Code restructuring without functional changes
 - `test:` Adding or updating tests
+- `ci:` Continuous integration and automation workflows
 
 ---
 
@@ -103,7 +129,7 @@ We enforce the [Conventional Commits](https://www.conventionalcommits.org/) spec
 
 1. **Update Documentation**: Ensure relevant guides, API docs, or README files are updated to reflect your changes.
 2. **Add Tests**: Provide unit tests or integration tests for new features and bug fixes.
-3. **Ensure Tests Pass**: Verify all local and CI tests pass cleanly (`make test`).
+3. **Ensure Pre-PR Quality Gates Pass**: Verify all checks pass cleanly (`make pre-pr`).
 4. **Request Review**: Assign maintainers for review and respond to feedback constructively.
 5. **Squash Merge**: PRs will be squash-merged into `main` after approval and CI verification.
 

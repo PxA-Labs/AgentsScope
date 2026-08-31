@@ -1,12 +1,11 @@
 import os
 import sys
 import tempfile
-import pytest
 
 # Add parent directory of scripts to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from update_changelog import parse_commit, format_changelog, update_changelog_file
+from update_changelog import format_changelog, parse_commit, update_changelog_file
 
 
 def test_parse_commit():
@@ -20,7 +19,9 @@ def test_parse_commit():
     assert scope is None
     assert msg == "resolve null reference in session handler"
 
-    c_type, scope, msg = parse_commit("random commit message without conventional format")
+    c_type, scope, msg = parse_commit(
+        "random commit message without conventional format"
+    )
     assert c_type is None
     assert scope is None
     assert msg == "random commit message without conventional format"
@@ -31,8 +32,12 @@ def test_format_changelog():
         {"subject": "feat(cli): implement launcher for local and Docker services"},
         {"subject": "fix(server): resolve next.config.js stray syntax error"},
         {"subject": "chore: update CHANGELOG.md"},  # Should be filtered out
-        {"subject": "Merge pull request #90 from PxA-Labs/feat/cli-launcher"},  # Should be filtered out
-        {"subject": "feat: add support for changelog generator"},  # Should NOT be filtered out just because it contains 'changelog'
+        {
+            "subject": "Merge pull request #90 from PxA-Labs/feat/cli-launcher"
+        },  # Should be filtered out
+        {
+            "subject": "feat: add support for changelog generator"
+        },  # Should NOT be filtered out just because it contains 'changelog'
     ]
 
     formatted = format_changelog(commits)
@@ -62,7 +67,9 @@ def test_update_changelog_file_initial_and_update():
         assert "Implement launcher" in content1
 
         # Second write (update section, must NOT duplicate header)
-        updated_content = "### Added\n- **cli**: Implement launcher\n- **server**: Fix memory leak"
+        updated_content = (
+            "### Added\n- **cli**: Implement launcher\n- **server**: Fix memory leak"
+        )
         res2 = update_changelog_file(updated_content, filepath=filepath)
         assert res2 is True
 

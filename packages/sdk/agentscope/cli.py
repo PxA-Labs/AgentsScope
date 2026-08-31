@@ -82,7 +82,7 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
     # Check for python dependencies
     # We need uvicorn to run the FastAPI app
     try:
-        import uvicorn
+        import uvicorn  # noqa: F401
     except ImportError:
         print(
             "Error: 'uvicorn' is not installed in the current environment.",
@@ -94,7 +94,8 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
     # Check if npm is installed for UI
     if not shutil.which("npm"):
         print(
-            "Error: 'npm' command is not found. Node.js/npm is required to run the UI locally.",
+            "Error: 'npm' command is not found. "
+            "Node.js/npm is required to run the UI locally.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -194,7 +195,8 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
 
             if server_exit is not None:
                 print(
-                    f"Error: Backend server exited unexpectedly with code {server_exit}",
+                    "Error: Backend server exited unexpectedly "
+                    f"with code {server_exit}",
                     file=sys.stderr,
                 )
                 break
@@ -285,11 +287,13 @@ def main():
                 run_local(server_dir, ui_dir, args.host, args.port, args.ui_port)
             else:
                 print(
-                    "Error: Could not locate 'packages/server' and 'packages/ui' directories.",
+                    "Error: Could not locate 'packages/server' and "
+                    "'packages/ui' directories.",
                     file=sys.stderr,
                 )
                 print(
-                    "Please ensure you run this command from the repository root or a valid monorepo path.",
+                    "Please ensure you run this command from the "
+                    "repository root or a valid monorepo path.",
                     file=sys.stderr,
                 )
                 sys.exit(1)

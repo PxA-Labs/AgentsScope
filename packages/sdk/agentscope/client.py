@@ -9,6 +9,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+import websockets
+import websockets.exceptions
+
 
 class AgentScopeClient:
     """Thread-safe WebSocket and REST client for the AgentScope observability server.
@@ -141,11 +144,20 @@ class AgentScopeClient:
         except (RuntimeError, asyncio.CancelledError):
             pass
         finally:
-            self.loop.close()
+            try:
+                pending = [t for t in asyncio.all_tasks(self.loop) if not t.done()]
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    self.loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception:
+                pass
+            finally:
+                self.loop.close()
 
     async def _main_async_loop(self) -> None:
-        import websockets
-
         backoff = 1.0
         max_backoff = 30.0
         failed_batch = []
@@ -275,7 +287,8 @@ class AgentScopeClient:
                 with self._lock:
                     self.session_id = new_session_id
                     logging.info(
-                        f"AgentScope session successfully registered. ID: {self.session_id}"
+                        "AgentScope session successfully registered. "
+                        f"ID: {self.session_id}"
                     )
                     if self.pending_status:
                         status_to_patch = self.pending_status
