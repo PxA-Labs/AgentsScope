@@ -129,3 +129,28 @@ def calculate_cost(
     output_cost = (output_tokens / 1_000_000) * prices["output"]
 
     return input_cost + output_cost
+
+
+def estimate_tokens(
+    text: Optional[str], model_name: Optional[str] = None
+) -> Optional[int]:
+    """Estimate token count for text using tiktoken if available.
+
+    Falls back to character heuristic if tiktoken is not installed.
+    Returns None if text is empty or None.
+    """
+    if not text:
+        return None
+
+    try:
+        import tiktoken
+
+        try:
+            encoding = tiktoken.encoding_for_model(model_name or "gpt-4o")
+        except Exception:
+            encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text))
+    except ImportError:
+        # Fallback to character-based heuristic (~4 chars per token)
+        return max(1, len(text) // 4)
+
