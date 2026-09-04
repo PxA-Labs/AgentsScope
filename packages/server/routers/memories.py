@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, status
 from mem0_integration import get_mem0_client
@@ -10,6 +10,7 @@ router = APIRouter(prefix="/sessions/{session_id}/memories", tags=["memories"])
 class MemoryCreateRequest(BaseModel):
     text: str
     metadata: Optional[Dict[str, Any]] = None
+    categories: Optional[List[str]] = None
 
 
 class MemorySearchRequest(BaseModel):
@@ -49,8 +50,18 @@ async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
     """Manually add a memory to this session."""
     client = verify_mem0_client()
     try:
-        metadata = payload.metadata or {}
-        res = client.add(payload.text, user_id=session_id, metadata=metadata)
+        metadata = dict(payload.metadata or {})
+        if payload.categories:
+            metadata["categories"] = payload.categories
+        try:
+            res = client.add(
+                payload.text,
+                user_id=session_id,
+                metadata=metadata,
+                categories=payload.categories,
+            )
+        except TypeError:
+            res = client.add(payload.text, user_id=session_id, metadata=metadata)
         return res
     except Exception as e:
         raise HTTPException(
