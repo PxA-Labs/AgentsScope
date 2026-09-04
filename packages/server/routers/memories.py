@@ -1,7 +1,15 @@
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, status
-from mem0_integration import get_mem0_client
+from mem0_integration import (
+    add_custom_memory_async,
+    delete_all_session_memories_async,
+    delete_memory_async,
+    get_all_memories_async,
+    get_mem0_client,
+    search_memories_async,
+    update_memory_async,
+)
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/sessions/{session_id}/memories", tags=["memories"])
@@ -10,6 +18,10 @@ router = APIRouter(prefix="/sessions/{session_id}/memories", tags=["memories"])
 class MemoryCreateRequest(BaseModel):
     text: str
     metadata: Optional[Dict[str, Any]] = None
+
+
+class MemoryUpdateRequest(BaseModel):
+    text: str
 
 
 class MemorySearchRequest(BaseModel):
@@ -31,11 +43,10 @@ def verify_mem0_client():
 
 @router.get("")
 async def list_session_memories(session_id: str):
-    """Retrieve all memories associated with this session."""
-    client = verify_mem0_client()
+    """Retrieve all memories associated with this session asynchronously."""
+    verify_mem0_client()
     try:
-        # Use filters to retrieve user-specific memories for this session
-        res = client.get_all(filters={"user_id": session_id})
+        res = await get_all_memories_async(session_id)
         return res
     except Exception as e:
         raise HTTPException(
@@ -46,11 +57,13 @@ async def list_session_memories(session_id: str):
 
 @router.post("")
 async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
-    """Manually add a memory to this session."""
-    client = verify_mem0_client()
+    """Manually add a memory to this session asynchronously."""
+    verify_mem0_client()
     try:
         metadata = payload.metadata or {}
-        res = client.add(payload.text, user_id=session_id, metadata=metadata)
+        res = await add_custom_memory_async(
+            payload.text, session_id=session_id, metadata=metadata
+        )
         return res
     except Exception as e:
         raise HTTPException(
@@ -61,10 +74,10 @@ async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
 
 @router.post("/search")
 async def search_session_memories(session_id: str, payload: MemorySearchRequest):
-    """Search memories associated with this session using vector similarity search."""
-    client = verify_mem0_client()
+    """Search memories associated with this session using vector search."""
+    verify_mem0_client()
     try:
-        res = client.search(payload.query, filters={"user_id": session_id})
+        res = await search_memories_async(payload.query, session_id=session_id)
         return res
     except Exception as e:
         raise HTTPException(
@@ -73,15 +86,46 @@ async def search_session_memories(session_id: str, payload: MemorySearchRequest)
         )
 
 
+@router.put("/{memory_id}")
+async def update_session_memory(
+    session_id: str, memory_id: str, payload: MemoryUpdateRequest
+):
+    """Update an existing memory text by its ID."""
+    verify_mem0_client()
+    try:
+        res = await update_memory_async(memory_id, payload.text)
+        return res
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update memory in Mem0: {e}",
+        )
+
+
 @router.delete("/{memory_id}")
 async def delete_session_memory(session_id: str, memory_id: str):
     """Delete a specific memory by its ID."""
-    client = verify_mem0_client()
+    verify_mem0_client()
     try:
-        res = client.delete(memory_id)
+        res = await delete_memory_async(memory_id)
         return res
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete memory from Mem0: {e}",
         )
+
+
+@router.delete("")
+async def delete_all_session_memories(session_id: str):
+    """Delete all memories associated with this session."""
+    verify_mem0_client()
+    try:
+        res = await delete_all_session_memories_async(session_id)
+        return res
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to bulk delete session memories from Mem0: {e}",
+        )
+

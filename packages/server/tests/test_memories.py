@@ -80,3 +80,31 @@ async def test_memories_api(mock_mem0_client):
         data = res.json()
         assert data["message"] == "Deleted"
         mock_mem0_client.delete.assert_called_once_with("mem-1")
+
+    # 5. Test update memory
+    mock_mem0_client.update.return_value = {"message": "Updated"}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        res = await ac.put(
+            f"/api/sessions/{session_id}/memories/mem-1",
+            json={"text": "Updated memory content"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["message"] == "Updated"
+        mock_mem0_client.update.assert_called_once_with(
+            "mem-1", "Updated memory content"
+        )
+
+    # 6. Test bulk delete session memories
+    mock_mem0_client.delete_all.return_value = {"message": "All deleted"}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        res = await ac.delete(f"/api/sessions/{session_id}/memories")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["message"] == "All deleted"
+        mock_mem0_client.delete_all.assert_called_once_with(user_id=session_id)
+
