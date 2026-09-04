@@ -393,7 +393,69 @@ async def process_single_event(event_data: dict, sess_id: str) -> None:
                 sess_id, {"type": "event", "session_id": sess_id, "event": ui_event}
             )
 
-            # 6. Broadcast updated session aggregates to global UI subscribers
+            # 6. Stream incremental DAG node addition & updated layout
+            try:
+                from graph_layout import compute_graph_layout
+
+                agent_type_str = (db_event.agent_type or "chain").lower()
+                if agent_type_str == "llm":
+                    node_type = "LLMNode"
+                elif agent_type_str == "tool":
+                    node_type = "ToolNode"
+                elif agent_type_str == "retriever":
+                    node_type = "RetrieverNode"
+                else:
+                    node_type = "ChainNode"
+
+                tokens = None
+                if db_event.payload and isinstance(db_event.payload, dict):
+                    tokens = db_event.payload.get(
+                        "total_tokens"
+                    ) or db_event.payload.get("total_token_count")
+
+                incremental_node = {
+                    "id": db_event.event_id,
+                    "type": node_type,
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "label": (
+                            db_event.agent_name or node_type.replace("Node", "")
+                        ),
+                        "agentName": db_event.agent_name,
+                        "eventType": db_event.event_type,
+                        "durationMs": db_event.latency_ms,
+                        "tokenCount": tokens,
+                        "status": db_event.status,
+                    },
+                }
+                incremental_edge = None
+                if db_event.parent_event_id:
+                    incremental_edge = {
+                        "id": f"e-{db_event.parent_event_id}-{db_event.event_id}",
+                        "source": db_event.parent_event_id,
+                        "target": db_event.event_id,
+                        "type": "error" if db_event.status == "error" else "default",
+                    }
+
+                all_events_stmt = (
+                    select(EventModel)
+                    .where(EventModel.session_id == sess_id)
+                    .order_by(EventModel.timestamp.asc())
+                )
+                all_events_res = await db.execute(all_events_stmt)
+                all_events = all_events_res.scalars().all()
+                full_graph = compute_graph_layout(all_events)
+
+                await manager.broadcast_graph_update(
+                    sess_id,
+                    node=incremental_node,
+                    edge=incremental_edge,
+                    graph=full_graph,
+                )
+            except Exception as ge:
+                logging.error(f"Error broadcasting live DAG update: {ge}")
+
+            # 7. Broadcast updated session aggregates to global UI subscribers
             session_data = {
                 "status": session.status,
                 "total_tokens": session.total_tokens,
