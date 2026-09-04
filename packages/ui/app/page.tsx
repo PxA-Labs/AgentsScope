@@ -164,7 +164,7 @@ export default function Dashboard() {
       if (isCancelled) return;
       setWsStatus("connecting");
       try {
-        ws = new WebSocket(`${WS_BASE}/ws?client_type=ui`);
+        ws = new WebSocket(`${WS_BASE}/ws?client_type=ui&session_id=${activeSession.session_id}`);
 
         ws.onopen = () => {
           if (isCancelled) return;
@@ -178,9 +178,39 @@ export default function Dashboard() {
             const message = JSON.parse(event.data);
             if (message.type === "event" && message.session_id === activeSession.session_id) {
               addEvent(message.event);
-              // Refresh graph & stats when new terminal event lands
+              // Refresh stats when new terminal event lands
               if (message.event.event_type.endsWith("_end") || message.event.event_type.endsWith("_error")) {
                 fetchGraphAndStats(activeSession.session_id);
+              }
+            } else if (message.type === "graph_update" && message.session_id === activeSession.session_id) {
+              // Real-time live DAG streaming update
+              if (message.graph) {
+                setGraphData(message.graph);
+              } else if (message.node) {
+                setGraphData((prev) => {
+                  if (!prev) {
+                    return {
+                      nodes: [message.node],
+                      edges: message.edge ? [message.edge] : [],
+                    };
+                  }
+                  const existingIdx = prev.nodes.findIndex((n) => n.id === message.node.id);
+                  const newNodes = [...prev.nodes];
+                  if (existingIdx >= 0) {
+                    newNodes[existingIdx] = {
+                      ...newNodes[existingIdx],
+                      ...message.node,
+                      data: { ...newNodes[existingIdx].data, ...message.node.data },
+                    };
+                  } else {
+                    newNodes.push(message.node);
+                  }
+                  const newEdges = [...prev.edges];
+                  if (message.edge && !newEdges.some((e) => e.id === message.edge.id)) {
+                    newEdges.push(message.edge);
+                  }
+                  return { nodes: newNodes, edges: newEdges };
+                });
               }
             } else if (message.type === "session_update" && message.session_id === activeSession.session_id) {
               updateSessionMeta(message.session_id, message.session);
