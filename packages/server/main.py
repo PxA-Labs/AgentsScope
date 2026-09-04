@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from models import EventModel, SessionModel
 from pricing import calculate_cost as _calculate_llm_cost
+from retention import prune_old_sessions
 from routers import events, memories, sessions
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -22,77 +24,22 @@ logging.basicConfig(
 )
 
 
-async def prune_old_sessions() -> None:
-    """Prune old sessions based on RETENTION_DAYS and MAX_SESSIONS settings."""
-    retention_days_raw = os.getenv("RETENTION_DAYS")
-    max_sessions_raw = os.getenv("MAX_SESSIONS")
+async def _periodic_prune() -> None:
+    """Periodically execute database session pruning."""
+    interval_raw = os.getenv("AGENTSCOPE_PRUNE_INTERVAL_SECONDS", "3600")
+    try:
+        interval = int(interval_raw)
+    except ValueError:
+        interval = 3600
 
-    if not retention_days_raw and not max_sessions_raw:
-        return
-
-    from datetime import datetime, timedelta, timezone
-
-    from sqlalchemy import delete
-
-    async with async_session_maker() as db:
+    while True:
         try:
-            # 1. Prune by retention days
-            if retention_days_raw:
-                try:
-                    days = int(retention_days_raw)
-                    cutoff = datetime.now(timezone.utc).replace(
-                        tzinfo=None
-                    ) - timedelta(days=days)
-                    stmt = delete(SessionModel).where(SessionModel.started_at < cutoff)
-                    res = await db.execute(stmt)
-                    await db.commit()
-                    deleted_count = res.rowcount
-                    if deleted_count:
-                        logging.info(
-                            f"Pruned {deleted_count} sessions older than {days} days "
-                            f"(cutoff: {cutoff.isoformat()})"
-                        )
-                except ValueError:
-                    logging.warning(
-                        f"Invalid RETENTION_DAYS value: {retention_days_raw}"
-                    )
-
-            # 2. Prune by max session limit
-            if max_sessions_raw:
-                try:
-                    limit = int(max_sessions_raw)
-                    # Count current sessions
-                    cnt_stmt = select(func.count(SessionModel.session_id))
-                    cnt_res = await db.execute(cnt_stmt)
-                    total_sessions = cnt_res.scalar() or 0
-
-                    if total_sessions > limit:
-                        excess = total_sessions - limit
-                        # Retrieve the IDs of the oldest excess sessions
-                        old_stmt = (
-                            select(SessionModel.session_id)
-                            .order_by(SessionModel.started_at.asc())
-                            .limit(excess)
-                        )
-                        old_res = await db.execute(old_stmt)
-                        ids_to_delete = old_res.scalars().all()
-
-                        if ids_to_delete:
-                            del_stmt = delete(SessionModel).where(
-                                SessionModel.session_id.in_(ids_to_delete)
-                            )
-                            await db.execute(del_stmt)
-                            await db.commit()
-                            logging.info(
-                                f"Pruned {len(ids_to_delete)} oldest sessions "
-                                f"to enforce MAX_SESSIONS limit of {limit}."
-                            )
-                except ValueError:
-                    logging.warning(f"Invalid MAX_SESSIONS value: {max_sessions_raw}")
-
+            await asyncio.sleep(interval)
+            await prune_old_sessions()
+        except asyncio.CancelledError:
+            break
         except Exception as e:
-            logging.error(f"Error during database session pruning: {e}")
-            await db.rollback()
+            logging.error(f"Periodic pruning encountered error: {e}")
 
 
 @asynccontextmanager
@@ -102,9 +49,18 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     # Prune old sessions on startup
     await prune_old_sessions()
-    yield
-    # Teardown connection pool
-    await engine.dispose()
+    # Periodic pruning worker
+    prune_task = asyncio.create_task(_periodic_prune())
+    try:
+        yield
+    finally:
+        prune_task.cancel()
+        try:
+            await prune_task
+        except asyncio.CancelledError:
+            pass
+        # Teardown connection pool
+        await engine.dispose()
 
 
 app = FastAPI(

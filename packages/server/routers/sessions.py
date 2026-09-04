@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from graph_layout import compute_graph_layout
 from models import EventModel, SessionModel
 from pricing import calculate_cost as _calculate_llm_cost
+from retention import prune_old_sessions
 from schemas import (
     AgentStats,
     EventResponse,
@@ -441,3 +442,29 @@ async def import_session(
     await manager.broadcast_session_update(db_session.session_id, session_data)
 
     return db_session
+
+
+@router.post("/prune", response_model=Dict[str, Any])
+async def prune_sessions(
+    retention_days: Optional[int] = Query(
+        None, description="Prune sessions older than N days"
+    ),
+    max_sessions: Optional[int] = Query(
+        None, description="Prune oldest sessions if total count exceeds N"
+    ),
+    vacuum: bool = Query(
+        True, description="Execute SQLite auto-vacuum after pruning"
+    ),
+):
+    """Manually trigger session retention pruning and SQLite auto-vacuum."""
+    pruned = await prune_old_sessions(
+        retention_days=retention_days,
+        max_sessions=max_sessions,
+        vacuum=vacuum,
+    )
+    return {
+        "status": "success",
+        "pruned_sessions": pruned,
+        "vacuum_executed": vacuum and pruned > 0,
+    }
+
