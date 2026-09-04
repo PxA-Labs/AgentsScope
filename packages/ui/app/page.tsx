@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 import { PromptDiffViewer } from "../components/PromptDiffViewer";
 import { useSessionStore } from "../store/sessionStore";
 import { Session, AgentEvent, ReactFlowNode, ReactFlowEdge } from "../types";
@@ -25,6 +26,7 @@ import {
   Brain,
   Download,
   Upload,
+  GitCompare,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765";
@@ -558,6 +560,13 @@ export default function Dashboard() {
             >
               <Upload className={`w-4 h-4 ${isImporting ? "animate-spin text-purple-400" : ""}`} />
             </button>
+            <Link
+              href="/diff"
+              className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-white"
+              title="Visual Session Diffing"
+            >
+              <GitCompare className="w-4 h-4 text-purple-400" />
+            </Link>
             <button
               onClick={fetchSessionsList}
               className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-white"
@@ -660,6 +669,16 @@ export default function Dashboard() {
                   <Download className={`w-3.5 h-3.5 ${isExporting ? "animate-bounce" : ""}`} />
                   {isExporting ? "Exporting..." : "Export JSON"}
                 </button>
+                <Link
+                  href="/diff"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                             text-purple-300 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20
+                             transition-colors"
+                  title="Compare sessions side-by-side"
+                >
+                  <GitCompare className="w-3.5 h-3.5" />
+                  Compare
+                </Link>
                 <div className="flex bg-secondary/60 p-0.5 rounded-lg border border-border">
                   <button
                     onClick={() => setActiveTab("execution")}
