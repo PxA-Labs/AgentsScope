@@ -13,7 +13,13 @@ services:
       - sqlite_data:/app/data
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/agentscope.db
+      # To use PostgreSQL instead of SQLite:
+      # - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/agentscope
     restart: unless-stopped
+    # Uncomment if using the postgres service below:
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
 
   ui:
     build:
@@ -30,5 +36,25 @@ services:
       - server
     restart: unless-stopped
 
+  # Optional PostgreSQL storage backend (Issue #93)
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: agentscope-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=agentscope
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres -d agentscope"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+
 volumes:
   sqlite_data:
+  # pg_data:
