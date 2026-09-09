@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 try:
     from mem0 import MemoryClient
-except ImportError:
+except (ImportError, Exception):
     MemoryClient = None  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,8 @@ async def add_memory_async(
     text: str, session_id: str, agent_name: Optional[str] = None
 ) -> None:
     """Send memory to Mem0 without blocking server request ingestion."""
-    if not client:
+    c = get_mem0_client()
+    if not c:
         logger.debug("Mem0 client not configured, skipping memory addition.")
         return
 
@@ -48,7 +49,7 @@ async def add_memory_async(
             logger.info(
                 f"Extracting memory for session {session_id} from text: {text[:60]}..."
             )
-            res = client.add(text, user_id=session_id, metadata=metadata)
+            res = c.add(text, user_id=session_id, metadata=metadata)
             logger.info(f"Mem0 add response: {res}")
         except Exception as e:
             logger.error(f"Failed to add memory to Mem0: {e}")
@@ -58,51 +59,55 @@ async def add_memory_async(
 
 async def get_all_memories_async(session_id: str) -> Any:
     """Retrieve all memories for a session asynchronously."""
-    if not client:
+    c = get_mem0_client()
+    if not c:
         return []
-    return await asyncio.to_thread(client.get_all, filters={"user_id": session_id})
+    return await asyncio.to_thread(c.get_all, filters={"user_id": session_id})
 
 
 async def add_custom_memory_async(
     text: str, session_id: str, metadata: Optional[dict] = None
 ) -> Any:
     """Add a custom memory asynchronously."""
-    if not client:
+    c = get_mem0_client()
+    if not c:
         return None
     return await asyncio.to_thread(
-        client.add, text, user_id=session_id, metadata=metadata or {}
+        c.add, text, user_id=session_id, metadata=metadata or {}
     )
 
 
 async def search_memories_async(query: str, session_id: str) -> Any:
     """Search memories asynchronously."""
-    if not client:
+    c = get_mem0_client()
+    if not c:
         return []
-    return await asyncio.to_thread(
-        client.search, query, filters={"user_id": session_id}
-    )
+    return await asyncio.to_thread(c.search, query, filters={"user_id": session_id})
 
 
 async def update_memory_async(memory_id: str, text: str) -> Any:
     """Update a specific memory asynchronously."""
-    if not client:
+    c = get_mem0_client()
+    if not c:
         return None
-    return await asyncio.to_thread(client.update, memory_id, text)
+    return await asyncio.to_thread(c.update, memory_id, text)
 
 
 async def delete_memory_async(memory_id: str) -> Any:
     """Delete a specific memory asynchronously."""
-    if not client:
+    c = get_mem0_client()
+    if not c:
         return None
-    return await asyncio.to_thread(client.delete, memory_id)
+    return await asyncio.to_thread(c.delete, memory_id)
 
 
 async def delete_all_session_memories_async(session_id: str) -> Any:
     """Delete all memories for a session asynchronously."""
-    if not client:
+    c = get_mem0_client()
+    if not c:
         return None
-    if hasattr(client, "delete_all"):
-        return await asyncio.to_thread(client.delete_all, user_id=session_id)
+    if hasattr(c, "delete_all"):
+        return await asyncio.to_thread(c.delete_all, user_id=session_id)
 
     # Fallback deletion if client doesn't support delete_all directly
     memories = await get_all_memories_async(session_id)
@@ -119,4 +124,3 @@ async def delete_all_session_memories_async(session_id: str) -> Any:
             await delete_memory_async(m_id)
             deleted_count += 1
     return {"deleted": deleted_count}
-

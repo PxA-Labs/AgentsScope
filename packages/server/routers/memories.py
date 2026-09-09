@@ -128,4 +128,3 @@ async def delete_all_session_memories(session_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk delete session memories from Mem0: {e}",
         )
-

@@ -7,9 +7,11 @@ from main import app
 
 @pytest.fixture
 def mock_mem0_client():
-    with patch("routers.memories.get_mem0_client") as mock_get:
-        mock_client = MagicMock()
-        mock_get.return_value = mock_client
+    mock_client = MagicMock()
+    with (
+        patch("routers.memories.get_mem0_client", return_value=mock_client),
+        patch("mem0_integration.get_mem0_client", return_value=mock_client),
+    ):
         yield mock_client
 
 
@@ -107,4 +109,3 @@ async def test_memories_api(mock_mem0_client):
         data = res.json()
         assert data["message"] == "All deleted"
         mock_mem0_client.delete_all.assert_called_once_with(user_id=session_id)
-
