@@ -153,4 +153,3 @@ def estimate_tokens(
     except ImportError:
         # Fallback to character-based heuristic (~4 chars per token)
         return max(1, len(text) // 4)
-
