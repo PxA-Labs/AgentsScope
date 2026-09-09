@@ -75,22 +75,49 @@ class ConnectionManager:
 
     async def broadcast_to_session_ui(self, session_id: str, message: dict) -> None:
         """Send an event broadcast to UI clients listening to a specific session."""
+        targets = set()
         if session_id in self.ui_connections:
-            message_str = json.dumps(message)
-            disconnected = set()
-            for connection in list(self.ui_connections[session_id]):
-                try:
-                    await connection.send_text(message_str)
-                except Exception as e:
-                    safe_session_id = self._sanitize_for_log(session_id)
-                    logging.warning(
-                        "Failed to send websocket message to UI client for "
-                        f"session {safe_session_id}: {e}"
-                    )
-                    disconnected.add(connection)
+            targets.update(self.ui_connections[session_id])
+        targets.update(self.global_ui_connections)
 
-            for connection in disconnected:
+        if not targets:
+            return
+
+        message_str = json.dumps(message)
+        disconnected = set()
+        for connection in list(targets):
+            try:
+                await connection.send_text(message_str)
+            except Exception as e:
+                safe_session_id = self._sanitize_for_log(session_id)
+                logging.warning(
+                    "Failed to send websocket message to UI client for "
+                    f"session {safe_session_id}: {e}"
+                )
+                disconnected.add(connection)
+
+        for connection in disconnected:
+            if session_id in self.ui_connections:
                 self.ui_connections[session_id].discard(connection)
+            self.global_ui_connections.discard(connection)
+
+    async def broadcast_graph_update(
+        self,
+        session_id: str,
+        node: dict,
+        edge: dict | None,
+        graph: dict | None = None,
+    ) -> None:
+        """Broadcast incremental live DAG node updates and graph layouts."""
+        payload = {
+            "type": "graph_update",
+            "session_id": session_id,
+            "node": node,
+            "edge": edge,
+        }
+        if graph is not None:
+            payload["graph"] = graph
+        await self.broadcast_to_session_ui(session_id, payload)
 
     async def broadcast_session_update(
         self, session_id: str, session_data: dict
