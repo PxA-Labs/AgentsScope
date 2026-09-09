@@ -452,9 +452,7 @@ async def prune_sessions(
     max_sessions: Optional[int] = Query(
         None, description="Prune oldest sessions if total count exceeds N"
     ),
-    vacuum: bool = Query(
-        True, description="Execute SQLite auto-vacuum after pruning"
-    ),
+    vacuum: bool = Query(True, description="Execute SQLite auto-vacuum after pruning"),
 ):
     """Manually trigger session retention pruning and SQLite auto-vacuum."""
     pruned = await prune_old_sessions(
@@ -467,4 +465,3 @@ async def prune_sessions(
         "pruned_sessions": pruned,
         "vacuum_executed": vacuum and pruned > 0,
     }
-

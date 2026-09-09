@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from database import async_session_maker, vacuum_database
+import database
 from models import SessionModel
 from sqlalchemy import delete, func, select
 
@@ -14,6 +14,7 @@ async def prune_old_sessions(
     retention_days: Optional[int] = None,
     max_sessions: Optional[int] = None,
     vacuum: bool = True,
+    session_maker=None,
 ) -> int:
     """Prune old sessions based on retention policies and run SQLite VACUUM."""
     retention_days_raw = (
@@ -31,7 +32,8 @@ async def prune_old_sessions(
         return 0
 
     total_pruned = 0
-    async with async_session_maker() as db:
+    maker = session_maker or database.async_session_maker
+    async with maker() as db:
         try:
             # 1. Prune by retention days
             if retention_days_raw:
@@ -40,9 +42,7 @@ async def prune_old_sessions(
                     cutoff = datetime.now(timezone.utc).replace(
                         tzinfo=None
                     ) - timedelta(days=days)
-                    stmt = delete(SessionModel).where(
-                        SessionModel.started_at < cutoff
-                    )
+                    stmt = delete(SessionModel).where(SessionModel.started_at < cutoff)
                     res = await db.execute(stmt)
                     await db.commit()
                     deleted_count = res.rowcount or 0
@@ -87,12 +87,10 @@ async def prune_old_sessions(
                                 f"to enforce max sessions limit of {limit}."
                             )
                 except ValueError:
-                    logger.warning(
-                        f"Invalid max sessions value: {max_sessions_raw}"
-                    )
+                    logger.warning(f"Invalid max sessions value: {max_sessions_raw}")
 
             if total_pruned > 0 and vacuum:
-                await vacuum_database()
+                await database.vacuum_database()
         except Exception as e:
             logger.error(f"Error during database session pruning: {e}")
             await db.rollback()
