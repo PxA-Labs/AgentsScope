@@ -25,6 +25,9 @@ agentscope = "agentscope.cli:main"
 langchain = [
     "langchain-core>=1.6.1",
 ]
+tiktoken = [
+    "tiktoken>=0.7.0",
+]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",

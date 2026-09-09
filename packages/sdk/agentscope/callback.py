@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID
 
-from agentscope._pricing import calculate_cost
+from agentscope._pricing import calculate_cost, estimate_tokens
 from agentscope.client import AgentScopeClient
 from agentscope.exceptions import BudgetExceededError
 
@@ -324,6 +324,20 @@ class AgentScopeCallback(AsyncCallbackHandler):
                         if (prompt_tokens is not None and completion_tokens is not None)
                         else None
                     )
+
+            # Fallback to local token estimation if API endpoints return
+            # null or empty token metrics
+            if prompt_tokens is None and prompts:
+                prompt_text = (
+                    "\n".join(prompts) if isinstance(prompts, list) else str(prompts)
+                )
+                prompt_tokens = estimate_tokens(prompt_text, model)
+            if completion_tokens is None and completion:
+                completion_tokens = estimate_tokens(completion, model)
+            if total_tokens is None and (
+                prompt_tokens is not None or completion_tokens is not None
+            ):
+                total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
 
             # Calculate and accumulate cost
             call_cost = calculate_cost(model, prompt_tokens, completion_tokens)
