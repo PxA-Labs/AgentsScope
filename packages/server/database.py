@@ -27,8 +27,18 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA journal_mode=WAL;")
         cursor.execute("PRAGMA foreign_keys=ON;")
         cursor.execute("PRAGMA busy_timeout=5000;")
+        cursor.execute("PRAGMA auto_vacuum = FULL;")
     finally:
         cursor.close()
+
+
+async def vacuum_database() -> None:
+    """Run VACUUM on SQLite database to reclaim free space and defragment."""
+    if engine.dialect.name == "sqlite":
+        from sqlalchemy import text
+
+        async with engine.begin() as conn:
+            await conn.execute(text("VACUUM;"))
 
 
 # Async session factory

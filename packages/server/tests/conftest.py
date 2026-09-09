@@ -3,6 +3,16 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+if "mem0" not in sys.modules:
+    try:
+        import mem0  # noqa: F401
+    except Exception:
+        from unittest.mock import MagicMock
+
+        mock_mem0 = MagicMock()
+        mock_mem0.MemoryClient = MagicMock
+        sys.modules["mem0"] = mock_mem0
+
 import database
 import main
 import pytest_asyncio
@@ -35,6 +45,12 @@ async def db_engine():
     )
     database.async_session_maker = test_session_maker
     main.async_session_maker = test_session_maker
+    try:
+        import retention
+
+        retention.async_session_maker = test_session_maker
+    except ImportError:
+        pass
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
