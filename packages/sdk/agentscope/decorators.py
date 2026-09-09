@@ -17,6 +17,7 @@ except ImportError:
             return None
         return max(1, len(text) // 4)
 
+
 from agentscope.client import AgentScopeClient
 
 # ContextVar to track the hierarchy of traces in a thread/async context
@@ -635,9 +636,7 @@ def _extract_tool_input(func: Callable[..., Any], args: tuple, kwargs: dict) -> 
     return ""
 
 
-def _make_tool_decorator(
-    func: Callable[..., Any], name: str
-) -> Callable[..., Any]:
+def _make_tool_decorator(func: Callable[..., Any], name: str) -> Callable[..., Any]:
     @functools.wraps(func)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
         client = None
@@ -909,9 +908,7 @@ def _make_retriever_decorator(
             latency = int((time.perf_counter() - start_time) * 1000)
 
             docs = (
-                [str(d) for d in result]
-                if isinstance(result, list)
-                else [str(result)]
+                [str(d) for d in result] if isinstance(result, list) else [str(result)]
             )
 
             if client:
@@ -1004,9 +1001,7 @@ def _make_retriever_decorator(
             latency = int((time.perf_counter() - start_time) * 1000)
 
             docs = (
-                [str(d) for d in result]
-                if isinstance(result, list)
-                else [str(result)]
+                [str(d) for d in result] if isinstance(result, list) else [str(result)]
             )
 
             if client:
@@ -1061,4 +1056,3 @@ def _make_retriever_decorator(
     if inspect.iscoroutinefunction(func):
         return async_wrapper
     return sync_wrapper
-
