@@ -418,9 +418,7 @@ async def process_single_event(event_data: dict, sess_id: str) -> None:
                     "type": node_type,
                     "position": {"x": 0, "y": 0},
                     "data": {
-                        "label": (
-                            db_event.agent_name or node_type.replace("Node", "")
-                        ),
+                        "label": (db_event.agent_name or node_type.replace("Node", "")),
                         "agentName": db_event.agent_name,
                         "eventType": db_event.event_type,
                         "durationMs": db_event.latency_ms,
