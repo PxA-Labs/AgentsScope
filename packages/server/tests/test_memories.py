@@ -53,6 +53,27 @@ async def test_memories_api(mock_mem0_client):
             "User likes programming", user_id=session_id, metadata={"tag": "code"}
         )
 
+    # 2b. Test add with categories
+    mock_mem0_client.add.reset_mock()
+    mock_mem0_client.add.return_value = {"event_id": "evt-cat", "status": "PENDING"}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        res = await ac.post(
+            f"/api/sessions/{session_id}/memories",
+            json={
+                "text": "User prefers dark mode",
+                "categories": ["preferences", "ui"],
+            },
+        )
+        assert res.status_code == 200
+        mock_mem0_client.add.assert_called_once_with(
+            "User prefers dark mode",
+            user_id=session_id,
+            metadata={"categories": ["preferences", "ui"]},
+            categories=["preferences", "ui"],
+        )
+
     # 3. Test search
     mock_mem0_client.search.return_value = {
         "results": [{"id": "mem-2", "memory": "relevant memory"}]

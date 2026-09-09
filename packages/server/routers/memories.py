@@ -51,16 +51,18 @@ async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
     client = verify_mem0_client()
     try:
         metadata = dict(payload.metadata or {})
-        if payload.categories:
+        if payload.categories is not None:
             metadata["categories"] = payload.categories
-        try:
-            res = client.add(
-                payload.text,
-                user_id=session_id,
-                metadata=metadata,
-                categories=payload.categories,
-            )
-        except TypeError:
+            try:
+                res = client.add(
+                    payload.text,
+                    user_id=session_id,
+                    metadata=metadata,
+                    categories=payload.categories,
+                )
+            except TypeError:
+                res = client.add(payload.text, user_id=session_id, metadata=metadata)
+        else:
             res = client.add(payload.text, user_id=session_id, metadata=metadata)
         return res
     except Exception as e:
