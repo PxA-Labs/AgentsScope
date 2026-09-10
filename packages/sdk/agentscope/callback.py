@@ -7,6 +7,7 @@ from uuid import UUID
 from agentscope._pricing import calculate_cost
 from agentscope.client import AgentScopeClient
 from agentscope.exceptions import BudgetExceededError
+from agentscope.token_counter import estimate_tokens
 
 # Gracefully handle missing langchain-core dependencies
 try:
@@ -324,6 +325,24 @@ class AgentScopeCallback(AsyncCallbackHandler):
                         if (prompt_tokens is not None and completion_tokens is not None)
                         else None
                     )
+
+            # Fallback to local token estimation if model metrics are empty
+            if prompt_tokens is None or prompt_tokens == 0:
+                if prompts:
+                    prompt_text = (
+                        "\n".join(prompts)
+                        if isinstance(prompts, list)
+                        else str(prompts)
+                    )
+                    prompt_tokens = estimate_tokens(prompt_text, model)
+
+            if completion_tokens is None or completion_tokens == 0:
+                if completion:
+                    completion_tokens = estimate_tokens(completion, model)
+
+            if total_tokens is None or total_tokens == 0:
+                if prompt_tokens is not None or completion_tokens is not None:
+                    total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
 
             # Calculate and accumulate cost
             call_cost = calculate_cost(model, prompt_tokens, completion_tokens)
