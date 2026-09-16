@@ -16,14 +16,14 @@
     "reactflow": "^11.10.3",
     "recharts": "^3.10.1",
     "zustand": "^5.0.15",
-    "swr": "^2.5.0",
+    "swr": "^2.5.1",
     "clsx": "^2.1.0",
     "tailwind-merge": "^3.6.0",
-    "lucide-react": "^1.29.0"
+    "lucide-react": "^1.44.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.4.1",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "tailwindcss": "^3.4.1",

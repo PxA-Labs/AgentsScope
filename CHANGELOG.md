@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-27
+## [Unreleased] - 2026-09-16
 
 ### Added
-- **ui**: Implement WebSocket exponential backoff and connection status indicator
+- **ui**: Implement visual session diffing and comparative timeline viewer
 
 ## [1.0.0] - 2026-08-10
 
