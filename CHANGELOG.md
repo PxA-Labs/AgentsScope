@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-16
 
 ### Added
-- **ui**: Implement visual session diffing and comparative timeline viewer
+- **server,ops**: Add PostgreSQL support with asyncpg and connection pooling
 
 ## [1.0.0] - 2026-08-10
 
