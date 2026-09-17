@@ -5,13 +5,11 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **sdk**: Implement raw OpenAI API telemetry wrapper
+- **server**: Wrap Mem0 operations in async threads and add missing APIs
 
 ### Fixed
-- **sdk**: Emit OpenAI call cost and trace streaming responses correctly
-
-### Style
-- **sdk**: Apply black formatting to __init__
+- **server**: Scope memory mutations to their session
+- **server**: Resolve async memory client mocking and format code
 
 ## [1.0.0] - 2026-08-10
 
