@@ -12,8 +12,34 @@ from sqlalchemy.orm import declarative_base
 # Default to local SQLite file
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./agentscope.db")
 
+# Normalize PostgreSQL schemes to asyncpg if standard scheme provided
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+
+# Configure engine options based on dialect
+engine_kwargs = {"echo": False}
+if DATABASE_URL.startswith("postgresql+asyncpg://"):
+    try:
+        pool_size = int(os.getenv("DB_POOL_SIZE", "10"))
+    except ValueError:
+        pool_size = 10
+    try:
+        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+    except ValueError:
+        max_overflow = 20
+
+    engine_kwargs.update(
+        {
+            "pool_pre_ping": True,
+            "pool_size": pool_size,
+            "max_overflow": max_overflow,
+        }
+    )
+
 # Create asynchronous engine
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 
 # Listen to connect event to configure SQLite options (WAL & Foreign Keys)
