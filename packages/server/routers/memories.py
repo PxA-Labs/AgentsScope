@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, status
 from mem0_integration import get_mem0_client
@@ -10,6 +10,7 @@ router = APIRouter(prefix="/sessions/{session_id}/memories", tags=["memories"])
 class MemoryCreateRequest(BaseModel):
     text: str
     metadata: Optional[Dict[str, Any]] = None
+    categories: Optional[List[str]] = None
 
 
 class MemorySearchRequest(BaseModel):
@@ -49,7 +50,11 @@ async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
     """Manually add a memory to this session."""
     client = verify_mem0_client()
     try:
-        metadata = payload.metadata or {}
+        metadata = dict(payload.metadata or {})
+        # Categories travel in metadata so a single write works across Mem0
+        # client versions, and the UI reads them back from metadata.categories.
+        if payload.categories is not None:
+            metadata["categories"] = payload.categories
         res = client.add(payload.text, user_id=session_id, metadata=metadata)
         return res
     except Exception as e:

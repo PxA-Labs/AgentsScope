@@ -4,7 +4,13 @@ import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { PromptDiffViewer } from "../components/PromptDiffViewer";
 import { useSessionStore } from "../store/sessionStore";
-import { Session, AgentEvent, ReactFlowNode, ReactFlowEdge } from "../types";
+import {
+  Session,
+  AgentEvent,
+  MemoryItem,
+  ReactFlowNode,
+  ReactFlowEdge,
+} from "../types";
 import {
   Activity,
   Layers,
@@ -26,6 +32,7 @@ import {
   Brain,
   Download,
   Upload,
+  Tag,
   GitCompare,
 } from "lucide-react";
 
@@ -58,10 +65,11 @@ export default function Dashboard() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"execution" | "memories">("execution");
-  const [memories, setMemories] = useState<any[]>([]);
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [memoryQuery, setMemoryQuery] = useState("");
   const [isSearchingMemories, setIsSearchingMemories] = useState(false);
   const [newMemoryText, setNewMemoryText] = useState("");
+  const [newMemoryCategories, setNewMemoryCategories] = useState("");
   const [isAddingMemory, setIsAddingMemory] = useState(false);
   const [mem0Error, setMem0Error] = useState<string | null>(null);
 
@@ -331,16 +339,27 @@ export default function Dashboard() {
     try {
       setIsAddingMemory(true);
       setMem0Error(null);
+      const parsedCategories = newMemoryCategories
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+      const payload: { text: string; categories?: string[] } = {
+        text: newMemoryText,
+      };
+      if (parsedCategories.length > 0) {
+        payload.categories = parsedCategories;
+      }
       const res = await fetch(
         getApiUrl(`/api/sessions/${activeSession.session_id}/memories`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: newMemoryText }),
+          body: JSON.stringify(payload),
         }
       );
       if (res.ok) {
         setNewMemoryText("");
+        setNewMemoryCategories("");
         setTimeout(fetchMemories, 1000);
       } else {
         const errData = await res.json();
@@ -1033,18 +1052,25 @@ export default function Dashboard() {
                   </form>
 
                   {/* Add Memory */}
-                  <form onSubmit={handleAddMemory} className="glass-panel p-4 rounded-2xl border border-border flex items-center gap-3 bg-card/40">
+                  <form onSubmit={handleAddMemory} className="glass-panel p-4 rounded-2xl border border-border flex flex-col sm:flex-row items-center gap-3 bg-card/40">
                     <input
                       type="text"
                       placeholder="Add a new custom memory..."
                       value={newMemoryText}
                       onChange={(e) => setNewMemoryText(e.target.value)}
-                      className="flex-1 bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
+                      className="flex-1 w-full bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Categories (e.g. preferences, facts)..."
+                      value={newMemoryCategories}
+                      onChange={(e) => setNewMemoryCategories(e.target.value)}
+                      className="w-full sm:w-60 bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
                     />
                     <button
                       type="submit"
                       disabled={isAddingMemory || !newMemoryText.trim()}
-                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 font-bold text-xs text-white transition-all duration-200 disabled:opacity-50"
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 font-bold text-xs text-white transition-all duration-200 disabled:opacity-50 whitespace-nowrap"
                     >
                       {isAddingMemory ? "Adding..." : "Add Memory"}
                     </button>
@@ -1078,6 +1104,11 @@ export default function Dashboard() {
                         {memories.map((m) => {
                           const dateStr = m.created_at ? new Date(m.created_at).toLocaleString() : "";
                           const agentName = m.metadata?.agent_name || m.metadata?.agent;
+                          // Prefer top-level categories, falling back to metadata. A single
+                          // resolved list keeps the render guard and the map in sync.
+                          const cats: string[] = m.categories?.length
+                            ? m.categories
+                            : m.metadata?.categories ?? [];
                           return (
                             <div
                               key={m.id}
@@ -1099,10 +1130,20 @@ export default function Dashboard() {
                                     Agent: {agentName}
                                   </span>
                                 )}
-                                {m.categories && m.categories.length > 0 && (
-                                  <span className="bg-blue-900/30 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-md">
-                                    {m.categories.join(", ")}
-                                  </span>
+                                {cats.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {cats.map(
+                                      (cat, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="bg-blue-900/30 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-md flex items-center gap-1"
+                                        >
+                                          <Tag className="w-2.5 h-2.5" />
+                                          {cat}
+                                        </span>
+                                      )
+                                    )}
+                                  </div>
                                 )}
                               </div>
                               <button
