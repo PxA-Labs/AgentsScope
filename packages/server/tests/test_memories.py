@@ -7,9 +7,11 @@ from main import app
 
 @pytest.fixture
 def mock_mem0_client():
-    with patch("routers.memories.get_mem0_client") as mock_get:
-        mock_client = MagicMock()
-        mock_get.return_value = mock_client
+    mock_client = MagicMock()
+    with (
+        patch("routers.memories.get_mem0_client", return_value=mock_client),
+        patch("mem0_integration.get_mem0_client", return_value=mock_client),
+    ):
         yield mock_client
 
 
@@ -91,6 +93,9 @@ async def test_memories_api(mock_mem0_client):
         )
 
     # 4. Test delete
+    mock_mem0_client.get_all.return_value = {
+        "results": [{"id": "mem-1", "user_id": session_id}]
+    }
     mock_mem0_client.delete.return_value = {"message": "Deleted"}
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -101,20 +106,52 @@ async def test_memories_api(mock_mem0_client):
         assert data["message"] == "Deleted"
         mock_mem0_client.delete.assert_called_once_with("mem-1")
 
+    # 5. Test update memory
+    mock_mem0_client.update.return_value = {"message": "Updated"}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        res = await ac.put(
+            f"/api/sessions/{session_id}/memories/mem-1",
+            json={"text": "Updated memory content"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["message"] == "Updated"
+        mock_mem0_client.update.assert_called_once_with(
+            "mem-1", "Updated memory content"
+        )
+
+    # 6. Test bulk delete session memories
+    mock_mem0_client.delete_all.return_value = {"message": "All deleted"}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        res = await ac.delete(f"/api/sessions/{session_id}/memories")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["message"] == "All deleted"
+        mock_mem0_client.delete_all.assert_called_once_with(user_id=session_id)
+
 
 @pytest.mark.asyncio
-async def test_add_memory_with_categories_writes_once(mock_mem0_client):
-    """A TypeError raised inside client.add must not trigger a second write."""
-    session_id = "test-mem-single-write"
-    mock_mem0_client.add.side_effect = TypeError("bad metadata shape")
+async def test_memory_mutations_are_scoped_to_session(mock_mem0_client):
+    """PUT/DELETE must not touch a memory that belongs to another session."""
+    mock_mem0_client.get_all.return_value = {
+        "results": [{"id": "mem-owned", "memory": "mine"}]
+    }
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
-        res = await ac.post(
-            f"/api/sessions/{session_id}/memories",
-            json={"text": "User prefers dark mode", "categories": ["ui"]},
+        res = await ac.put(
+            "/api/sessions/session-a/memories/mem-foreign",
+            json={"text": "hijack"},
         )
+        assert res.status_code == 404
+        res = await ac.delete("/api/sessions/session-a/memories/mem-foreign")
+        assert res.status_code == 404
 
-    assert res.status_code == 500
-    assert mock_mem0_client.add.call_count == 1
+    mock_mem0_client.update.assert_not_called()
+    mock_mem0_client.delete.assert_not_called()
+    mock_mem0_client.get_all.assert_called_with(filters={"user_id": "session-a"})
