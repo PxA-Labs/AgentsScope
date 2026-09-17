@@ -5,13 +5,11 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **server,ui**: Implement real-time dynamic DAG streaming over WebSockets
+- **ui,server**: Add category tags input and pills for session memories
 
 ### Fixed
-- **server,ui**: Stream incremental DAG updates without full recompute
-
-### Style
-- **server**: Apply black formatting to main.py
+- **ui,server**: Address review on memory category tags
+- **server**: Preserve client.add signature compatibility and add test for category tags
 
 ## [1.0.0] - 2026-08-10
 
