@@ -5,11 +5,13 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **server**: Implement retention policies and database auto-vacuum
+- **sdk**: Implement raw OpenAI API telemetry wrapper
 
 ### Fixed
-- **server**: Run VACUUM safely and drop unauthenticated prune endpoint
-- **server**: Resolve test engine binding in retention and format code
+- **sdk**: Emit OpenAI call cost and trace streaming responses correctly
+
+### Style
+- **sdk**: Apply black formatting to __init__
 
 ## [1.0.0] - 2026-08-10
 
