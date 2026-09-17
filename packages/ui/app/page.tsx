@@ -185,31 +185,41 @@ export default function Dashboard() {
                 fetchGraphAndStats(activeSession.session_id);
               }
             } else if (message.type === "graph_update" && message.session_id === activeSession.session_id) {
-              // Real-time live DAG streaming update
-              if (message.graph) {
-                setGraphData(message.graph);
-              } else if (message.node) {
+              // Live DAG streaming: merge the incremental node/edge. The full
+              // layout is resynced from the REST graph endpoint on terminal events.
+              if (message.node) {
+                const node: ReactFlowNode = message.node;
+                const edge: ReactFlowEdge | null = message.edge;
                 setGraphData((prev) => {
                   if (!prev) {
                     return {
-                      nodes: [message.node],
-                      edges: message.edge ? [message.edge] : [],
+                      nodes: [node],
+                      edges: edge ? [edge] : [],
                     };
                   }
-                  const existingIdx = prev.nodes.findIndex((n) => n.id === message.node.id);
+                  const existingIdx = prev.nodes.findIndex((n) => n.id === node.id);
                   const newNodes = [...prev.nodes];
                   if (existingIdx >= 0) {
+                    // Keep the laid-out position; only refresh node data.
                     newNodes[existingIdx] = {
                       ...newNodes[existingIdx],
-                      ...message.node,
-                      data: { ...newNodes[existingIdx].data, ...message.node.data },
+                      data: { ...newNodes[existingIdx].data, ...node.data },
                     };
                   } else {
-                    newNodes.push(message.node);
+                    // Place new nodes provisionally below their parent, offset
+                    // by existing siblings, until the next layout resync.
+                    const parent = edge ? prev.nodes.find((n) => n.id === edge.source) : undefined;
+                    const siblings = edge ? prev.edges.filter((e) => e.source === edge.source).length : 0;
+                    newNodes.push({
+                      ...node,
+                      position: parent
+                        ? { x: parent.position.x + siblings * 280, y: parent.position.y + 180 }
+                        : node.position,
+                    });
                   }
                   const newEdges = [...prev.edges];
-                  if (message.edge && !newEdges.some((e) => e.id === message.edge.id)) {
-                    newEdges.push(message.edge);
+                  if (edge && !newEdges.some((e) => e.id === edge.id)) {
+                    newEdges.push(edge);
                   }
                   return { nodes: newNodes, edges: newEdges };
                 });
