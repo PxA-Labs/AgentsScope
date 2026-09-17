@@ -15,7 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "websockets>=16.1.1",
-    "pydantic>=2.13.4",
+    "pydantic>=2.13.5",
 ]
 
 [project.scripts]
@@ -23,13 +23,16 @@ agentscope = "agentscope.cli:main"
 
 [project.optional-dependencies]
 langchain = [
-    "langchain-core>=1.6.1",
+    "langchain-core>=1.6.2",
+]
+tiktoken = [
+    "tiktoken>=0.7.0",
 ]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "black>=26.5.1",
-    "ruff>=0.16.5",
+    "ruff>=0.16.7",
 ]
 
 [tool.black]

@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
 
       - name: Run OpenSSF Scorecard Analysis
-        uses: ossf/scorecard-action@62b2cac7ed8198b15735db800459828253a1b017 # v2.4.1
+        uses: ossf/scorecard-action@v2.4.1
         with:
           results_file: results.sarif
           results_format: sarif
@@ -42,13 +42,13 @@ jobs:
           publish_results: true
 
       - name: Upload Scorecard Artifact
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: OpenSSF Scorecard Report
           path: results.sarif
           retention-days: 14
 
       - name: Upload to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           sarif_file: results.sarif

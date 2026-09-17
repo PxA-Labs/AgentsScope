@@ -2,10 +2,13 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-08-27
+## [Unreleased] - 2026-09-17
 
 ### Added
-- **ui**: Implement WebSocket exponential backoff and connection status indicator
+- **sdk**: Optional tiktoken integration for local and fallback token counting
+
+### Style
+- **sdk**: Format _pricing with black for CI compliance
 
 ## [1.0.0] - 2026-08-10
 
