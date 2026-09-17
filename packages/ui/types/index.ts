@@ -131,7 +131,7 @@ export interface StatsResponse {
 }
 
 export interface MemoryItem {
-  id?: string;
+  id: string;
   memory?: string;
   text?: string;
   categories?: string[];
@@ -140,4 +140,3 @@ export interface MemoryItem {
   updated_at?: string;
   score?: number;
 }
-

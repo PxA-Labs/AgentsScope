@@ -4,7 +4,13 @@ import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { PromptDiffViewer } from "../components/PromptDiffViewer";
 import { useSessionStore } from "../store/sessionStore";
-import { Session, AgentEvent, ReactFlowNode, ReactFlowEdge } from "../types";
+import {
+  Session,
+  AgentEvent,
+  MemoryItem,
+  ReactFlowNode,
+  ReactFlowEdge,
+} from "../types";
 import {
   Activity,
   Layers,
@@ -59,7 +65,7 @@ export default function Dashboard() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"execution" | "memories">("execution");
-  const [memories, setMemories] = useState<any[]>([]);
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [memoryQuery, setMemoryQuery] = useState("");
   const [isSearchingMemories, setIsSearchingMemories] = useState(false);
   const [newMemoryText, setNewMemoryText] = useState("");
@@ -1058,6 +1064,11 @@ export default function Dashboard() {
                         {memories.map((m) => {
                           const dateStr = m.created_at ? new Date(m.created_at).toLocaleString() : "";
                           const agentName = m.metadata?.agent_name || m.metadata?.agent;
+                          // Prefer top-level categories, falling back to metadata. A single
+                          // resolved list keeps the render guard and the map in sync.
+                          const cats: string[] = m.categories?.length
+                            ? m.categories
+                            : m.metadata?.categories ?? [];
                           return (
                             <div
                               key={m.id}
@@ -1079,11 +1090,10 @@ export default function Dashboard() {
                                     Agent: {agentName}
                                   </span>
                                 )}
-                                {((m.categories && m.categories.length > 0) ||
-                                  (m.metadata?.categories && m.metadata.categories.length > 0)) && (
+                                {cats.length > 0 && (
                                   <div className="flex flex-wrap items-center gap-1">
-                                    {(m.categories || m.metadata?.categories).map(
-                                      (cat: string, idx: number) => (
+                                    {cats.map(
+                                      (cat, idx) => (
                                         <span
                                           key={idx}
                                           className="bg-blue-900/30 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-md flex items-center gap-1"
