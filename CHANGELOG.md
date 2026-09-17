@@ -4,8 +4,11 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-09-17
 
-### Miscellaneous
-- Build(deps): bump codeql-action autobuild and analyze to v4.38.0
+### Added
+- **sdk**: Optional tiktoken integration for local and fallback token counting
+
+### Style
+- **sdk**: Format _pricing with black for CI compliance
 
 ## [1.0.0] - 2026-08-10
 
