@@ -5,11 +5,13 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **server**: Wrap Mem0 operations in async threads and add missing APIs
+- **sdk**: Add specialized trace decorators for custom LLMs, tools, and retrievers
 
-### Fixed
-- **server**: Scope memory mutations to their session
-- **server**: Resolve async memory client mocking and format code
+### Refactor
+- **sdk**: Consolidate trace decorators into one factory
+
+### Style
+- **sdk**: Apply black formatting to decorators and __init__
 
 ## [1.0.0] - 2026-08-10
 
