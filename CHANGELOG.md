@@ -5,10 +5,11 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **sdk**: Optional tiktoken integration for local and fallback token counting
+- **server**: Wrap Mem0 operations in async threads and add missing APIs
 
-### Style
-- **sdk**: Format _pricing with black for CI compliance
+### Fixed
+- **server**: Scope memory mutations to their session
+- **server**: Resolve async memory client mocking and format code
 
 ## [1.0.0] - 2026-08-10
 
