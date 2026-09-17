@@ -5,10 +5,13 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **sdk**: Optional tiktoken integration for local and fallback token counting
+- **server,ui**: Implement real-time dynamic DAG streaming over WebSockets
+
+### Fixed
+- **server,ui**: Stream incremental DAG updates without full recompute
 
 ### Style
-- **sdk**: Format _pricing with black for CI compliance
+- **server**: Apply black formatting to main.py
 
 ## [1.0.0] - 2026-08-10
 
