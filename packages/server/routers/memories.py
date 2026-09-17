@@ -7,6 +7,7 @@ from mem0_integration import (
     delete_memory_async,
     get_all_memories_async,
     get_mem0_client,
+    memory_belongs_to_session,
     search_memories_async,
     update_memory_async,
 )
@@ -39,6 +40,22 @@ def verify_mem0_client():
             ),
         )
     return client
+
+
+async def verify_memory_ownership(session_id: str, memory_id: str) -> None:
+    """Reject access to memories that are not scoped to ``session_id``."""
+    try:
+        owned = await memory_belongs_to_session(memory_id, session_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to verify memory ownership in Mem0: {e}",
+        )
+    if not owned:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found in this session",
+        )
 
 
 @router.get("")
@@ -92,6 +109,7 @@ async def update_session_memory(
 ):
     """Update an existing memory text by its ID."""
     verify_mem0_client()
+    await verify_memory_ownership(session_id, memory_id)
     try:
         res = await update_memory_async(memory_id, payload.text)
         return res
@@ -106,6 +124,7 @@ async def update_session_memory(
 async def delete_session_memory(session_id: str, memory_id: str):
     """Delete a specific memory by its ID."""
     verify_mem0_client()
+    await verify_memory_ownership(session_id, memory_id)
     try:
         res = await delete_memory_async(memory_id)
         return res

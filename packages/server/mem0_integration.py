@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 try:
     from mem0 import MemoryClient
-except (ImportError, Exception):
+except ImportError:
     MemoryClient = None  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,27 @@ async def get_all_memories_async(session_id: str) -> Any:
     return await asyncio.to_thread(c.get_all, filters={"user_id": session_id})
 
 
+def _extract_memory_items(memories: Any) -> list:
+    """Normalise Mem0 list responses (plain list or ``{"results": [...]}``)."""
+    if isinstance(memories, list):
+        return memories
+    if isinstance(memories, dict) and isinstance(memories.get("results"), list):
+        return memories["results"]
+    return []
+
+
+def _memory_item_id(item: Any) -> Optional[str]:
+    return item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+
+
+async def memory_belongs_to_session(memory_id: str, session_id: str) -> bool:
+    """Return True if ``memory_id`` is one of the memories scoped to ``session_id``."""
+    memories = await get_all_memories_async(session_id)
+    return any(
+        _memory_item_id(item) == memory_id for item in _extract_memory_items(memories)
+    )
+
+
 async def add_custom_memory_async(
     text: str, session_id: str, metadata: Optional[dict] = None
 ) -> Any:
@@ -111,15 +132,9 @@ async def delete_all_session_memories_async(session_id: str) -> Any:
 
     # Fallback deletion if client doesn't support delete_all directly
     memories = await get_all_memories_async(session_id)
-    items = []
-    if isinstance(memories, list):
-        items = memories
-    elif isinstance(memories, dict) and "results" in memories:
-        items = memories["results"]
-
     deleted_count = 0
-    for m in items:
-        m_id = m.get("id") if isinstance(m, dict) else getattr(m, "id", None)
+    for m in _extract_memory_items(memories):
+        m_id = _memory_item_id(m)
         if m_id:
             await delete_memory_async(m_id)
             deleted_count += 1

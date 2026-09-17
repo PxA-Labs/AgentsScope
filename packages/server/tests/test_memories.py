@@ -109,3 +109,26 @@ async def test_memories_api(mock_mem0_client):
         data = res.json()
         assert data["message"] == "All deleted"
         mock_mem0_client.delete_all.assert_called_once_with(user_id=session_id)
+
+
+@pytest.mark.asyncio
+async def test_memory_mutations_are_scoped_to_session(mock_mem0_client):
+    """PUT/DELETE must not touch a memory that belongs to another session."""
+    mock_mem0_client.get_all.return_value = {
+        "results": [{"id": "mem-owned", "memory": "mine"}]
+    }
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        res = await ac.put(
+            "/api/sessions/session-a/memories/mem-foreign",
+            json={"text": "hijack"},
+        )
+        assert res.status_code == 404
+        res = await ac.delete("/api/sessions/session-a/memories/mem-foreign")
+        assert res.status_code == 404
+
+    mock_mem0_client.update.assert_not_called()
+    mock_mem0_client.delete.assert_not_called()
+    mock_mem0_client.get_all.assert_called_with(filters={"user_id": "session-a"})
