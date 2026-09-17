@@ -102,6 +102,13 @@ npm run dev
 pip install agentscope
 ```
 
+### Storage Backends (SQLite & PostgreSQL)
+
+AgentScope supports both **SQLite** (default zero-config) and **PostgreSQL** via `asyncpg`:
+
+- **SQLite (Default)**: `sqlite+aiosqlite:///./agentscope.db`
+- **PostgreSQL**: Set `DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/agentscope` in your `.env` or `docker-compose.yml`. Standard PostgreSQL URIs (`postgresql://...`) are also automatically normalized to use `asyncpg`.
+
 ### Instrument Your Code
 
 Now, just drop the callback into your code!
