@@ -5,11 +5,11 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **ui,server**: Add category tags input and pills for session memories
+- **server**: Implement retention policies and database auto-vacuum
 
 ### Fixed
-- **ui,server**: Address review on memory category tags
-- **server**: Preserve client.add signature compatibility and add test for category tags
+- **server**: Run VACUUM safely and drop unauthenticated prune endpoint
+- **server**: Resolve test engine binding in retention and format code
 
 ## [1.0.0] - 2026-08-10
 
