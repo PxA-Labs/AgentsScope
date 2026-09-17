@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-09-16
+## [Unreleased] - 2026-09-17
 
-### Added
-- **server,ops**: Add PostgreSQL support with asyncpg and connection pooling
+### Miscellaneous
+- Build(deps): bump codeql-action autobuild and analyze to v4.38.0
 
 ## [1.0.0] - 2026-08-10
 
