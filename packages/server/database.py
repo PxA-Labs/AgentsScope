@@ -1,8 +1,9 @@
 import os
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -53,18 +54,22 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA journal_mode=WAL;")
         cursor.execute("PRAGMA foreign_keys=ON;")
         cursor.execute("PRAGMA busy_timeout=5000;")
-        cursor.execute("PRAGMA auto_vacuum = FULL;")
     finally:
         cursor.close()
 
 
-async def vacuum_database() -> None:
-    """Run VACUUM on SQLite database to reclaim free space and defragment."""
-    if engine.dialect.name == "sqlite":
-        from sqlalchemy import text
+async def vacuum_database(bind: Optional[AsyncEngine] = None) -> None:
+    """Run VACUUM on a SQLite database to reclaim free space and defragment.
 
-        async with engine.begin() as conn:
-            await conn.execute(text("VACUUM;"))
+    SQLite cannot VACUUM inside a transaction, so the statement runs on an
+    AUTOCOMMIT connection rather than relying on the driver deferring BEGIN.
+    """
+    target = bind or engine
+    if target.dialect.name != "sqlite":
+        return
+    async with target.connect() as conn:
+        await conn.execution_options(isolation_level="AUTOCOMMIT")
+        await conn.execute(text("VACUUM"))
 
 
 # Async session factory

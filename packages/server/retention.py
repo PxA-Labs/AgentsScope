@@ -90,7 +90,7 @@ async def prune_old_sessions(
                     logger.warning(f"Invalid max sessions value: {max_sessions_raw}")
 
             if total_pruned > 0 and vacuum:
-                await database.vacuum_database()
+                await database.vacuum_database(bind=maker.kw.get("bind"))
         except Exception as e:
             logger.error(f"Error during database session pruning: {e}")
             await db.rollback()
