@@ -166,7 +166,7 @@ export default function Dashboard() {
       if (isCancelled) return;
       setWsStatus("connecting");
       try {
-        ws = new WebSocket(`${WS_BASE}/ws?client_type=ui`);
+        ws = new WebSocket(`${WS_BASE}/ws?client_type=ui&session_id=${activeSession.session_id}`);
 
         ws.onopen = () => {
           if (isCancelled) return;
@@ -180,9 +180,49 @@ export default function Dashboard() {
             const message = JSON.parse(event.data);
             if (message.type === "event" && message.session_id === activeSession.session_id) {
               addEvent(message.event);
-              // Refresh graph & stats when new terminal event lands
+              // Refresh stats when new terminal event lands
               if (message.event.event_type.endsWith("_end") || message.event.event_type.endsWith("_error")) {
                 fetchGraphAndStats(activeSession.session_id);
+              }
+            } else if (message.type === "graph_update" && message.session_id === activeSession.session_id) {
+              // Live DAG streaming: merge the incremental node/edge. The full
+              // layout is resynced from the REST graph endpoint on terminal events.
+              if (message.node) {
+                const node: ReactFlowNode = message.node;
+                const edge: ReactFlowEdge | null = message.edge;
+                setGraphData((prev) => {
+                  if (!prev) {
+                    return {
+                      nodes: [node],
+                      edges: edge ? [edge] : [],
+                    };
+                  }
+                  const existingIdx = prev.nodes.findIndex((n) => n.id === node.id);
+                  const newNodes = [...prev.nodes];
+                  if (existingIdx >= 0) {
+                    // Keep the laid-out position; only refresh node data.
+                    newNodes[existingIdx] = {
+                      ...newNodes[existingIdx],
+                      data: { ...newNodes[existingIdx].data, ...node.data },
+                    };
+                  } else {
+                    // Place new nodes provisionally below their parent, offset
+                    // by existing siblings, until the next layout resync.
+                    const parent = edge ? prev.nodes.find((n) => n.id === edge.source) : undefined;
+                    const siblings = edge ? prev.edges.filter((e) => e.source === edge.source).length : 0;
+                    newNodes.push({
+                      ...node,
+                      position: parent
+                        ? { x: parent.position.x + siblings * 280, y: parent.position.y + 180 }
+                        : node.position,
+                    });
+                  }
+                  const newEdges = [...prev.edges];
+                  if (edge && !newEdges.some((e) => e.id === edge.id)) {
+                    newEdges.push(edge);
+                  }
+                  return { nodes: newNodes, edges: newEdges };
+                });
               }
             } else if (message.type === "session_update" && message.session_id === activeSession.session_id) {
               updateSessionMeta(message.session_id, message.session);

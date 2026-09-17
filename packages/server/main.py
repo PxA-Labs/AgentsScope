@@ -8,6 +8,7 @@ from typing import Optional
 from database import Base, async_session_maker, engine
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from graph_layout import build_incremental_graph_update
 from models import EventModel, SessionModel
 from pricing import calculate_cost as _calculate_llm_cost
 from routers import events, memories, sessions
@@ -393,7 +394,15 @@ async def process_single_event(event_data: dict, sess_id: str) -> None:
                 sess_id, {"type": "event", "session_id": sess_id, "event": ui_event}
             )
 
-            # 6. Broadcast updated session aggregates to global UI subscribers
+            # 6. Stream the incremental DAG node/edge for this event. The full
+            # layout is not recomputed per event; clients resync it on demand.
+            try:
+                node, edge = build_incremental_graph_update(db_event)
+                await manager.broadcast_graph_update(sess_id, node=node, edge=edge)
+            except Exception as ge:
+                logging.error(f"Error broadcasting live DAG update: {ge}")
+
+            # 7. Broadcast updated session aggregates to global UI subscribers
             session_data = {
                 "status": session.status,
                 "total_tokens": session.total_tokens,

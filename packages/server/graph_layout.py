@@ -1,7 +1,59 @@
 from collections import deque
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from schemas import NodeData, NodePosition, ReactFlowEdge, ReactFlowNode
+
+
+def node_type_for_agent(agent_type: Optional[str]) -> str:
+    """Map an event agent_type to its React Flow custom node type."""
+    return {
+        "llm": "LLMNode",
+        "tool": "ToolNode",
+        "retriever": "RetrieverNode",
+    }.get((agent_type or "").lower(), "ChainNode")
+
+
+def _event_token_count(event: Any) -> Optional[int]:
+    if event.payload and isinstance(event.payload, dict):
+        return event.payload.get("total_tokens") or event.payload.get(
+            "total_token_count"
+        )
+    return None
+
+
+def build_incremental_graph_update(
+    event: Any,
+) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """Build the React Flow node (and parent edge) for a single event.
+
+    Used for live streaming: the node carries no computed layout position, so
+    clients place it provisionally and resync the full layout from the REST
+    graph endpoint when a terminal event arrives.
+    """
+    node_type = node_type_for_agent(event.agent_type)
+    node = ReactFlowNode(
+        id=event.event_id,
+        type=node_type,
+        position=NodePosition(x=0, y=0),
+        data=NodeData(
+            label=event.agent_name or node_type.replace("Node", ""),
+            agentName=event.agent_name,
+            eventType=event.event_type,
+            durationMs=event.latency_ms,
+            tokenCount=_event_token_count(event),
+            status=event.status,
+        ),
+    ).model_dump()
+
+    edge = None
+    if event.parent_event_id:
+        edge = ReactFlowEdge(
+            id=f"e-{event.parent_event_id}-{event.event_id}",
+            source=event.parent_event_id,
+            target=event.event_id,
+            type="error" if event.status == "error" else "default",
+        ).model_dump()
+    return node, edge
 
 
 def compute_graph_layout(events: List[Any]) -> Dict[str, Any]:
@@ -17,17 +69,7 @@ def compute_graph_layout(events: List[Any]) -> Dict[str, Any]:
     for ev in events:
         eid = ev.event_id
         if eid not in node_data_map:
-            # Format agent type for React Flow custom nodes
-            # options: ChainNode, LLMNode, ToolNode, RetrieverNode
-            agent_type = ev.agent_type.lower()
-            if agent_type == "llm":
-                node_type = "LLMNode"
-            elif agent_type == "tool":
-                node_type = "ToolNode"
-            elif agent_type == "retriever":
-                node_type = "RetrieverNode"
-            else:
-                node_type = "ChainNode"
+            node_type = node_type_for_agent(ev.agent_type)
 
             node_data_map[eid] = {
                 "id": eid,
@@ -59,12 +101,9 @@ def compute_graph_layout(events: List[Any]) -> Dict[str, Any]:
             dur = (node["ended_at"] - node["started_at"]).total_seconds() * 1000
             node["latency_ms"] = int(dur)
 
-        if ev.payload and isinstance(ev.payload, dict):
-            tokens = ev.payload.get("total_tokens") or ev.payload.get(
-                "total_token_count"
-            )
-            if tokens is not None:
-                node["token_count"] = tokens
+        tokens = _event_token_count(ev)
+        if tokens is not None:
+            node["token_count"] = tokens
 
     # 2. Build graph adjacency list
     nodes_list = list(node_data_map.values())
