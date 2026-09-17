@@ -129,3 +129,14 @@ export interface StatsResponse {
   agents: AgentStats[];
   token_timeline: TokenTimelinePoint[];
 }
+
+export interface MemoryItem {
+  id: string;
+  memory?: string;
+  text?: string;
+  categories?: string[];
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+  score?: number;
+}

@@ -92,6 +92,20 @@ class ConnectionManager:
             for connection in disconnected:
                 self.ui_connections[session_id].discard(connection)
 
+    async def broadcast_graph_update(
+        self, session_id: str, node: dict, edge: dict | None
+    ) -> None:
+        """Send an incremental DAG node/edge to UI clients viewing this session."""
+        await self.broadcast_to_session_ui(
+            session_id,
+            {
+                "type": "graph_update",
+                "session_id": session_id,
+                "node": node,
+                "edge": edge,
+            },
+        )
+
     async def broadcast_session_update(
         self, session_id: str, session_data: dict
     ) -> None:

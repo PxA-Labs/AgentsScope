@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, status
 from mem0_integration import (
@@ -19,6 +19,7 @@ router = APIRouter(prefix="/sessions/{session_id}/memories", tags=["memories"])
 class MemoryCreateRequest(BaseModel):
     text: str
     metadata: Optional[Dict[str, Any]] = None
+    categories: Optional[List[str]] = None
 
 
 class MemoryUpdateRequest(BaseModel):
@@ -77,7 +78,9 @@ async def add_session_memory(session_id: str, payload: MemoryCreateRequest):
     """Manually add a memory to this session asynchronously."""
     verify_mem0_client()
     try:
-        metadata = payload.metadata or {}
+        metadata = dict(payload.metadata or {})
+        if payload.categories is not None:
+            metadata["categories"] = payload.categories
         res = await add_custom_memory_async(
             payload.text, session_id=session_id, metadata=metadata
         )

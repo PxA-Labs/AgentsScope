@@ -5,10 +5,13 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-17
 
 ### Added
-- **sdk**: Optional tiktoken integration for local and fallback token counting
+- **sdk**: Implement raw OpenAI API telemetry wrapper
+
+### Fixed
+- **sdk**: Emit OpenAI call cost and trace streaming responses correctly
 
 ### Style
-- **sdk**: Format _pricing with black for CI compliance
+- **sdk**: Apply black formatting to __init__
 
 ## [1.0.0] - 2026-08-10
 
