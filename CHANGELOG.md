@@ -2,16 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-09-17
+## [Unreleased] - 2026-09-21
 
-### Added
-- **sdk**: Add specialized trace decorators for custom LLMs, tools, and retrievers
-
-### Refactor
-- **sdk**: Consolidate trace decorators into one factory
-
-### Style
-- **sdk**: Apply black formatting to decorators and __init__
+### Miscellaneous
+- Build(deps): bump github/codeql-action/upload-sarif
 
 ## [1.0.0] - 2026-08-10
 
