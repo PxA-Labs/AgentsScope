@@ -5,7 +5,13 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-21
 
 ### Miscellaneous
-- Build(deps): bump github/codeql-action/upload-sarif
+- Build(deps): bump ossf/scorecard-action from 2.4.1 to 2.4.4
+- Build(deps-dev): bump postcss from 8.5.26 to 8.5.28 in /packages/ui
+- Build(deps): bump tailwind-merge from 3.6.0 to 3.7.0 in /packages/ui
+- Build(deps-dev): update ruff requirement in /packages/sdk
+- Build(deps): update asyncpg requirement in /packages/server
+- Build(deps): update sqlalchemy requirement in /packages/server
+- Build(deps-dev): update langchain-core requirement in /packages/sdk
 
 ## [1.0.0] - 2026-08-10
 
