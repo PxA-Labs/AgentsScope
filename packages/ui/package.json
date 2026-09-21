@@ -18,7 +18,7 @@
     "zustand": "^5.0.15",
     "swr": "^2.5.1",
     "clsx": "^2.1.0",
-    "tailwind-merge": "^3.6.0",
+    "tailwind-merge": "^3.7.0",
     "lucide-react": "^1.44.0"
   },
   "devDependencies": {
