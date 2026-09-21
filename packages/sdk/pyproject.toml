@@ -26,7 +26,7 @@ langchain = [
     "langchain-core>=1.6.2",
 ]
 tiktoken = [
-    "tiktoken>=0.7.0",
+    "tiktoken>=0.14.0",
 ]
 dev = [
     "pytest>=9.1.1",
