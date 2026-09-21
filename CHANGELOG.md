@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-21
 
 ### Miscellaneous
-- Build(deps): bump lucide-react from 1.44.0 to 1.47.0 in /packages/ui
+- Build(deps-dev): bump autoprefixer from 10.5.4 to 10.6.1 in /packages/ui
 
 ## [1.0.0] - 2026-08-10
 
