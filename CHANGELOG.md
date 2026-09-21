@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-09-21
 
 ### Miscellaneous
-- Build(deps-dev): update tiktoken requirement in /packages/sdk
+- Build(deps): bump lucide-react from 1.44.0 to 1.47.0 in /packages/ui
 
 ## [1.0.0] - 2026-08-10
 
