@@ -2,10 +2,10 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-09-21
+## [Unreleased] - 2026-09-24
 
 ### Miscellaneous
-- Build(deps-dev): bump autoprefixer from 10.5.4 to 10.6.1 in /packages/ui
+- Build(deps): update uvicorn requirement in /packages/server
 
 ## [1.0.0] - 2026-08-10
 
