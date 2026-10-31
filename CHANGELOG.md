@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-10-31
 
 ### Miscellaneous
-- Build(deps-dev): update ruff requirement in /packages/sdk
+- Build(deps): update pydantic requirement in /packages/sdk
 
 ## [1.0.0] - 2026-08-10
 
