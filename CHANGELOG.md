@@ -5,7 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-10-31
 
 ### Miscellaneous
-- Build(deps-dev): bump @types/node from 26.4.1 to 26.6.2 in /packages/ui
+- Build(deps): bump lucide-react from 1.47.0 to 1.48.0 in /packages/ui
 
 ## [1.0.0] - 2026-08-10
 
