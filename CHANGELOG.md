@@ -5,7 +5,8 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-10-31
 
 ### Miscellaneous
-- Build(deps): update fastapi requirement in /packages/server
+- Build(deps): update mem0ai requirement in /packages/server
+- Build(deps): bump github/codeql-action/upload-sarif
 
 ## [1.0.0] - 2026-08-10
 
