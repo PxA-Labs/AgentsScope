@@ -5,14 +5,7 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-02
 
 ### Miscellaneous
-- Build(deps): update fastapi requirement in /packages/server
-- Build(deps): update pydantic requirement in /packages/sdk
-- Build(deps): update pydantic requirement in /packages/server
-- Build(deps-dev): update pytest-asyncio requirement in /packages/sdk
-- Build(deps-dev): update pytest-asyncio requirement in /packages/server
-- Build(deps-dev): update ruff requirement in /packages/sdk
-- Build(deps-dev): bump @types/node from 26.6.2 to 26.6.6 in /packages/ui
-- Build(deps): bump actions/setup-node from 7.0.0 to 7.1.0
+- Build(deps-dev): update pytest requirement in /packages/sdk
 
 ## [1.0.0] - 2026-08-10
 
