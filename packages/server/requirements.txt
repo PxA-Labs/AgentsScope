@@ -7,4 +7,4 @@ python-dotenv>=1.2.4
 aiosqlite>=0.22.1
 greenlet
 mem0ai>=2.2.1
-asyncpg>=0.31.0
+asyncpg>=0.32.0
