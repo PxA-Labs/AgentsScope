@@ -2,10 +2,11 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-10-31
+## [Unreleased] - 2026-11-02
 
 ### Miscellaneous
-- Build(deps): update uvicorn requirement in /packages/server
+- Build(deps-dev): update langchain-core requirement in /packages/sdk
+- Build(deps): update asyncpg requirement in /packages/server
 
 ## [1.0.0] - 2026-08-10
 
