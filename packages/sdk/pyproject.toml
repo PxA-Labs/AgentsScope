@@ -15,7 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "websockets>=16.1.1",
-    "pydantic>=2.14.2",
+    "pydantic>=2.14.3",
 ]
 
 [project.scripts]
