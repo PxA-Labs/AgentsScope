@@ -15,9 +15,11 @@ import websockets.exceptions
 
 API_KEY_ENV = "AGENTSCOPE_API_KEY"
 WS_CLOSE_UNAUTHORIZED = 4401
+# A plain literal (no interpolated values) so log scanners can see that no
+# credential is ever logged; it only names the environment variable.
 _UNAUTHORIZED_HINT = (
     "AgentScope server rejected the API key (401). Pass api_key=... or set the "
-    f"{API_KEY_ENV} environment variable to a key configured on the server."
+    "AGENTSCOPE_API_KEY environment variable to a key configured on the server."
 )
 
 
