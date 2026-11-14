@@ -64,9 +64,10 @@ We follow a coordinated vulnerability disclosure (CVD) process:
 When deploying AgentScope in production or staging environments, adhere to these recommendations:
 
 1. **Network Isolation:** The FastAPI server (port 8765) and Next.js UI (port 3000) are designed for local and internal network observability. Avoid exposing unauthenticated dashboard ports directly to the public internet without an authenticating reverse proxy (e.g., NGINX with OAuth2/OIDC, Cloudflare Access).
-2. **Environment Variable Sanitization:** Ensure sensitive tokens (OpenAI, Anthropic, Gemini, Mem0 API keys) are stored in secure environment variables or vault secret managers, never hardcoded in repository files.
-3. **CORS Allowlist:** In multi-tenant or containerized environments, configure `CORS_ALLOW_ORIGINS` to restrict allowed origins to explicit internal dashboard domains.
-4. **Database File Permissions:** Restrict file system permissions for SQLite databases (`agentscope.db`) to the specific user running the server process (`chmod 600 agentscope.db`).
+2. **API-Key Authentication:** Whenever the server is reachable by anyone other than you, set `AGENTSCOPE_API_KEY` (or `AGENTSCOPE_API_KEYS` for rotation). All `/api` routes and the `/ws` endpoint then require the key, and only `/health` and the OpenAPI docs remain public. Generate keys with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. This is a single shared key with full access, not per-user accounts. Serve it over TLS (HTTPS/WSS), because a bearer key sent over plain HTTP can be intercepted. See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+3. **Environment Variable Sanitization:** Ensure sensitive tokens (OpenAI, Anthropic, Gemini, Mem0 API keys) are stored in secure environment variables or vault secret managers, never hardcoded in repository files.
+4. **CORS Allowlist:** In multi-tenant or containerized environments, configure `CORS_ALLOW_ORIGINS` to restrict allowed origins to explicit internal dashboard domains.
+5. **Database File Permissions:** Restrict file system permissions for SQLite databases (`agentscope.db`) to the specific user running the server process (`chmod 600 agentscope.db`).
 
 ---
 

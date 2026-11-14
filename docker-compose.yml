@@ -13,6 +13,8 @@ services:
       - sqlite_data:/app/data
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/agentscope.db
+      # Optional API-key auth (see docs/AUTHENTICATION.md):
+      # - AGENTSCOPE_API_KEY=change-me
       # To use PostgreSQL instead of SQLite:
       # - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/agentscope
     restart: unless-stopped
