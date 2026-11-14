@@ -58,13 +58,18 @@ agent.run(input, callbacks=[cb])
 ## Features
 
 - **Real-time Event Feed** — Watch your agents work in real-time
-- **Agent DAG Graph** — Visualize the full call hierarchy
-- **Token Counter** — Track token usage and estimated costs
-- **Event Inspector** — Click any event to see full prompt + completion text
+- **Live Agent DAG Graph** — Visualize the full call hierarchy, streamed as it grows
+- **Token & Cost Tracking** — Token usage and estimated USD cost per call and per session
+- **Cost Budgets** — Optional `budget_limit_usd` stops a run once it exceeds a spend limit
+- **Event Inspector** — Click any event to see full prompt + completion text, with prompt diffs
 - **Stats Dashboard** — Token breakdown, latency heatmap, error log
-- **Session History** — Browse past runs, compare results
+- **Session History & Diffing** — Browse past runs and compare two sessions side by side
+- **Export / Import** — Download a session as JSON and import it into another instance
+- **Session Memories** — Attach tagged memories to sessions via [Mem0](https://mem0.ai) (requires `MEM0_API_KEY`)
 - **One-Command Setup** — `docker compose up` and you're running
-- **LangChain Integration** — Works with LangChain 0.2+ out of the box
+- **Integrations** — LangChain callback, raw OpenAI SDK patching, and `@trace` decorators for any code
+- **SQLite or PostgreSQL** — Zero-config SQLite by default, PostgreSQL for shared setups
+- **Retention Policies** — Automatic pruning by age or session count
 - **Self-Hosted** — Your data stays on your machine
 - **Zero Impact** — SDK never blocks your agent pipeline
 
@@ -229,14 +234,35 @@ We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) fi
 
 ## Roadmap
 
+The full execution order is tracked in [#280](https://github.com/PxA-Labs/AgentsScope/issues/280).
+
+**Shipped**
 - [x] LangChain integration
 - [x] Real-time event feed
 - [x] Agent DAG graph
-- [ ] CrewAI integration
-- [ ] AutoGen integration
-- [ ] Live DAG updates
-- [x] Prompt diff view
-- [ ] Export to JSON/CSV
+- [x] Live DAG updates over WebSockets ([#156](https://github.com/PxA-Labs/AgentsScope/pull/156))
+- [x] Prompt diff view ([#124](https://github.com/PxA-Labs/AgentsScope/pull/124))
+- [x] Session diffing / comparative timeline ([#155](https://github.com/PxA-Labs/AgentsScope/pull/155))
+- [x] Export / import sessions as JSON ([#125](https://github.com/PxA-Labs/AgentsScope/pull/125))
+- [x] Cost budget enforcement and async event batching ([#125](https://github.com/PxA-Labs/AgentsScope/pull/125))
+- [x] Raw OpenAI SDK auto-instrumentation ([#150](https://github.com/PxA-Labs/AgentsScope/pull/150))
+- [x] `@trace_llm` / `@trace_tool` / `@trace_retriever` decorators ([#149](https://github.com/PxA-Labs/AgentsScope/pull/149))
+- [x] Optional tiktoken token counting ([#148](https://github.com/PxA-Labs/AgentsScope/pull/148))
+- [x] PostgreSQL storage backend ([#153](https://github.com/PxA-Labs/AgentsScope/pull/153))
+- [x] Retention policies and auto-vacuum ([#152](https://github.com/PxA-Labs/AgentsScope/pull/152))
+- [x] Session memories with category tags ([#151](https://github.com/PxA-Labs/AgentsScope/pull/151), [#154](https://github.com/PxA-Labs/AgentsScope/pull/154))
+- [x] WebSocket reconnect backoff + connection status ([#135](https://github.com/PxA-Labs/AgentsScope/pull/135))
+
+**Planned**
+- [ ] CrewAI integration ([#264](https://github.com/PxA-Labs/AgentsScope/issues/264))
+- [ ] AutoGen integration ([#265](https://github.com/PxA-Labs/AgentsScope/issues/265))
+- [ ] LlamaIndex integration ([#266](https://github.com/PxA-Labs/AgentsScope/issues/266))
+- [ ] Anthropic & Gemini SDK auto-instrumentation ([#279](https://github.com/PxA-Labs/AgentsScope/issues/279))
+- [ ] Export to CSV ([#267](https://github.com/PxA-Labs/AgentsScope/issues/267))
+- [ ] Optional API-key authentication ([#268](https://github.com/PxA-Labs/AgentsScope/issues/268))
+- [ ] Production / cloud deployment configs ([#269](https://github.com/PxA-Labs/AgentsScope/issues/269))
+- [ ] Multi-user accounts, projects and RBAC ([#277](https://github.com/PxA-Labs/AgentsScope/issues/277))
+- [ ] PyPI release pipeline ([#274](https://github.com/PxA-Labs/AgentsScope/issues/274))
 
 ## FAQ
 
