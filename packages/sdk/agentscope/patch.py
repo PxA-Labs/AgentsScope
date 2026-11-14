@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
@@ -205,3 +206,60 @@ def unpatch_openai() -> None:
         except Exception as e:
             logger.warning(f"Failed to restore original OpenAI methods: {e}")
     _is_patched = False
+
+
+_PROVIDERS = ("openai", "anthropic", "gemini")
+_SDK_MODULES = {"openai": "openai", "anthropic": "anthropic", "gemini": "google.genai"}
+
+
+def _sdk_installed(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _patch_function(provider: str) -> Callable[[], bool]:
+    if provider == "openai":
+        return patch_openai
+    if provider == "anthropic":
+        from agentscope.providers.anthropic import patch_anthropic
+
+        return patch_anthropic
+    from agentscope.providers.gemini import patch_gemini
+
+    return patch_gemini
+
+
+def patch_all() -> Dict[str, bool]:
+    """Patch every supported provider SDK that is installed.
+
+    SDKs that are not installed are skipped silently. An installed SDK whose
+    layout is not supported is logged and reported as False instead of raising,
+    so one incompatible SDK does not prevent instrumenting the others.
+
+    Returns:
+        Mapping of provider name ("openai", "anthropic", "gemini") to whether
+        it is now patched.
+    """
+    results: Dict[str, bool] = {}
+    for provider in _PROVIDERS:
+        if not _sdk_installed(_SDK_MODULES[provider]):
+            results[provider] = False
+            continue
+        try:
+            results[provider] = _patch_function(provider)()
+        except AgentScopeError as e:
+            logger.warning(f"Skipping {provider} instrumentation: {e}")
+            results[provider] = False
+    return results
+
+
+def unpatch_all() -> None:
+    """Undo :func:`patch_all` (safe to call even if nothing was patched)."""
+    from agentscope.providers.anthropic import unpatch_anthropic
+    from agentscope.providers.gemini import unpatch_gemini
+
+    unpatch_openai()
+    unpatch_anthropic()
+    unpatch_gemini()
