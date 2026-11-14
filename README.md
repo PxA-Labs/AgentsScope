@@ -147,7 +147,7 @@ result = chain.invoke(
 ```mermaid
 flowchart LR
     A[Python Code] -->|SDK| B((WebSocket))
-    B --> C[FastAPI Server + SQLite]
+    B --> C[FastAPI Server + SQLite / PostgreSQL]
     C -->|REST + WS| D[Next.js Dashboard UI]
 ```
 
@@ -218,10 +218,14 @@ In the SDK, the server location is passed in code, e.g. `AgentScopeCallback(host
 ```text
 agentscope/
 ├── packages/
-│   ├── sdk/          # Python SDK & LangChain Callbacks
-│   ├── server/       # FastAPI Backend & SQLite Models
-│   └── ui/           # Next.js 14 Frontend
+│   ├── sdk/          # Python SDK: LangChain callback, OpenAI patch, @trace decorators, CLI
+│   ├── server/       # FastAPI backend: REST + WebSocket, SQLAlchemy models (SQLite/PostgreSQL)
+│   └── ui/           # Next.js 16 dashboard
+├── docs/             # PRD, design, schema and development guides
+├── examples/         # Runnable instrumentation examples
+├── scripts/          # Developer tooling (pre-PR checks)
 ├── docker-compose.yml
+├── Makefile
 ├── README.md
 └── CONTRIBUTING.md
 ```
@@ -231,8 +235,8 @@ agentscope/
 | Component | Technology |
 |---|---|
 | **SDK** | Python 3.10+, Pydantic v2, websockets |
-| **Server** | FastAPI, SQLAlchemy, SQLite, uvicorn |
-| **UI** | Next.js 14, React Flow, Recharts, Zustand, Tailwind CSS |
+| **Server** | FastAPI, SQLAlchemy (async), SQLite (aiosqlite) or PostgreSQL (asyncpg), uvicorn |
+| **UI** | Next.js 16, React Flow, Recharts, Zustand, Tailwind CSS |
 
 ## Contributing
 
@@ -282,14 +286,14 @@ The full execution order is tracked in [#280](https://github.com/PxA-Labs/Agents
 **Q: Is this production-ready?**  
 A: AgentScope is primarily a developer tool designed for local debugging and observability during the development of your pipelines.
 
-**Q: Does it work with CrewAI?**  
-A: Not yet. We are starting with robust LangChain support, but CrewAI integration is on the roadmap.
+**Q: Does it work with CrewAI, AutoGen or LlamaIndex?**  
+A: Not natively yet. Today AgentScope instruments LangChain (`AgentScopeCallback`), the raw OpenAI SDK (`patch_openai()`), and any Python function through the `@trace`, `@trace_llm`, `@trace_tool` and `@trace_retriever` decorators. Native integrations are tracked in [#264](https://github.com/PxA-Labs/AgentsScope/issues/264) (CrewAI), [#265](https://github.com/PxA-Labs/AgentsScope/issues/265) (AutoGen) and [#266](https://github.com/PxA-Labs/AgentsScope/issues/266) (LlamaIndex).
 
 **Q: Where is my data stored?**  
-A: Your data never leaves your machine. It is stored locally in an SQLite database located at `~/.agentscope/agentscope.db`.
+A: Your data never leaves your infrastructure. By default it goes to a local SQLite file (`agentscope.db` in the server's working directory, or the `sqlite_data` volume under Docker Compose). Set `DATABASE_URL` to use PostgreSQL instead. Old sessions can be pruned automatically with `AGENTSCOPE_RETENTION_DAYS` / `AGENTSCOPE_MAX_SESSIONS`.
 
 **Q: Does the SDK slow down my agents?**  
-A: No. All events are emitted as fire-and-forget messages in background tasks, resulting in zero impact on your agent's performance.
+A: It shouldn't. Events go onto an in-memory queue and are sent in batches by a background thread, so instrumented calls never wait on the network. If the server is unreachable, events are buffered (up to 5,000; the oldest are dropped first). Formal benchmarks are tracked in [#276](https://github.com/PxA-Labs/AgentsScope/issues/276).
 
 ## License
 
