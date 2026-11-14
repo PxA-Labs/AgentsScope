@@ -217,3 +217,34 @@ def test_close_unsubscribes_from_event_bus():
     listener.close()
     run(research_crew())
     assert rec.events == []
+
+
+def test_close_delivers_events_still_pending_on_the_bus():
+    """Events emitted outside kickoff() (which flushes on its own) must not be
+    lost when close() is called immediately afterwards."""
+    from datetime import datetime
+
+    from crewai.events.types.tool_usage_events import (
+        ToolUsageFinishedEvent,
+        ToolUsageStartedEvent,
+    )
+
+    rec = Recorder()
+    listener = AgentScopeCrewAIListener(client=rec)
+    common = {"tool_args": {}, "tool_class": "X", "agent_key": "k"}
+    for i in range(100):
+        # Balanced start/finish pairs keep CrewAI's event scope stack empty.
+        crewai_event_bus.emit(None, ToolUsageStartedEvent(tool_name=f"t{i}", **common))
+        now = datetime.now()
+        crewai_event_bus.emit(
+            None,
+            ToolUsageFinishedEvent(
+                tool_name=f"t{i}",
+                started_at=now,
+                finished_at=now,
+                output="ok",
+                **common,
+            ),
+        )
+    listener.close()
+    assert len(rec.events) == 200

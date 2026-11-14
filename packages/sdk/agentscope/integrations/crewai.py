@@ -376,8 +376,17 @@ class AgentScopeCrewAIListener:
             self._bus.on(cls)(handler)
             self._registered.append((cls, handler))
 
-    def close(self) -> None:
-        """Unsubscribe from the event bus and stop the AgentScope client."""
+    def close(self, timeout: float = 10.0) -> None:
+        """Deliver pending events, unsubscribe, and stop the AgentScope client.
+
+        Waits (up to ``timeout`` seconds) for CrewAI to finish running queued
+        handlers, so events emitted just before ``close()``, such as the
+        final crew completion, are not lost.
+        """
+        try:
+            self._bus.flush(timeout=timeout)
+        except Exception:
+            pass
         for cls, handler in self._registered:
             try:
                 self._bus.off(cls, handler)
