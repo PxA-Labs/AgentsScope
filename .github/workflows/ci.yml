@@ -55,7 +55,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f packages/sdk/pyproject.toml ]; then pip install -e "packages/sdk[dev,langchain]"; fi
+          if [ -f packages/sdk/pyproject.toml ]; then pip install -e "packages/sdk[dev,langchain,autogen]" autogen-ext; fi
 
       - name: Run SDK Tests
         run: |

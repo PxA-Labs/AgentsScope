@@ -28,6 +28,10 @@ langchain = [
 tiktoken = [
     "tiktoken>=0.14.0",
 ]
+autogen = [
+    "autogen-agentchat>=0.7.5",
+    "autogen-core>=0.7.5",
+]
 dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
