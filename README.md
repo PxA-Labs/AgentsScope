@@ -189,16 +189,29 @@ def process_data(data):
 
 ## Configuration
 
-You can configure the server and UI using the following environment variables:
+**Server** (see [`packages/server/.env.example`](packages/server/.env.example)):
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///~/.agentscope/agentscope.db` | Database connection string |
-| `HOST` | `0.0.0.0` | Server host |
-| `PORT` | `8765` | Server port |
-| `LOG_LEVEL` | `info` | Logging level |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8765` | API URL for UI |
-| `NEXT_PUBLIC_WS_URL` | `ws://localhost:8765` | WebSocket URL for UI |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./agentscope.db` | SQLAlchemy URL. Use `postgresql+asyncpg://...` for PostgreSQL (`postgresql://` is normalized automatically) |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `10` / `20` | PostgreSQL connection pool sizing |
+| `AGENTSCOPE_RETENTION_DAYS` | unset (keep forever) | Delete sessions older than N days (`RETENTION_DAYS` also accepted) |
+| `AGENTSCOPE_MAX_SESSIONS` | unset (no limit) | Keep only the newest N sessions (`MAX_SESSIONS` also accepted) |
+| `AGENTSCOPE_PRUNE_INTERVAL_SECONDS` | `3600` | How often the retention job runs |
+| `CORS_ALLOW_ORIGINS` | `http://localhost:3000` | Comma-separated list of allowed UI origins |
+| `AGENTSCOPE_PRICING_FILE` | bundled `pricing.json` | Path to a custom model pricing table |
+| `MEM0_API_KEY` | unset | Enables the session memories API |
+
+The server's host and port are set on the `uvicorn` command line (`--host`, `--port`, default port `8765`).
+
+**UI** (inlined at **build time** by Next.js, so set them before `npm run build` / `docker build`):
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8765` | Base URL of the server's REST API |
+| `NEXT_PUBLIC_WS_URL` | `ws://127.0.0.1:8765` | Base WebSocket URL. The UI appends `/ws` itself, so don't include it |
+
+In the SDK, the server location is passed in code, e.g. `AgentScopeCallback(host="localhost", port=8765)` or `agentscope.decorators.configure(host=..., port=...)`.
 
 ## Project Structure
 
