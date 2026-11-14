@@ -28,6 +28,10 @@ langchain = [
 tiktoken = [
     "tiktoken>=0.14.0",
 ]
+crewai = [
+    # started_event_id / parent_event_id on events are required by the listener.
+    "crewai>=1.15.41",
+]
 dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
