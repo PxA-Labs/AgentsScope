@@ -28,7 +28,14 @@ class AgentScopeClient:
         session_metadata: Optional[Dict[str, Any]] = None,
         batch_size: int = 50,
         flush_interval_seconds: float = 0.1,
+        max_queue_size: int = 5000,
     ):
+        """
+        Args:
+            max_queue_size: Events buffered in memory while the server is
+                unreachable or slower than the producer. When full, the
+                oldest event is dropped so emit() never blocks.
+        """
         self.host = host
         self.port = port
         self.session_name = (
@@ -39,7 +46,8 @@ class AgentScopeClient:
         self.flush_interval_seconds = max(0.01, flush_interval_seconds)
         self.session_id: Optional[str] = None
         self.pending_status: Optional[str] = None
-        self.queue: queue.Queue = queue.Queue(maxsize=5000)
+        self.max_queue_size = max(1, int(max_queue_size))
+        self.queue: queue.Queue = queue.Queue(maxsize=self.max_queue_size)
         self.thread: Optional[threading.Thread] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.running = False
