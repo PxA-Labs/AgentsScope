@@ -201,6 +201,29 @@ interface StatsResponse {
 }
 ```
 
+### Session Export Formats
+
+`GET /api/sessions/{session_id}/export?format=json|csv` (default `json`).
+
+- **JSON** (`application/json`): `{ version, exported_at, session, events[] }`. This is the format `POST /api/sessions/import` accepts.
+- **CSV** (`text/csv; charset=utf-8`): one row per event, ordered by timestamp, streamed from the database. Downloaded as `attachment; filename="<session-name>_<id8>.csv"`. The file starts with a UTF-8 BOM, follows RFC 4180 quoting (CRLF line endings, embedded commas, quotes and newlines are quoted), and is **not** re-importable.
+
+| Column | Source | Notes |
+|---|---|---|
+| `event_id`, `parent_event_id`, `session_id` | event | `parent_event_id` is empty for root events |
+| `event_type`, `agent_name`, `agent_type`, `status` | event | |
+| `timestamp` | event | ISO 8601 |
+| `latency_ms` | event | empty when not measured |
+| `model` | `payload.model` | LLM events only |
+| `prompt_tokens`, `completion_tokens` | payload | |
+| `total_tokens` | `payload.total_tokens` | derived from prompt + completion when missing |
+| `cost_usd` | computed | from `pricing.json`; `0.0` for unknown models, empty when there is no usage |
+| `tool_name` | `payload.tool_name` | tool events only |
+| `error` | `payload.error` | |
+| `payload_json` | payload | full payload serialised as JSON, so no data is lost |
+
+Text cells that start with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` to prevent formula injection in spreadsheet applications. Numeric columns are never altered.
+
 ## 5. WebSocket Message Formats
 
 WebSockets are utilized for fast streaming of events from the SDK to the Server, and then broadcasting those to the UI.
