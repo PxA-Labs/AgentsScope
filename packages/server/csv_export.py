@@ -130,6 +130,11 @@ def header_line() -> str:
     return _write_row(CSV_COLUMNS)
 
 
+def header_line_with_bom() -> str:
+    """Header row prefixed with a UTF-8 BOM so Excel detects the encoding."""
+    return "\ufeff" + header_line()
+
+
 def row_line(event: Any) -> str:
     row = event_to_row(event)
     return _write_row(sanitize_cell(row[column]) for column in CSV_COLUMNS)
@@ -141,7 +146,7 @@ def iter_csv(events: Iterable[Any], include_bom: bool = True) -> Iterator[str]:
     A UTF-8 byte-order mark is emitted by default so Excel detects the encoding;
     pandas and Google Sheets ignore it.
     """
-    yield ("﻿" if include_bom else "") + header_line()
+    yield header_line_with_bom() if include_bom else header_line()
     for event in events:
         yield row_line(event)
 
