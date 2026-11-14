@@ -1,0 +1,49 @@
+# AutoGen integration
+
+For `autogen-agentchat` / `autogen-core` **0.4+** (tested on 0.7.5). Install with `pip install -e "packages/sdk[autogen]"`.
+
+There are two pieces. Use both for the full picture:
+
+| | What it records | Where it hooks in |
+|---|---|---|
+| `trace_model_client(client)` | every LLM call: prompts, completion (incl. function calls), tokens, cost, latency | wraps any `ChatCompletionClient` |
+| `AgentScopeAutoGenTracer` | the run, each agent turn, tool calls, handoffs, termination | wraps `run_stream(...)` |
+
+```python
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+
+from agentscope.decorators import configure
+from agentscope.integrations.autogen import AgentScopeAutoGenTracer, trace_model_client
+
+configure(session_name="autogen-team")      # server host/port, session name
+model = trace_model_client(OpenAIChatCompletionClient(model="gpt-4o"))
+
+team = RoundRobinGroupChat([
+    AssistantAgent("researcher", model_client=model, tools=[...]),
+    AssistantAgent("writer", model_client=model),
+], termination_condition=...)
+
+tracer = AgentScopeAutoGenTracer(name="research-team")
+result = await tracer.run(team, task="Write about Paris")
+
+# or keep your own stream consumer (e.g. Console):
+await Console(tracer.trace(team.run_stream(task="..."), task="..."))
+```
+
+`trace()` yields every stream item unchanged. Both pieces report to the global client from `configure()`, so they land in the same session.
+
+## What you see
+
+- **Run node** (`agent_type="team"`): the task as input; stop reason, message count and final message as output. The session is marked `completed` / `failed` when the run ends (`mark_session_status=False` to opt out).
+- **Agent turn nodes** (`agent_type="agent"`): one per consecutive group of messages from the same agent, under the run. The output is the turn's last message. Handoff targets and thoughts are included, and AutoGen's per-message `models_usage` is attached as information.
+- **Tool nodes** under the turn that requested them, paired by tool-call id. Results with `is_error=True` become `tool_error`.
+- **LLM nodes** from traced model clients: tokens and cost come **only** from here, so using the tracer and the wrapper together never double-counts.
+
+## Limitations
+
+- **LLM nodes attach to the run, not the agent turn.** The model call happens before AutoGen yields the message that reveals which agent made it. Use a separate traced client per agent and the `name=` argument if you need per-agent attribution on LLM nodes.
+- **Tool latency is measured from the stream**, from when the request event is yielded to when the result event is yielded. With `reflect_on_tool_use=True` it includes the reflection call.
+- Streaming token chunks (`ModelClientStreamingChunkEvent`) aren't shown individually. The final message carries the full text.
+- Budgets (`budget_limit_usd`) aren't supported.
