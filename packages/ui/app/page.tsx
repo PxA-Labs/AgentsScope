@@ -6,7 +6,6 @@ import { PromptDiffViewer } from "../components/PromptDiffViewer";
 import { useSessionStore } from "../store/sessionStore";
 import {
   Session,
-  AgentEvent,
   MemoryItem,
   ReactFlowNode,
   ReactFlowEdge,
@@ -22,7 +21,6 @@ import {
   DollarSign,
   Clock,
   AlertTriangle,
-  Play,
   CheckCircle,
   XCircle,
   HelpCircle,
@@ -253,7 +251,7 @@ export default function Dashboard() {
           currentDelay = Math.min(currentDelay * 2, maxDelay);
           reconnectTimeout = setTimeout(connectWS, nextDelay);
         };
-      } catch (err) {
+      } catch {
         if (isCancelled) return;
         setWsStatus("disconnected");
         const nextDelay = currentDelay;
