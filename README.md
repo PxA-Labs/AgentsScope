@@ -98,9 +98,13 @@ cd packages/ui
 npm install
 npm run dev
 
-# SDK (In your project)
-pip install agentscope
+# SDK (in your project's virtualenv, from the cloned repo)
+pip install -e "packages/sdk[langchain]"
 ```
+
+> **Note:** The SDK is not published to PyPI yet, so install it from source as shown above.
+> Do **not** run `pip install agentscope`: that name belongs to an unrelated project on PyPI.
+> Packaging and the published package name are tracked in [#274](https://github.com/PxA-Labs/AgentsScope/issues/274).
 
 ### Storage Backends (SQLite & PostgreSQL)
 
