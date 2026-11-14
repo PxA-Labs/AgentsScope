@@ -123,7 +123,7 @@ The following features are explicitly deferred to post-MVP updates:
 
 ## 10. Technical Constraints
 
-- **Language:** Python 3.10+ required for the SDK and Server.
+- **Language:** Python 3.11+ required for the SDK and Server.
 - **Frontend UI:** Next.js 14 utilizing the App Router and strict TypeScript configuration.
 - **Database:** SQLite (WAL mode) as the default and only supported storage engine.
 - **Transport:** WebSocket protocol for all real-time communication.

@@ -7,7 +7,7 @@
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License">
   </a>
   <a href="https://www.python.org/downloads/">
-    <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python Version">
+    <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python Version">
   </a>
   <a href="https://nodejs.org/">
     <img src="https://img.shields.io/badge/node-20+-green.svg" alt="Node Version">
@@ -208,7 +208,7 @@ agentscope/
 
 | Component | Technology |
 |---|---|
-| **SDK** | Python 3.10+, Pydantic v2, websockets |
+| **SDK** | Python 3.11+, Pydantic v2, websockets |
 | **Server** | FastAPI, SQLAlchemy, SQLite, uvicorn |
 | **UI** | Next.js 14, React Flow, Recharts, Zustand, Tailwind CSS |
 
