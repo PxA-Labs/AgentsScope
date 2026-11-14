@@ -1,83 +1,211 @@
-"""Regression tests for AgentScopeClient.stop() (#289)."""
+"""Shutdown behaviour of AgentScopeClient (#289, #294).
 
-import queue
+In-process tests replace websockets.connect with a recording fake; subprocess
+tests run real interpreters to prove the process exits and buffered events
+are delivered, with and without an explicit stop().
+"""
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import textwrap
 import threading
 import time
 
+import pytest
+
 from agentscope.client import AgentScopeClient
 
+SDK_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-def _run_stop(client, timeout=5.0):
-    t = threading.Thread(target=client.stop, daemon=True)
+
+class FakeWebSocket:
+    def __init__(self, sink, delay=0.0):
+        self.sink = sink
+        self.delay = delay
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def send(self, raw):
+        if self.delay:
+            import asyncio
+
+            await asyncio.sleep(self.delay)
+        message = json.loads(raw)
+        self.sink.extend(message.get("events") or [message.get("event")])
+
+
+@pytest.fixture
+def fake_server(monkeypatch):
+    """Patch session creation and the WebSocket; return the received events."""
+    received = []
+
+    def fake_create(self):
+        time.sleep(0.2)  # registration takes a moment, as over a real network
+        self.session_id = "sess-1"
+
+    monkeypatch.setattr(AgentScopeClient, "_create_session_sync", fake_create)
+    monkeypatch.setattr(
+        "agentscope.client.websockets.connect",
+        lambda uri, **kwargs: FakeWebSocket(received),
+    )
+    return received
+
+
+def _unused_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _run_stop(client, timeout):
+    t = threading.Thread(target=client.stop, kwargs={"timeout": timeout}, daemon=True)
     started = time.monotonic()
     t.start()
-    t.join(timeout)
+    t.join(timeout + 5)
     return not t.is_alive(), time.monotonic() - started
 
 
+def test_stop_delivers_events_emitted_before_registration(fake_server):
+    client = AgentScopeClient()
+    for i in range(120):
+        client.emit({"event_id": f"e{i}"})
+    # stop() right away: the session is not registered yet (takes 0.2 s).
+    returned, elapsed = _run_stop(client, timeout=3.0)
+    assert returned and elapsed < 3.0
+    assert [e["event_id"] for e in fake_server] == [f"e{i}" for i in range(120)]
+    assert client.running is False
+
+
+def test_stop_is_bounded_when_server_unreachable():
+    client = AgentScopeClient(host="127.0.0.1", port=_unused_port())
+    for i in range(10):
+        client.emit({"event_id": str(i)})
+    returned, elapsed = _run_stop(client, timeout=1.0)
+    assert returned
+    assert elapsed < 2.5
+
+
 def test_stop_returns_when_buffer_full_and_server_unreachable():
-    client = AgentScopeClient(host="127.0.0.1", port=1)  # nothing listening
+    """Regression for #289: stop() used to block forever on a full buffer."""
+    client = AgentScopeClient(host="127.0.0.1", port=_unused_port())
     for i in range(client.queue.maxsize + 100):
         client.emit({"event_id": str(i)})
     assert client.queue.full()
-
-    returned, elapsed = _run_stop(client)
-
+    returned, elapsed = _run_stop(client, timeout=1.0)
     assert returned, "stop() deadlocked on a full buffer"
-    assert elapsed < 4.0
+    assert elapsed < 2.5
     assert client.running is False
-    # The sentinel made it in by evicting the oldest event.
-    items = []
-    while True:
-        try:
-            items.append(client.queue.get_nowait())
-        except queue.Empty:
-            break
-    assert items[-1] is None
-    assert len(items) == client.queue.maxsize
 
 
-def test_stop_waits_for_buffer_space_before_evicting():
-    """If a consumer frees space within 0.5 s, the sentinel is appended
-    without evicting anything: every buffered item stays in the queue, in
-    order, ahead of the sentinel.
-
-    This only covers the enqueue step. The consumer here ignores ``running``;
-    the real sender quits once stop() clears it, so buffered events can still
-    be lost after stop() (#294, fixed separately in #296).
-    """
+def test_stop_is_idempotent_and_client_can_restart(fake_server):
     client = AgentScopeClient()
-    client.queue = queue.Queue(maxsize=3)
-    client.running = True  # simulate a connected client without a real socket
-    for i in range(3):
-        client.queue.put({"event_id": f"e{i}"})
-
-    received = []
-
-    def sender():
-        time.sleep(0.1)  # the sender frees space shortly after stop() starts
-        while True:
-            item = client.queue.get()
-            received.append(item)
-            if item is None:
-                return
-
-    t = threading.Thread(target=sender, daemon=True)
-    t.start()
-    returned, _ = _run_stop(client)
-    t.join(2)
-
-    assert returned
-    assert received == [
-        {"event_id": "e0"},
-        {"event_id": "e1"},
-        {"event_id": "e2"},
-        None,
-    ]
+    client.emit({"event_id": "a"})
+    assert _run_stop(client, 2.0)[0]
+    assert _run_stop(client, 2.0)[0]
+    client.emit({"event_id": "b"})  # restarts the background thread
+    assert _run_stop(client, 2.0)[0]
+    assert [e["event_id"] for e in fake_server] == ["a", "b"]
 
 
-def test_stop_is_idempotent():
-    client = AgentScopeClient(host="127.0.0.1", port=1)
-    client.emit({"event_id": "x"})
-    assert _run_stop(client)[0]
-    assert _run_stop(client)[0]
+# --- real interpreters -----------------------------------------------------
+
+SCRIPT_PRELUDE = """
+import atexit, json, sys, time
+sys.path.insert(0, {sdk_dir!r})
+import agentscope.client as client_module
+from agentscope.client import AgentScopeClient
+
+received = []
+
+class FakeWebSocket:
+    async def __aenter__(self): return self
+    async def __aexit__(self, *exc): return False
+    async def send(self, raw):
+        message = json.loads(raw)
+        received.extend(message.get("events") or [message.get("event")])
+
+def fake_create(self):
+    time.sleep(0.2)
+    self.session_id = "sess-1"
+
+if {fake!r}:
+    AgentScopeClient._create_session_sync = fake_create
+    client_module.websockets.connect = lambda uri, **kw: FakeWebSocket()
+
+# Registered before the client's own atexit hook, so it runs after it (LIFO)
+# and reports what was delivered by the time the interpreter shuts down.
+atexit.register(lambda: print("DELIVERED", len(received), flush=True))
+"""
+
+
+def run_script(body, fake=True, timeout=20):
+    code = textwrap.dedent(SCRIPT_PRELUDE.format(sdk_dir=SDK_DIR, fake=fake)) + (
+        textwrap.dedent(body)
+    )
+    started = time.monotonic()
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    return proc, time.monotonic() - started
+
+
+def test_process_exits_and_delivers_without_explicit_stop():
+    """Regression for #294: a connected process never exited."""
+    proc, elapsed = run_script("""
+        from agentscope.decorators import configure, trace
+        configure(session_name="exit-test")
+
+        @trace(name="step")
+        def step(i):
+            return i
+
+        for i in range(25):
+            step(i)
+        time.sleep(0.5)  # let the sender connect, so the old code would hang
+        print("BODY DONE", flush=True)
+        """)
+    assert proc.returncode == 0, proc.stderr
+    assert "BODY DONE" in proc.stdout
+    # @trace sends a start and an end event per call (same event_id).
+    assert "DELIVERED 50" in proc.stdout
+    assert elapsed < 10
+
+
+def test_process_with_immediate_stop_delivers_everything():
+    proc, _ = run_script("""
+        client = AgentScopeClient(session_name="stop-test")
+        for i in range(40):
+            client.emit({"event_id": str(i)})
+        client.stop(timeout=3.0)
+        print("STOPPED", flush=True)
+        """)
+    assert proc.returncode == 0, proc.stderr
+    assert "STOPPED" in proc.stdout
+    assert "DELIVERED 40" in proc.stdout
+
+
+def test_process_exits_promptly_when_server_unreachable():
+    proc, elapsed = run_script(
+        f"""
+        client = AgentScopeClient(host="127.0.0.1", port={_unused_port()},
+                                  shutdown_timeout=1.0)
+        for i in range(10):
+            client.emit({{"event_id": str(i)}})
+        print("BODY DONE", flush=True)
+        """,
+        fake=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "BODY DONE" in proc.stdout
+    assert "DELIVERED 0" in proc.stdout
+    assert elapsed < 8
