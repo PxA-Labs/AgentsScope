@@ -1,8 +1,10 @@
 import asyncio
+import atexit
 import json
 import logging
 import queue
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -28,7 +30,16 @@ class AgentScopeClient:
         session_metadata: Optional[Dict[str, Any]] = None,
         batch_size: int = 50,
         flush_interval_seconds: float = 0.1,
+        shutdown_timeout: float = 5.0,
     ):
+        """
+        Args:
+            batch_size: Maximum events per WebSocket message.
+            flush_interval_seconds: How long the sender idles when the buffer
+                is empty before checking again.
+            shutdown_timeout: Upper bound for delivering buffered events when
+                the interpreter exits (see :meth:`stop`).
+        """
         self.host = host
         self.port = port
         self.session_name = (
@@ -44,7 +55,12 @@ class AgentScopeClient:
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.running = False
         self.ws_connected = False
+        self.shutdown_timeout = max(0.0, shutdown_timeout)
         self._lock = threading.Lock()
+        # Set by stop(): the sender delivers what is buffered, then exits.
+        self._shutdown = threading.Event()
+        self._shutdown_deadline = float("inf")
+        self._atexit_registered = False
 
     def start(self) -> None:
         """Start the background connection thread and event loop."""
@@ -52,53 +68,60 @@ class AgentScopeClient:
             if self.running:
                 return
             self.running = True
+            self._shutdown.clear()
+            self._shutdown_deadline = float("inf")
             self.thread = threading.Thread(
                 target=self._run_loop, name="AgentScopeClientThread", daemon=True
             )
             self.thread.start()
+            if not self._atexit_registered:
+                # Deliver buffered events when the program ends, so scripts do
+                # not need to call stop() explicitly.
+                atexit.register(self._stop_at_exit)
+                self._atexit_registered = True
 
     def stop(self, timeout: float = 2.0) -> None:
-        """Stop the background client and close resources.
+        """Deliver buffered events, then stop the background client.
 
-        Never blocks indefinitely, even with a full buffer and an unreachable
-        server. It can take up to ``timeout + 0.5`` seconds: up to 0.5 s
-        (capped at ``timeout``) waiting for buffer space for the shutdown
-        sentinel, then up to ``timeout`` joining the background thread.
+        Returns within roughly ``timeout`` seconds whatever the server state:
+        events that cannot be delivered in time (server unreachable) are
+        dropped. Never blocks on a full buffer.
         """
         with self._lock:
             if not self.running:
                 return
+            self._shutdown_deadline = time.monotonic() + max(0.0, timeout)
+            self._shutdown.set()
+            thread = self.thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=max(0.0, timeout) + 0.5)
+        with self._lock:
             self.running = False
-            self._enqueue_shutdown_sentinel(timeout)
-            # Let the async loop consume the sentinel and unwind the websocket
-            # context manager. Calling loop.stop() here can leave the underlying
-            # websockets keepalive task pending during shutdown.
-            if self.thread and self.thread is not threading.current_thread():
-                self.thread.join(timeout=timeout)
 
-    def _enqueue_shutdown_sentinel(self, timeout: float) -> None:
-        """Queue the sentinel that tells the sender loop to exit, never blocking.
-
-        A blocking put() deadlocks when the buffer is full and nothing drains it
-        (server unreachable). If the server is reachable, the sender frees space
-        within milliseconds, so wait briefly to avoid dropping events; otherwise
-        evict the oldest buffered event so the sentinel always fits.
-        """
+    def _stop_at_exit(self) -> None:
         try:
-            self.queue.put(None, timeout=min(0.5, max(0.0, timeout)))
-            return
-        except queue.Full:
+            self.stop(timeout=self.shutdown_timeout)
+        except Exception:
             pass
-        while True:
+
+    def _shutdown_expired(self) -> bool:
+        return self._shutdown.is_set() and time.monotonic() >= self._shutdown_deadline
+
+    def _sleep_or_shutdown(self, seconds: float):
+        """Sleep, but never past the shutdown deadline."""
+        if self._shutdown.is_set():
+            seconds = min(seconds, max(0.0, self._shutdown_deadline - time.monotonic()))
+        return asyncio.sleep(seconds)
+
+    def _next_batch(self) -> list:
+        """Take up to batch_size buffered events without blocking."""
+        batch = []
+        while len(batch) < self.batch_size:
             try:
-                self.queue.put_nowait(None)
-                return
-            except queue.Full:
-                try:
-                    self.queue.get_nowait()
-                    self.queue.task_done()
-                except queue.Empty:
-                    pass
+                batch.append(self.queue.get_nowait())
+            except queue.Empty:
+                break
+        return batch
 
     def emit(self, event: Dict[str, Any]) -> None:
         """Queue an event payload to be sent to the server.
@@ -189,54 +212,43 @@ class AgentScopeClient:
                 self.loop.close()
 
     async def _main_async_loop(self) -> None:
+        """Deliver buffered events until stop() asks to finish.
+
+        The buffer is drained with non-blocking reads on this loop. Blocking
+        queue.get() calls in an executor thread would keep the interpreter
+        from exiting (it joins executor threads at shutdown).
+        """
         backoff = 1.0
         max_backoff = 30.0
-        failed_batch = []
+        failed_batch: list = []
 
-        while self.running:
+        while not self._shutdown_expired():
             try:
-                # 1. Ensure the session is registered with the Server
+                # 1. Ensure the session is registered with the server.
                 if not self.session_id:
                     await self.loop.run_in_executor(None, self._create_session_sync)
                     if not self.session_id:
-                        # Server is down, wait and retry session creation
-                        if not self.running:
-                            break
-                        await asyncio.sleep(backoff)
+                        if self._shutdown.is_set() and self.queue.empty():
+                            return
+                        await self._sleep_or_shutdown(backoff)
                         backoff = min(backoff * 2, max_backoff)
                         continue
 
-                # 2. Connect to the WebSocket ingestion endpoint
+                # 2. Connect to the WebSocket ingestion endpoint.
                 ws_uri = f"ws://{self.host}:{self.port}/ws?client_type=sdk"
                 async with websockets.connect(ws_uri) as websocket:
                     logging.info(f"Connected to AgentScope server at {ws_uri}")
                     self.ws_connected = True
-                    backoff = 1.0  # Reset backoff on connection success
+                    backoff = 1.0
 
-                    # 3. Read events from the queue in batches and send them
-                    while self.running:
-                        batch = []
-                        if failed_batch:
-                            batch = failed_batch
-                            failed_batch = []
-                        else:
-                            event = await self.loop.run_in_executor(
-                                None, self.queue.get
-                            )
-                            if event is None:
-                                break
-                            batch.append(event)
-                            while len(batch) < self.batch_size:
-                                try:
-                                    nxt = self.queue.get_nowait()
-                                    if nxt is None:
-                                        self.queue.put(None)
-                                        break
-                                    batch.append(nxt)
-                                except queue.Empty:
-                                    break
-
+                    # 3. Send buffered events in batches.
+                    while not self._shutdown_expired():
+                        batch = failed_batch or self._next_batch()
+                        failed_batch = []
                         if not batch:
+                            if self._shutdown.is_set():
+                                return  # everything delivered
+                            await asyncio.sleep(self.flush_interval_seconds)
                             continue
 
                         if len(batch) == 1:
@@ -263,6 +275,7 @@ class AgentScopeClient:
                             )
                             failed_batch = batch
                             raise e  # Trigger reconnection and retry
+                    return
 
             except (
                 websockets.exceptions.WebSocketException,
@@ -270,25 +283,26 @@ class AgentScopeClient:
                 ConnectionRefusedError,
             ) as e:
                 self.ws_connected = False
-                if not self.running:
+                if self._shutdown_expired():
                     break
                 logging.warning(
                     "AgentScope server connection failed: "
                     f"{e}. Retrying in {backoff}s..."
                 )
                 try:
-                    await asyncio.sleep(backoff)
+                    await self._sleep_or_shutdown(backoff)
                 except Exception:
                     break
                 backoff = min(backoff * 2, max_backoff)
             except Exception as e:
-                if not self.running:
+                if self._shutdown_expired():
                     break
                 logging.error(f"Unexpected error in SDK client loop: {e}")
                 try:
-                    await asyncio.sleep(1.0)
+                    await self._sleep_or_shutdown(1.0)
                 except Exception:
                     break
+        self.ws_connected = False
 
     def _create_session_sync(self) -> None:
         """Issue synchronous POST request to initialize a session on the server."""
