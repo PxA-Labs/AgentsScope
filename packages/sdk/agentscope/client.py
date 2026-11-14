@@ -63,12 +63,36 @@ class AgentScopeClient:
             if not self.running:
                 return
             self.running = False
-            self.queue.put(None)  # Sentinel to exit queue readers
+            self._enqueue_shutdown_sentinel(timeout)
             # Let the async loop consume the sentinel and unwind the websocket
             # context manager. Calling loop.stop() here can leave the underlying
             # websockets keepalive task pending during shutdown.
             if self.thread and self.thread is not threading.current_thread():
                 self.thread.join(timeout=timeout)
+
+    def _enqueue_shutdown_sentinel(self, timeout: float) -> None:
+        """Queue the sentinel that tells the sender loop to exit, never blocking.
+
+        A blocking put() deadlocks when the buffer is full and nothing drains it
+        (server unreachable). If the server is reachable, the sender frees space
+        within milliseconds, so wait briefly to avoid dropping events; otherwise
+        evict the oldest buffered event so the sentinel always fits.
+        """
+        try:
+            self.queue.put(None, timeout=min(0.5, max(0.0, timeout)))
+            return
+        except queue.Full:
+            pass
+        while True:
+            try:
+                self.queue.put_nowait(None)
+                return
+            except queue.Full:
+                try:
+                    self.queue.get_nowait()
+                    self.queue.task_done()
+                except queue.Empty:
+                    pass
 
     def emit(self, event: Dict[str, Any]) -> None:
         """Queue an event payload to be sent to the server.
