@@ -6,8 +6,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
+from auth import authorize_websocket, negotiated_subprotocol, require_api_key
 from database import Base, async_session_maker, engine
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from graph_layout import build_incremental_graph_update
 from models import EventModel, SessionModel
@@ -82,10 +83,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount REST routers
-app.include_router(sessions.router, prefix="/api")
-app.include_router(events.router, prefix="/api")
-app.include_router(memories.router, prefix="/api")
+# Mount REST routers. require_api_key is a no-op unless an API key is
+# configured (AGENTSCOPE_API_KEY / AGENTSCOPE_API_KEYS); /health stays public.
+_api_auth = [Depends(require_api_key)]
+app.include_router(sessions.router, prefix="/api", dependencies=_api_auth)
+app.include_router(events.router, prefix="/api", dependencies=_api_auth)
+app.include_router(memories.router, prefix="/api", dependencies=_api_auth)
 
 
 @app.get("/health")
@@ -388,8 +391,12 @@ async def websocket_route(
     session_id: Optional[str] = Query(None),
 ):
     """WebSocket router distinguishing SDK telemetry feeds from browser views."""
+    if not await authorize_websocket(websocket):
+        return
+    subprotocol = negotiated_subprotocol(websocket)
+
     if client_type == "sdk":
-        await manager.connect_sdk(websocket)
+        await manager.connect_sdk(websocket, subprotocol=subprotocol)
         try:
             while True:
                 data = await websocket.receive_text()
@@ -411,7 +418,7 @@ async def websocket_route(
                 pass
 
     elif client_type == "ui":
-        await manager.connect_ui(websocket, session_id)
+        await manager.connect_ui(websocket, session_id, subprotocol=subprotocol)
         try:
             while True:
                 # Keep connection open, UI clients only listen to broadcasts
