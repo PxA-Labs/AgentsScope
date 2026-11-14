@@ -61,6 +61,30 @@ jobs:
         run: |
           if [ -d packages/sdk/tests ]; then pytest packages/sdk/tests; else echo "No SDK tests found yet."; fi
 
+  test-llamaindex-integration:
+    name: Test LlamaIndex Integration
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # llama-index-core 0.14 requires Python 3.11+, newer than the main SDK job.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install SDK with LlamaIndex
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/sdk[dev,llamaindex]"
+
+      - name: Run LlamaIndex tests
+        run: |
+          pytest packages/sdk/tests/test_llamaindex_mapper.py packages/sdk/tests/test_llamaindex_integration.py
+
   test-python-server:
     name: Test FastAPI Server
     runs-on: ubuntu-latest

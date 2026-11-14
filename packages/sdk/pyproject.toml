@@ -28,6 +28,10 @@ langchain = [
 tiktoken = [
     "tiktoken>=0.14.0",
 ]
+llamaindex = [
+    # llama-index-core 0.14 requires Python 3.11+.
+    "llama-index-core>=0.14.26",
+]
 dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
