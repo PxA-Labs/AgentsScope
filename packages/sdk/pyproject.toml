@@ -48,7 +48,7 @@ select = ["E", "F", "I", "W"]
 ignore = []
 
 [tool.setuptools]
-packages = ["agentscope"]
+packages = ["agentscope", "agentscope.providers"]
 
 [tool.setuptools.package-data]
 agentscope = ["pricing.json"]

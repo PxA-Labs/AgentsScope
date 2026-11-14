@@ -1,14 +1,10 @@
-import functools
 import importlib
 import logging
-import time
-import uuid
-from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
-from agentscope._pricing import calculate_cost
-from agentscope.decorators import current_parent_run_id, get_global_client
+from agentscope.decorators import get_global_client
 from agentscope.exceptions import AgentScopeError
+from agentscope.providers._base import ProviderAdapter, Usage, wrap_async, wrap_sync
 
 logger = logging.getLogger(__name__)
 
@@ -94,278 +90,45 @@ def _extract_chunk_delta(chunk: Any) -> str:
     return ""
 
 
-class _LLMCallTrace:
-    """Emits the llm_start / llm_end / llm_error events for one OpenAI call."""
+class _OpenAIAdapter(ProviderAdapter):
+    name = "OpenAI"
+    default_model = "openai-model"
 
-    def __init__(self, kwargs: Dict[str, Any]):
-        self.client = None
-        try:
-            self.client = get_global_client()
-        except Exception:
-            pass
+    def prompts(self, kwargs: Dict[str, Any]) -> List[str]:
+        return _extract_prompts(kwargs.get("messages", []))
 
-        self.model = kwargs.get("model", "openai-model")
-        self.prompts = _extract_prompts(kwargs.get("messages", []))
-        self.temperature = kwargs.get("temperature")
-        self.streaming = bool(kwargs.get("stream", False))
-        self.run_id = str(uuid.uuid4())
-        self.parent_id = current_parent_run_id.get()
-        self.start_time = time.perf_counter()
-        self._finished = False
+    def completion(self, response: Any) -> str:
+        return _extract_completion(response)
 
-    def _emit(
-        self,
-        event_type: str,
-        status: str,
-        payload: Dict[str, Any],
-        latency_ms: Optional[int],
-    ) -> None:
-        if not self.client:
-            return
-        try:
-            self.client.emit(
-                {
-                    "event_id": self.run_id,
-                    "session_id": "",
-                    "parent_event_id": self.parent_id,
-                    "event_type": event_type,
-                    "agent_name": f"OpenAI:{self.model}",
-                    "agent_type": "llm",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "latency_ms": latency_ms,
-                    "status": status,
-                    "payload": {
-                        "model": self.model,
-                        "prompts": self.prompts,
-                        "temperature": self.temperature,
-                        "streaming": self.streaming,
-                        **payload,
-                    },
-                }
-            )
-        except Exception:
-            pass
+    def usage(self, response: Any) -> Usage:
+        return _extract_token_usage(response)
 
-    def _latency(self) -> int:
-        return int((time.perf_counter() - self.start_time) * 1000)
+    def chunk_delta(self, chunk: Any) -> str:
+        return _extract_chunk_delta(chunk)
 
-    def start(self) -> None:
-        self.start_time = time.perf_counter()
-        self._emit(
-            "llm_start",
-            "running",
-            {
-                "completion": None,
-                "prompt_tokens": None,
-                "completion_tokens": None,
-                "total_tokens": None,
-            },
-            None,
-        )
-
-    def end(
-        self,
-        completion: str,
-        prompt_tokens: Optional[int],
-        completion_tokens: Optional[int],
-        total_tokens: Optional[int],
-    ) -> None:
-        if self._finished:
-            return
-        self._finished = True
-        try:
-            cost_usd = calculate_cost(self.model, prompt_tokens, completion_tokens)
-        except ValueError:
-            cost_usd = 0.0
-        self._emit(
-            "llm_end",
-            "completed",
-            {
-                "completion": completion,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost_usd": cost_usd,
-            },
-            self._latency(),
-        )
-
-    def end_from_response(self, response: Any) -> None:
-        self.end(_extract_completion(response), *_extract_token_usage(response))
-
-    def error(self, exc: BaseException) -> None:
-        if self._finished:
-            return
-        self._finished = True
-        self._emit(
-            "llm_error",
-            "error",
-            {"completion": None, "error": str(exc)},
-            self._latency(),
-        )
-
-
-class _StreamAccumulator:
-    """Collects streamed deltas and usage so llm_end can fire on exhaustion."""
-
-    def __init__(self, trace: _LLMCallTrace):
-        self.trace = trace
-        self.parts: List[str] = []
-        self.usage: tuple[Optional[int], Optional[int], Optional[int]] = (
-            None,
-            None,
-            None,
-        )
-
-    def add(self, chunk: Any) -> None:
-        self.parts.append(_extract_chunk_delta(chunk))
+    def chunk_usage(self, chunk: Any, current: Usage) -> Usage:
         # Usage is only present on the final chunk when the caller requests
         # stream_options={"include_usage": True}.
         if getattr(chunk, "usage", None):
-            self.usage = _extract_token_usage(chunk)
-
-    def finish(self) -> None:
-        self.trace.end("".join(self.parts), *self.usage)
+            return _extract_token_usage(chunk)
+        return current
 
 
-class _TracedStream:
-    """Proxy for openai.Stream that emits llm_end once the stream is consumed."""
-
-    def __init__(self, stream: Any, trace: _LLMCallTrace):
-        self._stream = stream
-        self._acc = _StreamAccumulator(trace)
-
-    def __iter__(self) -> Any:
-        try:
-            for chunk in self._stream:
-                self._acc.add(chunk)
-                yield chunk
-        except GeneratorExit:
-            # Consumer stopped iterating early; record what was received.
-            self._acc.finish()
-            raise
-        except Exception as e:
-            self._acc.trace.error(e)
-            raise
-        self._acc.finish()
-
-    def __next__(self) -> Any:
-        try:
-            chunk = next(self._stream)
-        except StopIteration:
-            self._acc.finish()
-            raise
-        except Exception as e:
-            self._acc.trace.error(e)
-            raise
-        self._acc.add(chunk)
-        return chunk
-
-    def __enter__(self) -> "_TracedStream":
-        return self
-
-    def __exit__(self, *exc_info: Any) -> None:
-        self.close()
-
-    def close(self) -> None:
-        try:
-            self._stream.close()
-        finally:
-            # A stream closed early still records what was received.
-            self._acc.finish()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._stream, name)
+_ADAPTER = _OpenAIAdapter()
 
 
-class _TracedAsyncStream:
-    """Proxy for openai.AsyncStream that emits llm_end once the stream is consumed."""
-
-    def __init__(self, stream: Any, trace: _LLMCallTrace):
-        self._stream = stream
-        self._acc = _StreamAccumulator(trace)
-
-    async def __aiter__(self) -> Any:
-        try:
-            async for chunk in self._stream:
-                self._acc.add(chunk)
-                yield chunk
-        except GeneratorExit:
-            self._acc.finish()
-            raise
-        except Exception as e:
-            self._acc.trace.error(e)
-            raise
-        self._acc.finish()
-
-    async def __anext__(self) -> Any:
-        try:
-            chunk = await self._stream.__anext__()
-        except StopAsyncIteration:
-            self._acc.finish()
-            raise
-        except Exception as e:
-            self._acc.trace.error(e)
-            raise
-        self._acc.add(chunk)
-        return chunk
-
-    async def __aenter__(self) -> "_TracedAsyncStream":
-        return self
-
-    async def __aexit__(self, *exc_info: Any) -> None:
-        await self.close()
-
-    async def close(self) -> None:
-        try:
-            await self._stream.close()
-        finally:
-            self._acc.finish()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._stream, name)
+def _client() -> Any:
+    # Resolved at call time so tests can monkeypatch this module's
+    # get_global_client.
+    return get_global_client()
 
 
 def _wrap_sync_create(orig: Callable[..., Any]) -> Callable[..., Any]:
-    @functools.wraps(orig)
-    def patched_create(self: Any, *args: Any, **kwargs: Any) -> Any:
-        trace = _LLMCallTrace(kwargs)
-        token = current_parent_run_id.set(trace.run_id)
-        trace.start()
-        try:
-            res = orig(self, *args, **kwargs)
-        except Exception as e:
-            trace.error(e)
-            raise
-        finally:
-            current_parent_run_id.reset(token)
-        if trace.streaming:
-            return _TracedStream(res, trace)
-        trace.end_from_response(res)
-        return res
-
-    return patched_create
+    return wrap_sync(orig, _ADAPTER, _client)
 
 
 def _wrap_async_create(orig: Callable[..., Any]) -> Callable[..., Any]:
-    @functools.wraps(orig)
-    async def patched_create(self: Any, *args: Any, **kwargs: Any) -> Any:
-        trace = _LLMCallTrace(kwargs)
-        token = current_parent_run_id.set(trace.run_id)
-        trace.start()
-        try:
-            res = await orig(self, *args, **kwargs)
-        except Exception as e:
-            trace.error(e)
-            raise
-        finally:
-            current_parent_run_id.reset(token)
-        if trace.streaming:
-            return _TracedAsyncStream(res, trace)
-        trace.end_from_response(res)
-        return res
-
-    return patched_create
+    return wrap_async(orig, _ADAPTER, _client)
 
 
 def patch_openai() -> bool:
