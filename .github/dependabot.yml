@@ -42,6 +42,21 @@ updates:
     labels:
       - "dependencies"
       - "pkg: ui"
+    groups:
+      # eslint and eslint-config-next must move together (#260 and #263 each
+      # bumped one side and failed with ERESOLVE).
+      eslint:
+        patterns:
+          - "eslint"
+          - "eslint-config-next"
+          - "@typescript-eslint/*"
+          - "typescript-eslint"
+    ignore:
+      # eslint-config-next 16 pulls in eslint-plugin-react, eslint-plugin-import
+      # and eslint-plugin-jsx-a11y, which only declare peer support up to
+      # ESLint 9. Drop this once they support ESLint 10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
 
   # Server Docker image
   - package-ecosystem: "docker"
