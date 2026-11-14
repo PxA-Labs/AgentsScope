@@ -2,10 +2,19 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-11-02
+## [Unreleased] - 2026-11-14
 
 ### Miscellaneous
-- Build(deps-dev): update pytest requirement in /packages/sdk
+- Build(deps): update pydantic requirement in /packages/sdk
+- Build(deps-dev): update langchain-core requirement in /packages/sdk
+- Build(deps): update pydantic requirement in /packages/server
+- Build(deps-dev): update pytest requirement in /packages/server
+- Build(deps-dev): update ruff requirement in /packages/sdk
+- Build(deps): bump next from 16.3.3 to 16.4.5 in /packages/ui
+- Build(deps-dev): update pytest-asyncio requirement in /packages/sdk
+- Build(deps): bump ossf/scorecard-action from 2.4.4 to 2.5.0
+- Build(deps): bump react-dom and @types/react-dom in /packages/ui
+- Build(deps): bump stefanzweifel/git-auto-commit-action from 5 to 7
 
 ## [1.0.0] - 2026-08-10
 
