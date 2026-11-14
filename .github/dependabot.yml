@@ -19,6 +19,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # The SDK is a library: only raise a dependency's lower bound when the
+    # current range no longer allows the new release. Bumping floors to the
+    # latest version (e.g. pydantic>=2.14.3) makes the SDK uninstallable next
+    # to frameworks that pin older versions, such as CrewAI (pydantic<2.13).
+    versioning-strategy: increase-if-necessary
     labels:
       - "dependencies"
       - "pkg: sdk"
