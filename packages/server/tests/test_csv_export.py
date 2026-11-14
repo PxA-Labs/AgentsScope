@@ -44,7 +44,7 @@ def make_event(**overrides):
 
 
 def parse(document: str):
-    return list(csv.DictReader(io.StringIO(document.lstrip("﻿"))))
+    return list(csv.DictReader(io.StringIO(document.lstrip("\ufeff"))))
 
 
 def test_header_matches_documented_columns():
@@ -138,7 +138,7 @@ def test_multiline_and_unicode_text_survive_round_trip():
     prompt = 'Line one, with comma\nLine "two"\r\nemoji 🚀 and ünïcode'
     event = make_event(payload={"model": "gpt-4o", "prompts": [prompt]})
     document = "".join(iter_csv([event]))
-    assert document.startswith("﻿")
+    assert document.startswith("\ufeff")
     (row,) = parse(document)
     assert json.loads(row["payload_json"])["prompts"] == [prompt]
     assert set(row) == set(CSV_COLUMNS)
