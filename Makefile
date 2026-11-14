@@ -1,6 +1,6 @@
 # Makefile for AgentScope development orchestration
 
-.PHONY: all setup-sdk setup-server setup-ui setup-all test test-sdk test-server test-ui test-all lint format pre-pr run-server run-ui clean docker-clean help
+.PHONY: all setup-sdk setup-server setup-ui setup-all test test-sdk test-server test-ui test-all lint format pre-pr bench ttv run-server run-ui clean docker-clean help
 
 all: setup-all
 
@@ -17,6 +17,8 @@ help:
 	@echo "  make test-ui       - Run Next.js UI lint and build checks"
 	@echo "  make test          - Run all test suites"
 	@echo "  make pre-pr        - Run comprehensive pre-PR quality, linting & test suite"
+	@echo "  make bench         - Run SDK overhead, end-to-end latency and resilience benchmarks"
+	@echo "  make ttv           - Time a fresh clone until the first event is stored"
 	@echo "  make run-server    - Run FastAPI server with hot-reload"
 	@echo "  make run-ui        - Run Next.js UI in dev mode"
 	@echo "  make clean         - Remove caches, builds, and local db files"
@@ -57,6 +59,14 @@ test-all: test test-ui
 
 pre-pr:
 	./scripts/pre_pr_check.sh
+
+bench:
+	python benchmarks/bench_emit.py
+	python benchmarks/bench_e2e_latency.py
+	python benchmarks/bench_resilience.py
+
+ttv:
+	./scripts/ttv_check.sh
 
 run-server:
 	cd packages/server && uvicorn main:app --host 0.0.0.0 --port 8765 --reload
