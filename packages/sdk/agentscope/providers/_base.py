@@ -62,6 +62,15 @@ class ProviderAdapter:
         """Return usage after seeing ``chunk`` (default: keep ``current``)."""
         return current
 
+    def usage_details(self, response: Any) -> Dict[str, Any]:
+        """Provider-specific usage fields (e.g. cache tokens) for the payload."""
+        return {}
+
+    def chunk_usage_details(
+        self, chunk: Any, current: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        return current
+
 
 class LLMCallTrace:
     """Emits the llm_start / llm_end / llm_error events for one SDK call."""
@@ -149,6 +158,7 @@ class LLMCallTrace:
         prompt_tokens: Optional[int],
         completion_tokens: Optional[int],
         total_tokens: Optional[int],
+        usage_details: Optional[Dict[str, Any]] = None,
     ) -> None:
         if self._finished:
             return
@@ -157,23 +167,22 @@ class LLMCallTrace:
             cost_usd = calculate_cost(self.model, prompt_tokens, completion_tokens)
         except ValueError:
             cost_usd = 0.0
-        self._emit(
-            "llm_end",
-            "completed",
-            {
-                "completion": completion,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost_usd": cost_usd,
-            },
-            self._latency(),
-        )
+        payload: Dict[str, Any] = {
+            "completion": completion,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost_usd": cost_usd,
+        }
+        if usage_details:
+            payload["usage_details"] = usage_details
+        self._emit("llm_end", "completed", payload, self._latency())
 
     def end_from_response(self, response: Any) -> None:
         completion = _safe(lambda: self.adapter.completion(response), "")
         usage = _safe(lambda: self.adapter.usage(response), EMPTY_USAGE)
-        self.end(completion, *usage)
+        details = _safe(lambda: self.adapter.usage_details(response), {})
+        self.end(completion, *usage, usage_details=details)
 
     def error(self, exc: BaseException) -> None:
         if self._finished:
@@ -194,14 +203,18 @@ class StreamAccumulator:
         self.trace = trace
         self.parts: List[str] = []
         self.usage: Usage = EMPTY_USAGE
+        self.details: Dict[str, Any] = {}
 
     def add(self, chunk: Any) -> None:
         adapter = self.trace.adapter
         self.parts.append(_safe(lambda: adapter.chunk_delta(chunk), ""))
         self.usage = _safe(lambda: adapter.chunk_usage(chunk, self.usage), self.usage)
+        self.details = _safe(
+            lambda: adapter.chunk_usage_details(chunk, self.details), self.details
+        )
 
     def finish(self) -> None:
-        self.trace.end("".join(self.parts), *self.usage)
+        self.trace.end("".join(self.parts), *self.usage, usage_details=self.details)
 
 
 class TracedStream:
