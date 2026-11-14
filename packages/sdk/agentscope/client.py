@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import queue
 import threading
 import urllib.error
@@ -11,6 +12,13 @@ from typing import Any, Dict, Optional
 
 import websockets
 import websockets.exceptions
+
+API_KEY_ENV = "AGENTSCOPE_API_KEY"
+WS_CLOSE_UNAUTHORIZED = 4401
+_UNAUTHORIZED_HINT = (
+    "AgentScope server rejected the API key (401). Pass api_key=... or set the "
+    f"{API_KEY_ENV} environment variable to a key configured on the server."
+)
 
 
 class AgentScopeClient:
@@ -28,9 +36,14 @@ class AgentScopeClient:
         session_metadata: Optional[Dict[str, Any]] = None,
         batch_size: int = 50,
         flush_interval_seconds: float = 0.1,
+        api_key: Optional[str] = None,
     ):
         self.host = host
         self.port = port
+        # Explicit argument wins; otherwise fall back to the environment.
+        # Never logged or included in repr.
+        self._api_key: Optional[str] = api_key or os.getenv(API_KEY_ENV) or None
+        self._auth_warning_logged = False
         self.session_name = (
             session_name or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         )
@@ -69,6 +82,17 @@ class AgentScopeClient:
             # websockets keepalive task pending during shutdown.
             if self.thread and self.thread is not threading.current_thread():
                 self.thread.join(timeout=timeout)
+
+    def _auth_headers(self) -> Dict[str, str]:
+        if not self._api_key:
+            return {}
+        return {"Authorization": f"Bearer {self._api_key}"}
+
+    def _warn_unauthorized(self) -> None:
+        # Log the actionable hint once instead of on every retry.
+        if not self._auth_warning_logged:
+            self._auth_warning_logged = True
+            logging.warning(_UNAUTHORIZED_HINT)
 
     def emit(self, event: Dict[str, Any]) -> None:
         """Queue an event payload to be sent to the server.
@@ -115,7 +139,7 @@ class AgentScopeClient:
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **self._auth_headers()},
             method="PATCH",
         )
 
@@ -124,6 +148,13 @@ class AgentScopeClient:
                 with urllib.request.urlopen(req, timeout=5):
                     logging.info(
                         f"AgentScope session {session_id} patched to status: {status}"
+                    )
+            except urllib.error.HTTPError as e:
+                if e.code == 401:
+                    self._warn_unauthorized()
+                else:
+                    logging.warning(
+                        f"AgentScope failed to patch session status to {status}: {e}"
                     )
             except Exception as e:
                 logging.warning(
@@ -178,7 +209,9 @@ class AgentScopeClient:
 
                 # 2. Connect to the WebSocket ingestion endpoint
                 ws_uri = f"ws://{self.host}:{self.port}/ws?client_type=sdk"
-                async with websockets.connect(ws_uri) as websocket:
+                async with websockets.connect(
+                    ws_uri, additional_headers=self._auth_headers() or None
+                ) as websocket:
                     logging.info(f"Connected to AgentScope server at {ws_uri}")
                     self.ws_connected = True
                     backoff = 1.0  # Reset backoff on connection success
@@ -242,6 +275,12 @@ class AgentScopeClient:
                 self.ws_connected = False
                 if not self.running:
                     break
+                if (
+                    isinstance(e, websockets.exceptions.ConnectionClosed)
+                    and e.rcvd is not None
+                    and e.rcvd.code == WS_CLOSE_UNAUTHORIZED
+                ):
+                    self._warn_unauthorized()
                 logging.warning(
                     "AgentScope server connection failed: "
                     f"{e}. Retrying in {backoff}s..."
@@ -275,7 +314,7 @@ class AgentScopeClient:
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **self._auth_headers()},
             method="POST",
         )
 
@@ -297,5 +336,12 @@ class AgentScopeClient:
 
                 if status_to_patch:
                     self._send_status_patch(new_session_id, status_to_patch)
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                self._warn_unauthorized()
+            else:
+                logging.warning(
+                    f"Failed to register session with AgentScope server: {e}"
+                )
         except Exception as e:
             logging.warning(f"Failed to register session with AgentScope server: {e}")

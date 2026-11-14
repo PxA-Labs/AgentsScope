@@ -34,6 +34,7 @@ def configure(
     port: int = 8765,
     session_name: Optional[str] = None,
     session_metadata: Optional[Dict[str, Any]] = None,
+    api_key: Optional[str] = None,
 ) -> None:
     """Configure the global AgentScope client settings.
 
@@ -42,6 +43,8 @@ def configure(
         port: Port of the AgentScope server.
         session_name: Name of the observability session.
         session_metadata: Arbitrary tags/metadata for the session.
+        api_key: API key for servers with authentication enabled. Defaults to
+            the AGENTSCOPE_API_KEY environment variable.
     """
     global _global_client
     if _global_client is not None:
@@ -54,6 +57,7 @@ def configure(
         port=port,
         session_name=session_name,
         session_metadata=session_metadata,
+        api_key=api_key,
     )
 
 
