@@ -28,6 +28,13 @@ langchain = [
 tiktoken = [
     "tiktoken>=0.14.0",
 ]
+anthropic = [
+    "anthropic>=2.8.0",
+]
+gemini = [
+    # google-genai 3.x requires Python 3.11+; on older Pythons the extra is a no-op.
+    "google-genai>=3.3.0; python_version >= '3.11'",
+]
 dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
