@@ -23,7 +23,7 @@ agentscope = "agentscope.cli:main"
 
 [project.optional-dependencies]
 langchain = [
-    "langchain-core>=1.7.6",
+    "langchain-core>=1.7.7",
 ]
 tiktoken = [
     "tiktoken>=0.14.0",
