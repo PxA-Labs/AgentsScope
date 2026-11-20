@@ -6,10 +6,14 @@ config ignores DeprecationWarning, and an import warns only the first time.
 
 import importlib
 import json
+import re
+import shlex
+import shutil
 import subprocess
 import sys
 import textwrap
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -297,3 +301,61 @@ def test_concurrent_imports_after_startup_are_safe():
         }))
         """)
     assert out == {"errors": [], "hung": 0, "same": True}
+
+
+MIGRATION_SAMPLE = """\
+import sys, agentscope
+import agentscope as asc
+import agentscope.decorators
+from agentscope import trace
+from agentscope.decorators import configure
+from agentscope.integrations import crewai
+
+URL = "https://agentscope.example.com"
+TARGET = "agentscope.client.websockets.connect"
+print(agentscope.__name__, asc.__name__, agentscope.decorators.__name__)
+print(trace.__module__, configure.__module__, crewai.__name__)
+print(TARGET, URL)
+"""
+
+
+def documented_migration_command():
+    sdk_dir = Path(__file__).resolve().parents[1]
+    readme = (sdk_dir / "README.md").read_text(encoding="utf-8")
+    (line,) = [ln for ln in readme.splitlines() if ln.startswith("perl -pi -e ")]
+    changelog = sdk_dir.parents[1] / "CHANGELOG.md"
+    if changelog.exists():  # not in the sdist
+        # The CHANGELOG migration notes must show the same command.
+        expected = line.replace("your_module.py", "*.py")
+        assert expected in changelog.read_text(encoding="utf-8")
+    return line
+
+
+@pytest.mark.skipif(shutil.which("perl") is None, reason="needs perl")
+def test_documented_migration_command_produces_working_code(tmp_path):
+    line = documented_migration_command()
+    sample = tmp_path / "sample.py"
+    sample.write_text(MIGRATION_SAMPLE)
+    cmd = shlex.split(line.replace("your_module.py", str(sample)))
+    subprocess.run(cmd, check=True)
+    migrated = sample.read_text()
+    subprocess.run(cmd, check=True)  # idempotent: no agentscope_trace_trace
+    assert sample.read_text() == migrated
+    assert "agentscope_trace_trace" not in migrated
+    assert not re.search(r"\bagentscope\b(?!\.example)", migrated), migrated
+
+    # No shim import left (it would raise here), and no NameError.
+    result = subprocess.run(
+        [sys.executable, "-W", "error::DeprecationWarning", str(sample)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "agentscope_trace agentscope_trace agentscope_trace.decorators",
+        "agentscope_trace.decorators agentscope_trace.decorators "
+        "agentscope_trace.integrations.crewai",
+        "agentscope_trace.client.websockets.connect https://agentscope.example.com",
+    ]
