@@ -283,9 +283,9 @@ def test_calls_nest_under_traced_function(recorder):
 
     plan()
     agent = [e for e in recorder.events if e["agent_type"] == "agent"]
-    assert all(
-        e["parent_event_id"] == agent[0]["event_id"] for e in llm_events(recorder)
-    )
+    llm = llm_events(recorder)
+    assert agent and len(llm) == 2  # all() over an empty list would pass
+    assert all(e["parent_event_id"] == agent[0]["event_id"] for e in llm)
 
 
 def test_patch_is_idempotent_and_unpatch_restores():
