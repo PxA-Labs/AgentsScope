@@ -3,9 +3,11 @@ requires = ["setuptools>=84.2.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentscope-sdk"
-version = "0.1.0"
-description = "Lightweight tracing SDK for AgentScope observability dashboard"
+# Published as "agentscope-trace": "agentscope" and "agentscope-sdk" on PyPI
+# belong to unrelated projects (#274). The import package is still `agentscope`.
+name = "agentscope-trace"
+dynamic = ["version"]
+description = "Lightweight tracing SDK for the AgentScope observability dashboard"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -18,6 +20,12 @@ dependencies = [
     "websockets>=16.1.1",
     "pydantic>=2.14.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/PxA-Labs/AgentsScope"
+Repository = "https://github.com/PxA-Labs/AgentsScope"
+Issues = "https://github.com/PxA-Labs/AgentsScope/issues"
+Changelog = "https://github.com/PxA-Labs/AgentsScope/blob/main/CHANGELOG.md"
 
 [project.scripts]
 agentscope = "agentscope.cli:main"
@@ -50,6 +58,9 @@ ignore = []
 
 [tool.setuptools]
 packages = ["agentscope"]
+
+[tool.setuptools.dynamic]
+version = { attr = "agentscope._version.__version__" }
 
 [tool.setuptools.package-data]
 agentscope = ["pricing.json"]
