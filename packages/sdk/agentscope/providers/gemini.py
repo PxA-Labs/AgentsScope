@@ -104,7 +104,13 @@ def _usage(response: Any) -> Usage:
     if meta is None:
         return EMPTY_USAGE
     prompt = _field(meta, "prompt_token_count")
-    completion = _field(meta, "candidates_token_count")
+    # Thinking tokens are billed at the output rate, so they count as completion
+    # tokens (as Anthropic's output_tokens already include thinking).
+    candidates = _field(meta, "candidates_token_count")
+    thoughts = _field(meta, "thoughts_token_count")
+    completion = None
+    if candidates is not None or thoughts is not None:
+        completion = (candidates or 0) + (thoughts or 0)
     total = _field(meta, "total_token_count")
     if total is None and prompt is not None and completion is not None:
         total = prompt + completion

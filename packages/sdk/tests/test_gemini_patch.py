@@ -18,6 +18,7 @@ from google.genai import types  # noqa: E402
 from google.genai.models import AsyncModels, Models  # noqa: E402
 
 from agentscope import trace  # noqa: E402
+from agentscope._pricing import calculate_cost  # noqa: E402
 from agentscope.exceptions import AgentScopeError  # noqa: E402
 from agentscope.providers import gemini as provider  # noqa: E402
 from agentscope.providers.gemini import patch_gemini, unpatch_gemini  # noqa: E402
@@ -151,10 +152,45 @@ def test_sync_generate_content(recorder):
         recorder,
         'Paris.[function_call lookup: {"q": "fr"}]',
         streaming=False,
-        completion_tokens=3,
+        completion_tokens=5,  # 3 candidate + 2 thought tokens
         total=13,
         details={"thoughts_token_count": 2},
     )
+
+
+def test_thought_tokens_count_as_completion_tokens_and_cost(recorder):
+    # Google bills thinking tokens at the output rate, so they belong in
+    # completion_tokens and the cost estimate (Anthropic already includes
+    # thinking in output_tokens).
+    patch_gemini()
+    make_client().models.generate_content(
+        model=MODEL, contents="Capital of France?", config=CONFIG
+    )
+    payload = llm_events(recorder)[-1]["payload"]
+    assert payload["completion_tokens"] == 5
+    assert payload["cost_usd"] == calculate_cost(MODEL, 8, 5)
+    assert payload["usage_details"]["thoughts_token_count"] == 2
+
+
+@pytest.mark.parametrize(
+    "meta,expected",
+    [
+        ({"prompt_token_count": 8, "candidates_token_count": 3}, (8, 3, 11)),
+        (
+            {
+                "prompt_token_count": 8,
+                "candidates_token_count": 3,
+                "thoughts_token_count": 2,
+            },
+            (8, 5, 13),
+        ),
+        # Early stream chunks can carry thoughts before any candidate tokens.
+        ({"prompt_token_count": 8, "thoughts_token_count": 4}, (8, 4, 12)),
+        ({"prompt_token_count": 8, "total_token_count": 8}, (8, None, 8)),
+    ],
+)
+def test_usage_includes_thoughts(meta, expected):
+    assert provider._usage({"usage_metadata": meta}) == expected
 
 
 def test_models_prefix_is_normalised(recorder):
@@ -178,7 +214,7 @@ def test_async_generate_content(recorder):
         recorder,
         'Paris.[function_call lookup: {"q": "fr"}]',
         False,
-        3,
+        5,
         13,
         {"thoughts_token_count": 2},
     )
