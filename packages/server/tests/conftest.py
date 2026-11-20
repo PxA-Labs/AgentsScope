@@ -18,7 +18,6 @@ import main
 import pytest_asyncio
 from database import Base, get_db
 from main import app
-from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Temporary file database for testing to avoid SQLite connection isolation traps
@@ -93,9 +92,10 @@ async def override_get_db(db_session):
 
 @pytest_asyncio.fixture
 async def file_db(tmp_path, monkeypatch):
-    """A fresh SQLite file with the production pragmas (WAL, busy_timeout)."""
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'concurrent.db'}")
-    event.listen(engine.sync_engine, "connect", database.set_sqlite_pragma)
+    """A fresh SQLite file configured like production (WAL, busy_timeout, BEGIN)."""
+    engine = database.create_engine_for_url(
+        f"sqlite+aiosqlite:///{tmp_path / 'concurrent.db'}"
+    )
     maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

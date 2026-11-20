@@ -261,3 +261,39 @@ async def test_rejected_insert_does_not_change_aggregates(file_db, broadcasts, c
     ]
     assert len(failure) == 1, failure
     assert "FOREIGN KEY constraint failed" in failure[0]
+
+
+@pytest.mark.asyncio
+async def test_open_read_transaction_does_not_block_event_writes(file_db, broadcasts):
+    """Reads now run inside BEGIN; in WAL mode that must not block writers."""
+    sid, _ = await _started_session(file_db)
+    async with file_db() as reader:
+        await reader.execute(select(SessionModel))
+        assert reader.in_transaction()
+
+        ev = _event()
+        await main.process_single_event(ev, sid)
+
+    assert await _event_rows(file_db, ev["event_id"]) == 1
+
+
+def test_production_sqlite_engine_emits_its_own_begin():
+    if database.engine.dialect.name != "sqlite":
+        pytest.skip("DATABASE_URL is not SQLite")
+    sync_engine = database.engine.sync_engine
+    assert event.contains(sync_engine, "begin", database._emit_begin)
+    assert event.contains(sync_engine, "connect", database._disable_driver_begin)
+    assert event.contains(sync_engine, "connect", database.set_sqlite_pragma)
+
+
+@pytest.mark.asyncio
+async def test_postgresql_engine_keeps_driver_transactions():
+    pg = database.create_engine_for_url("postgresql+asyncpg://user:pw@localhost/db")
+    try:
+        sync_engine = pg.sync_engine
+        assert not event.contains(sync_engine, "begin", database._emit_begin)
+        assert not event.contains(
+            sync_engine, "connect", database._disable_driver_begin
+        )
+    finally:
+        await pg.dispose()
