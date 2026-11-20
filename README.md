@@ -110,7 +110,7 @@ pip install -e "packages/sdk[langchain]"
 
 > **Note:** The SDK is not published to PyPI yet, so install it from source as shown above.
 > Do **not** run `pip install agentscope`: that name belongs to an unrelated project on PyPI.
-> Packaging and the published package name are tracked in [#274](https://github.com/PxA-Labs/AgentsScope/issues/274).
+> It will be published as `agentscope-trace` ([#298](https://github.com/PxA-Labs/AgentsScope/pull/298)); the import package stays `agentscope` for now (rename tracked in [#297](https://github.com/PxA-Labs/AgentsScope/issues/297)).
 
 ### Storage Backends (SQLite & PostgreSQL)
 
@@ -202,7 +202,7 @@ def process_data(data):
 | `CORS_ALLOW_ORIGINS` | `http://localhost:3000` | Comma-separated list of allowed UI origins |
 | `AGENTSCOPE_PRICING_FILE` | bundled `pricing.json` | Path to a custom model pricing table |
 | `MEM0_API_KEY` | unset | Enables the session memories API |
-| `AGENTSCOPE_API_KEY` / `AGENTSCOPE_API_KEYS` | unset (auth off) | One key, or a comma-separated list for rotation. When set, `/api` and `/ws` require it; keys must be 16+ characters. See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) |
+| `AGENTSCOPE_API_KEY` / `AGENTSCOPE_API_KEYS` | unset (auth off) | One key, or a comma-separated list for rotation. When set, `/api` and `/ws` require it; keys must be 16+ characters and not a placeholder from the docs. See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) |
 
 The server's host and port are set on the `uvicorn` command line (`--host`, `--port`, default port `8765`).
 
@@ -213,17 +213,17 @@ The server's host and port are set on the `uvicorn` command line (`--host`, `--p
 | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8765` | Base URL of the server's REST API |
 | `NEXT_PUBLIC_WS_URL` | `ws://127.0.0.1:8765` | Base WebSocket URL. The UI appends `/ws` itself, so don't include it |
 
-In the SDK, the server location is passed in code, e.g. `AgentScopeCallback(host="localhost", port=8765)` or `agentscope.decorators.configure(host=..., port=...)`.
+In the SDK, the server location is passed in code, e.g. `AgentScopeCallback(host="localhost", port=8765)` or `agentscope.decorators.configure(host=..., port=...)`. For a remote or TLS server use `base_url="https://..."` (or `secure=True`); the API key comes from `api_key=` or the `AGENTSCOPE_API_KEY` environment variable.
 
 ## Project Structure
 
 ```text
 agentscope/
 ├── packages/
-│   ├── sdk/          # Python SDK: LangChain callback, OpenAI patch, @trace decorators, CLI
+│   ├── sdk/          # Python SDK: LangChain/CrewAI/AutoGen/LlamaIndex integrations, OpenAI/Anthropic/Gemini patching, @trace decorators, CLI
 │   ├── server/       # FastAPI backend: REST + WebSocket, SQLAlchemy models (SQLite/PostgreSQL)
 │   └── ui/           # Next.js 16 dashboard
-├── docs/             # PRD, design, schema and development guides
+├── docs/             # PRD, design, schema, development, integration, provider and auth guides
 ├── examples/         # Runnable instrumentation examples
 ├── scripts/          # Developer tooling (pre-PR checks)
 ├── docker-compose.yml

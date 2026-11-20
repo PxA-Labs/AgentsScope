@@ -1,13 +1,13 @@
 # Framework integrations
 
-AgentScope instruments agent frameworks through their own extension points (callbacks or event buses), so no monkey-patching of framework internals is needed.
+AgentScope instruments agent frameworks through their own extension points (callbacks, event buses, instrumentation handlers or model-client wrappers), so no monkey-patching of framework internals is needed.
 
 | Framework | How | Install |
 |---|---|---|
 | LangChain | `AgentScopeCallback` passed in `callbacks=[...]` | `packages/sdk[langchain]` |
 | CrewAI | `AgentScopeCrewAIListener` on CrewAI's event bus | `packages/sdk[crewai]` |
-| AutoGen | `AgentScopeAutoGenTracer` / `trace_model_client` ([docs/AUTOGEN.md](AUTOGEN.md)) | `packages/sdk[autogen]` |
-| LlamaIndex | `instrument_llamaindex()` on the instrumentation API ([docs/LLAMAINDEX.md](LLAMAINDEX.md)) | `packages/sdk[llamaindex]` |
+| AutoGen | `AgentScopeAutoGenTracer` / `trace_model_client` ([AUTOGEN.md](AUTOGEN.md)) | `packages/sdk[autogen]` |
+| LlamaIndex | `instrument_llamaindex()` on the instrumentation API ([LLAMAINDEX.md](LLAMAINDEX.md)) | `packages/sdk[llamaindex]` |
 
 Model SDKs used directly (OpenAI, Anthropic, Gemini) are covered by `patch_all()`; see [PROVIDERS.md](PROVIDERS.md).
 

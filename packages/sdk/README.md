@@ -4,24 +4,29 @@ A lightweight tracing library that instruments AI agent pipelines and streams ex
 
 ## Installation
 
-The SDK is not on PyPI yet (tracked in [#274](https://github.com/PxA-Labs/AgentsScope/issues/274)). Install it from a clone of the repository:
+The SDK will be published on PyPI as `agentscope-trace` (release pipeline [#298](https://github.com/PxA-Labs/AgentsScope/pull/298); first release pending). Until then, install it from a clone of the repository:
 
 ```bash
-# Core SDK (decorators, OpenAI patching, CLI)
+# Core SDK (decorators, OpenAI/Anthropic/Gemini patching, CLI)
 pip install -e packages/sdk
 
 # With optional extras
 pip install -e "packages/sdk[langchain]"   # LangChain callback handler
+pip install -e "packages/sdk[crewai]"      # CrewAI integration
+pip install -e "packages/sdk[autogen]"     # AutoGen integration
+pip install -e "packages/sdk[llamaindex]"  # LlamaIndex integration
+pip install -e "packages/sdk[anthropic]"   # Anthropic SDK (for patch_anthropic)
+pip install -e "packages/sdk[gemini]"      # Google Gen AI SDK (for patch_gemini)
 pip install -e "packages/sdk[tiktoken]"    # exact token counts when a provider omits usage
 ```
 
-> `pip install agentscope` installs an **unrelated** PyPI project. Don't use it.
+> `pip install agentscope` and `pip install agentscope-sdk` install **unrelated** PyPI projects. Don't use them.
 
 ## Features
 
 - **Non-blocking telemetry**: events go onto an in-memory queue and are sent in batches by a background thread, so agent execution never waits on the network.
 - **Resilient transport**: WebSocket connection with automatic reconnection. Up to 5,000 events are buffered while the server is unreachable, and the oldest are dropped first.
-- **Graceful shutdown**: buffered events are delivered when the process exits, even if `stop()` is never called, bounded by `shutdown_timeout` (5 s by default).
+- **Graceful shutdown**: buffered events are delivered when the process exits, even if `stop()` is never called, bounded by the client's `shutdown_timeout` (an `AgentScopeClient` argument, 5 s by default).
 - **Authentication and TLS**: pass `api_key=` (or set `AGENTSCOPE_API_KEY`) and `base_url="https://..."` / `secure=True` to reach a protected remote server. See [docs/AUTHENTICATION.md](../../docs/AUTHENTICATION.md).
 - **LangChain callback handler**: trace chains, tools, agents, retrievers and LLMs with two lines of code.
 - **Model SDK auto-instrumentation**: `patch_openai()`, `patch_anthropic()`, `patch_gemini()`, or `patch_all()` for every installed SDK (sync, async and streaming). See [docs/PROVIDERS.md](../../docs/PROVIDERS.md).
@@ -94,7 +99,7 @@ When `budget_limit_usd` is set on `AgentScopeCallback`, the callback tracks cumu
 - In sync runs the error is raised before the next model call is sent. If the crossing call was the last model call, there is nothing left to stop: the run returns normally, and the session stays `failed`.
 - A model call still in flight when the limit trips (for example a parallel branch) is aborted at its next token or at its end.
 
-This behaviour requires [#317](https://github.com/PxA-Labs/AgentsScope/pull/317). Before it, LangChain caught the exception and the run continued ([#316](https://github.com/PxA-Labs/AgentsScope/issues/316)).
+Fixed in [#317](https://github.com/PxA-Labs/AgentsScope/pull/317); before it, LangChain caught the exception and the run continued ([#316](https://github.com/PxA-Labs/AgentsScope/issues/316)).
 
 ### Token counting
 
