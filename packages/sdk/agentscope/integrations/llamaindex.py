@@ -226,12 +226,14 @@ class LlamaIndexEventMapper:
 
     @property
     def client(self) -> Any:
-        if self._client is None:
-            try:
-                self._client = get_global_client()
-            except Exception:
-                return None
-        return self._client
+        if self._client is not None:
+            return self._client
+        # Resolved on every use (not cached) so a later ``configure(...)``
+        # takes effect after instrumentation.
+        try:
+            return get_global_client()
+        except Exception:
+            return None
 
     # -- spans ------------------------------------------------------------
 

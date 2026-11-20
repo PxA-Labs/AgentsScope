@@ -138,3 +138,33 @@ def test_emit_errors_are_swallowed():
     m = LlamaIndexEventMapper(Broken())
     m.on_span_enter("Q.query-1", None)
     m.on_event(event("QueryStartEvent", "Q.query-1", query="q"))
+
+
+def test_events_follow_reconfigured_global_client(monkeypatch):
+    import agentscope.decorators as decorators
+
+    clients = []
+
+    class FakeClient(Recorder):
+        def __init__(self, session_name=None, **kwargs):
+            super().__init__()
+            self.session_name = session_name
+            clients.append(self)
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(decorators, "AgentScopeClient", FakeClient)
+    monkeypatch.setattr(decorators, "_global_client", None)
+
+    decorators.configure(session_name="job-1")
+    m = LlamaIndexEventMapper()
+    m.on_span_enter("Q.query-1", None)
+    m.on_event(event("QueryStartEvent", "Q.query-1", query="one"))
+    decorators.configure(session_name="job-2")
+    m.on_span_enter("Q.query-2", None)
+    m.on_event(event("QueryStartEvent", "Q.query-2", query="two"))
+
+    job1, job2 = clients
+    assert [e["payload"]["inputs"]["query"] for e in job1.events] == ["one"]
+    assert [e["payload"]["inputs"]["query"] for e in job2.events] == ["two"]
