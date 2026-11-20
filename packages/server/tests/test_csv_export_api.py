@@ -196,7 +196,7 @@ async def test_csv_export_of_session_without_events_has_only_header(
     assert parse_csv(res.text) == []
 
 
-async def asgi_get(path: str, query: str = ""):
+async def asgi_get(path: str, query: str = "", log: list | None = None):
     """Call the ASGI app directly and return the raw response messages.
 
     httpx's ASGITransport buffers the whole body, so it cannot show whether a
@@ -232,6 +232,8 @@ async def asgi_get(path: str, query: str = ""):
 
     async def send(message):
         messages.append(message)
+        if log is not None:
+            log.append(("send", message["type"]))
 
     await app(scope, receive, send)
     return messages
@@ -243,12 +245,34 @@ async def test_large_csv_export_streams_with_real_db_dependency(
 ):
     """Use the real get_db dependency (not the test override) to prove the
     database session stays open for the whole streamed response, across
-    several yield_per batches, and that the body is sent incrementally."""
+    several yield_per batches, and that the body is sent incrementally.
+
+    AsyncSession silently reconnects after close(), so reading rows alone
+    cannot show that the session was closed early. Instead get_db is wrapped
+    to log every session.close() and its own teardown, interleaved with the
+    ASGI messages, and both must come after the last body message.
+    """
     n_bulk = 1200  # > 2 batches of CSV_EXPORT_BATCH_SIZE (500)
     sess_id = await seed_session(db_session, n_events=n_bulk)
 
-    app.dependency_overrides.pop(get_db, None)
-    messages = await asgi_get(f"/api/sessions/{sess_id}/export", "format=csv")
+    log = []
+
+    async def tracked_get_db():
+        async for session in get_db():
+            real_close = session.close
+
+            async def close():
+                log.append(("db", "close"))
+                await real_close()
+
+            session.close = close
+            try:
+                yield session
+            finally:
+                log.append(("db", "get_db finally"))
+
+    app.dependency_overrides[get_db] = tracked_get_db
+    messages = await asgi_get(f"/api/sessions/{sess_id}/export", "format=csv", log)
 
     start, *bodies = messages
     assert start["type"] == "http.response.start"
@@ -258,6 +282,12 @@ async def test_large_csv_export_streams_with_real_db_dependency(
     assert len(body_chunks) == n_bulk + 3 + 1  # rows + header
     assert all(m.get("more_body") for m in bodies[:-1])
     assert bodies[-1].get("more_body", False) is False
+
+    last_body = max(i for i, e in enumerate(log) if e == ("send", "http.response.body"))
+    db_entries = [i for i, e in enumerate(log) if e[0] == "db"]
+    assert ("db", "get_db finally") in log
+    assert ("db", "close") in log
+    assert min(db_entries) > last_body, f"session closed mid-response: {log[:5]}"
 
     rows = parse_csv(b"".join(body_chunks).decode("utf-8"))
     assert len(rows) == n_bulk + 3
