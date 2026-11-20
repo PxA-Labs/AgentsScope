@@ -5,6 +5,7 @@ tests run real interpreters to prove the process exits and buffered events
 are delivered, with and without an explicit stop().
 """
 
+import gc
 import json
 import os
 import socket
@@ -13,6 +14,7 @@ import sys
 import textwrap
 import threading
 import time
+import weakref
 
 import pytest
 
@@ -223,6 +225,22 @@ def test_restart_after_timed_out_stop_never_runs_two_senders(monkeypatch):
     assert [e["event_id"] for e in received] == ["a", "b", "c"]
 
 
+def test_stopped_clients_are_garbage_collected(monkeypatch):
+    """The exit hook must not keep every client ever started alive."""
+    _fake_network(monkeypatch, _register_instantly, [])
+    refs = []
+    for i in range(50):
+        client = AgentScopeClient()
+        client.emit({"event_id": str(i)})
+        client.stop(timeout=2.0)
+        assert not client.running
+        refs.append(weakref.ref(client))
+        del client
+    gc.collect()
+    alive = sum(ref() is not None for ref in refs)
+    assert alive == 0, f"{alive} of 50 stopped clients are still referenced"
+
+
 # --- real interpreters -----------------------------------------------------
 
 SCRIPT_PRELUDE = """
@@ -340,3 +358,24 @@ def test_short_script_without_stop_or_sleep_delivers_and_exits_fast():
     assert proc.returncode == 0, proc.stderr
     assert "DELIVERED 60" in proc.stdout, proc.stdout + proc.stderr
     assert elapsed < 3, f"exit took {elapsed:.1f}s"
+
+
+def test_process_exit_stops_clients_in_parallel():
+    """Each unreachable client may use its whole shutdown_timeout, but the
+    clients are flushed in parallel, not one after another."""
+    proc, elapsed = run_script(
+        f"""
+        clients = [
+            AgentScopeClient(host="127.0.0.1", port={_unused_port()},
+                             shutdown_timeout=1.5)
+            for _ in range(3)
+        ]
+        for c in clients:
+            c.emit({{"event_id": "x"}})
+        print("BODY DONE", flush=True)
+        """,
+        fake=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "BODY DONE" in proc.stdout
+    assert elapsed < 3.5, f"exit took {elapsed:.1f}s (3 x 1.5 s serially?)"
