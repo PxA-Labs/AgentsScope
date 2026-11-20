@@ -1,8 +1,8 @@
-fastapi>=0.162.0,<1.0.0
+fastapi>=0.162.5,<1.0.0
 uvicorn>=0.54.0
-sqlalchemy>=2.0.54
+sqlalchemy>=2.1.8
 pydantic>=2.14.3
-websockets>=16.1.1
+websockets>=17.4
 python-dotenv>=1.2.4
 aiosqlite>=0.22.1
 greenlet

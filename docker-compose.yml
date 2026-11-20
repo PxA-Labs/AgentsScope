@@ -13,6 +13,9 @@ services:
       - sqlite_data:/app/data
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/agentscope.db
+      # Optional API-key auth (see docs/AUTHENTICATION.md). Export a generated
+      # key (16+ characters) in your shell; compose aborts if it is unset:
+      # - AGENTSCOPE_API_KEY=${AGENTSCOPE_API_KEY:?set AGENTSCOPE_API_KEY}
       # To use PostgreSQL instead of SQLite:
       # - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/agentscope
     restart: unless-stopped
