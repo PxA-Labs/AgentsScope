@@ -4,31 +4,21 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Added
-- **sdk**: Make the offline event buffer size configurable
+### Fixed
+- **ui**: Keep two more Tailwind 3 behaviours found in review
+- **ui**: Keep the Tailwind 3 look after the upgrade
 
 ### Documentation
-- **perf**: Don't overstate the latency tail
-- Note that dashboard timings predate the React bump
-- **sdk**: Mention the max_queue_size option in the SDK README
-- Re-measure performance against PRD targets after #296
-- Record measured performance against PRD targets
+- **ui**: Describe the Tailwind 4 setup
 
-### Tests
-- **sdk**: Drop the #289 workaround from the perf gate, fix headroom
-- **bench**: Add a cold-cache mode to the time-to-value script
-- **bench**: Time outage recovery from server health, repeat runs
-- **bench**: Repeat the end-to-end latency sweep and report spread
-- **bench**: Pace the server-up emit() benchmark and report drops
-- **sdk**: Add CI regression gate for emit() and @trace overhead
-- **bench**: Add time-to-value script (clone to first stored event)
-- **bench**: Measure delivery and recovery across a server outage
-- **bench**: Measure end-to-end emit-to-dashboard latency
-- **bench**: Add benchmark harness and SDK overhead benchmark
+### Refactor
+- **ui**: Rename utilities changed in Tailwind 4
 
-### CI/CD
-- Fail the benchmark job when a benchmark fails
-- Add make bench / make ttv and a weekly benchmark workflow
+### Maintenance
+- **dependabot**: Group Tailwind packages and skip its majors
+
+### Miscellaneous
+- Build(ui): move to Tailwind CSS 4 with @tailwindcss/postcss
 
 ## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 

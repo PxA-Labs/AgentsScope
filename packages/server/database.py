@@ -41,12 +41,8 @@ if DATABASE_URL.startswith("postgresql+asyncpg://"):
         }
     )
 
-# Create asynchronous engine
-engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
-
-# Listen to connect event to configure SQLite options (WAL & Foreign Keys)
-@event.listens_for(engine.sync_engine, "connect")
+# Configure SQLite options (WAL & Foreign Keys) on every new connection
 def set_sqlite_pragma(dbapi_connection, connection_record):
     # Only execute SQLite-specific pragmas for SQLite dialect
     if engine.dialect.name != "sqlite":
@@ -58,6 +54,51 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA busy_timeout=5000;")
     finally:
         cursor.close()
+
+
+def _disable_driver_begin(dbapi_connection, connection_record) -> None:
+    # sqlite3 (and so aiosqlite) only emits BEGIN before INSERT/UPDATE/DELETE.
+    # A SAVEPOINT opened outside a transaction then commits on RELEASE, so a
+    # later ROLLBACK cannot undo it (#329). SQLAlchemy emits BEGIN instead.
+    dbapi_connection.isolation_level = None
+
+
+def _emit_begin(conn) -> None:
+    # VACUUM runs on an AUTOCOMMIT connection and must stay outside BEGIN.
+    if conn.get_execution_options().get("isolation_level") == "AUTOCOMMIT":
+        return
+    # Returning an AUTOCOMMIT connection to the pool resets the driver to its
+    # legacy mode; switch it back before this transaction starts.
+    dbapi_connection = conn.connection.dbapi_connection
+    if dbapi_connection.isolation_level is not None:
+        dbapi_connection.isolation_level = None
+    conn.exec_driver_sql("BEGIN")
+
+
+def configure_sqlite_engine(target: AsyncEngine) -> None:
+    """Apply the production SQLite settings to ``target``.
+
+    Sets the pragmas on each connection and lets SQLAlchemy emit BEGIN at the
+    start of every transaction (SQLAlchemy's documented recipe for SAVEPOINT
+    support on sqlite3/aiosqlite), so ``begin_nested()`` is nested in a real
+    transaction and commits or rolls back with it.
+    """
+    sync_engine = target.sync_engine
+    event.listen(sync_engine, "connect", set_sqlite_pragma)
+    event.listen(sync_engine, "connect", _disable_driver_begin)
+    event.listen(sync_engine, "begin", _emit_begin)
+
+
+def create_engine_for_url(url: str, **kwargs: Any) -> AsyncEngine:
+    """Create an async engine, configured for SQLite when ``url`` is SQLite."""
+    new_engine = create_async_engine(url, **kwargs)
+    if new_engine.dialect.name == "sqlite":
+        configure_sqlite_engine(new_engine)
+    return new_engine
+
+
+# Create asynchronous engine
+engine = create_engine_for_url(DATABASE_URL, **engine_kwargs)
 
 
 class _LoopLocalLock:

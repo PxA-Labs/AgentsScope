@@ -88,3 +88,30 @@ async def override_get_db(db_session):
     app.dependency_overrides[get_db] = _get_db
     yield
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def file_db(tmp_path, monkeypatch):
+    """A fresh SQLite file configured like production (WAL, busy_timeout, BEGIN)."""
+    engine = database.create_engine_for_url(
+        f"sqlite+aiosqlite:///{tmp_path / 'concurrent.db'}"
+    )
+    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    monkeypatch.setattr(database, "async_session_maker", maker)
+    monkeypatch.setattr(main, "async_session_maker", maker)
+
+    async def _get_db():
+        async with maker() as session:
+            yield session
+
+    # The suite-wide override shares one session across requests; concurrent
+    # requests need their own sessions, as in production.
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        yield maker
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        await engine.dispose()

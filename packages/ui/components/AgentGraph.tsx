@@ -18,7 +18,7 @@ export function AgentGraph({ graph }: { graph: GraphResponse | null }) {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {graph && graph.nodes?.length > 0 ? (
           <>
-            <div className="text-[10px] text-muted-foreground mb-2">
+            <div className="text-[10px] text-muted-foreground">
               {graph.nodes.length} agents, {graph.edges?.length ?? 0} calls
             </div>
             {graph.nodes.map((node) => {
