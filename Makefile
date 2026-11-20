@@ -23,7 +23,7 @@ help:
 	@echo "  make docker-clean  - Stop containers and destroy sqlite_data volume"
 
 setup-sdk:
-	cd packages/sdk && pip install -e ".[dev,langchain]"
+	cd packages/sdk && pip install -e ".[dev,langchain,anthropic,gemini]"
 
 setup-server:
 	cd packages/server && pip install -r requirements.txt
