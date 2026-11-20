@@ -13,6 +13,7 @@ events onto AgentScope's model:
 ==========================================  ================================
 CrewAI event                                AgentScope event
 ==========================================  ================================
+flow started / finished / failed            chain_start / end / error (flow)
 crew kickoff started / completed / failed   chain_start / end / error (crew)
 task started / completed / failed           chain_* (task)
 agent execution started / completed / error chain_* (agent)
@@ -26,7 +27,7 @@ completion events, the ``started_event_id`` they close. Start and end are sent
 with the same AgentScope ``event_id`` (the server merges them). Internal
 CrewAI events that are not shown (e.g. the agent executor's flow) are tracked
 only to resolve each node's parent to its nearest *shown* ancestor, so the DAG
-reads crew -> task -> agent -> tool / LLM.
+reads (flow ->) crew -> task -> agent -> tool / LLM.
 """
 
 import json
@@ -47,6 +48,10 @@ _MAX_OPEN_SCOPES = 10_000
 
 # CrewAI event ``type`` -> (AgentScope event_type, agent_type, phase)
 _EVENT_MAP: Dict[str, Tuple[str, str, str]] = {
+    # Only user Flows are shown; see ``_is_user_flow``.
+    "flow_started": ("chain_start", "flow", "start"),
+    "flow_finished": ("chain_end", "flow", "end"),
+    "flow_failed": ("chain_error", "flow", "error"),
     "crew_kickoff_started": ("chain_start", "crew", "start"),
     "crew_kickoff_completed": ("chain_end", "crew", "end"),
     "crew_kickoff_failed": ("chain_error", "crew", "error"),
@@ -131,6 +136,25 @@ def _task_name(event: Any) -> str:
     return _truncate(str(name), 80)
 
 
+def _is_user_flow(source: Any) -> bool:
+    """Whether a ``flow_started`` event's source is a user's Flow.
+
+    CrewAI also runs its own machinery as flows (each agent's executor, memory
+    encode / recall). Those declare the ``is_crewai_internal`` class marker,
+    which CrewAI's own listener uses to tell them apart, so they are tracked
+    only for parentage. ``suppress_flow_events`` is not used for this: it only
+    asks for console quiet and a user's flow may set it. It is the fallback
+    only for releases without the marker. Without a source (the mapper used
+    on its own) a flow counts as internal.
+    """
+    if source is None:
+        return False
+    marker = getattr(type(source), "is_crewai_internal", None)
+    if marker is None:
+        return getattr(source, "suppress_flow_events", False) is False
+    return not marker
+
+
 def _scope_starting_events() -> Optional[frozenset]:
     """CrewAI's scope-starting event types, or ``None`` without CrewAI."""
     try:
@@ -191,10 +215,14 @@ class CrewAIEventMapper:
 
     # -- event handling ---------------------------------------------------
 
-    def handle(self, event: Any) -> None:
-        """Process one CrewAI event (never raises)."""
+    def handle(self, event: Any, source: Any = None) -> None:
+        """Process one CrewAI event (never raises).
+
+        ``source`` is the object CrewAI's bus passes with the event; it is
+        used to tell a user's Flow from CrewAI's internal ones.
+        """
         try:
-            self._handle(event)
+            self._handle(event, source)
         except Exception as e:  # tracing must never break the crew
             logger.debug(f"AgentScope CrewAI listener ignored an event: {e}")
 
@@ -226,7 +254,7 @@ class CrewAIEventMapper:
             self._shown.discard(started_id)
             self._started_at.pop(started_id, None)
 
-    def _handle(self, event: Any) -> None:
+    def _handle(self, event: Any, source: Any) -> None:
         event_id = getattr(event, "event_id", None)
         if not event_id:
             return
@@ -239,6 +267,14 @@ class CrewAIEventMapper:
         with self._lock:
             if self._opens_scope(event_type):
                 self._remember_scope(event_id, parent_id)
+            if mapping is not None and mapping[1] == "flow":
+                # A flow's end is shown only if its start was.
+                if mapping[2] == "start":
+                    shown = _is_user_flow(source)
+                else:
+                    shown = started_id in self._shown
+                if not shown:
+                    mapping = None
             if mapping is None:
                 self._forget_scope(started_id)
                 return
@@ -274,10 +310,12 @@ class CrewAIEventMapper:
             }
         )
 
-        # Only the outermost crew decides the session's status: a crew kicked
-        # off from inside another crew's tool or agent has a shown parent.
+        # Only the outermost crew or flow decides the session's status. A crew
+        # run by a Flow, or kicked off from inside another crew's tool or
+        # agent, has a shown parent, as does a flow kicked off from inside
+        # another flow, so they don't patch it before the outermost run ends.
         if (
-            agent_type == "crew"
+            agent_type in ("crew", "flow")
             and phase != "start"
             and parent is None
             and self.mark_session_status
@@ -311,6 +349,9 @@ class CrewAIEventMapper:
 
         if agent_type == "crew":
             name = str(getattr(event, "crew_name", None) or "Crew")
+            inputs = getattr(event, "inputs", None) or {}
+        elif agent_type == "flow":
+            name = _truncate(str(getattr(event, "flow_name", None) or "Flow"), 80)
             inputs = getattr(event, "inputs", None) or {}
         elif agent_type == "task":
             name = _task_name(event)
@@ -348,9 +389,9 @@ class CrewAIEventMapper:
             "error": error_text,
         }
         if phase == "end":
-            outputs: Dict[str, Any] = {
-                "output": _truncate(getattr(event, "output", ""))
-            }
+            # Flows report their return value as ``result``.
+            output = getattr(event, "output", getattr(event, "result", ""))
+            outputs: Dict[str, Any] = {"output": _truncate(output)}
             total_tokens = getattr(event, "total_tokens", None)
             if total_tokens is not None:
                 outputs["crew_total_tokens"] = total_tokens
@@ -397,7 +438,8 @@ class AgentScopeCrewAIListener:
         session_name / session_metadata: Session shown in the dashboard.
         client: Advanced/testing hook to supply an existing client.
         mark_session_status: Patch the session to ``completed`` / ``failed``
-            when a top-level crew kickoff finishes (nested crews don't).
+            when a top-level Flow or crew kickoff finishes. Crews run by a
+            Flow, and nested crews or flows, don't.
     """
 
     def __init__(
@@ -437,7 +479,7 @@ class AgentScopeCrewAIListener:
         mapper = self.mapper
 
         async def handler(source: Any, event: Any) -> None:
-            mapper.handle(event)
+            mapper.handle(event, source)
 
         for cls in _event_classes():
             self._bus.on(cls)(handler)

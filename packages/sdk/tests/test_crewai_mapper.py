@@ -290,3 +290,185 @@ def test_only_the_root_crew_sets_session_status(mapper, rec):
     inner = [e for e in rec.events if e["event_id"] == "n1"]
     assert [e["status"] for e in inner] == ["running", "error"]
     assert all(e["parent_event_id"] == "u1" for e in inner)
+
+
+# A user Flow vs. one of CrewAI's internal flows (AgentExecutor, memory), which
+# declare the ``is_crewai_internal`` class marker. The bus passes the flow as
+# the event's source.
+class _UserFlow:
+    is_crewai_internal = False
+
+    def __init__(self, suppress_flow_events=False):
+        self.suppress_flow_events = suppress_flow_events
+
+
+class _InternalFlow(_UserFlow):
+    is_crewai_internal = True
+
+
+USER_FLOW = _UserFlow()
+# ``suppress_flow_events`` only asks for console quiet; a user's flow may set it.
+QUIET_USER_FLOW = _UserFlow(suppress_flow_events=True)
+INTERNAL_FLOW = _InternalFlow(suppress_flow_events=True)
+
+
+def flow_run(mapper, i, second_fails=False):
+    """Replay a two-crew Flow the way CrewAI emits it (methods are hidden)."""
+    f, m1, m2 = f"f{i}", f"f{i}-m1", f"f{i}-m2"
+    mapper.handle(
+        ev("flow_started", f, flow_name="TwoCrewFlow", inputs={"q": 1}), USER_FLOW
+    )
+    mapper.handle(ev("method_execution_started", m1, parent=f), USER_FLOW)
+    mapper.handle(ev("crew_kickoff_started", f"{f}-c1", parent=m1, crew_name="one"))
+    mapper.handle(
+        ev("crew_kickoff_completed", f"{f}-c1e", parent=m1, started=f"{f}-c1")
+    )
+    mapper.handle(ev("method_execution_finished", f"{m1}e", parent=f, started=m1))
+    mapper.handle(ev("method_execution_started", m2, parent=f), USER_FLOW)
+    mapper.handle(ev("crew_kickoff_started", f"{f}-c2", parent=m2, crew_name="two"))
+    end = "crew_kickoff_failed" if second_fails else "crew_kickoff_completed"
+    mapper.handle(ev(end, f"{f}-c2e", parent=m2, started=f"{f}-c2", error="x"))
+    end = "method_execution_failed" if second_fails else "method_execution_finished"
+    mapper.handle(ev(end, f"{m2}e", parent=f, started=m2, error="x"))
+
+
+def test_user_flow_is_a_node_and_crews_nest_under_it(mapper, rec):
+    flow_run(mapper, 0)
+    mapper.handle(
+        ev("flow_finished", "f0e", started="f0", seconds=3, result="done"), USER_FLOW
+    )
+    flow = [e for e in rec.events if e["event_id"] == "f0"]
+    assert [(e["event_type"], e["status"]) for e in flow] == [
+        ("chain_start", "running"),
+        ("chain_end", "completed"),
+    ]
+    assert all(e["agent_type"] == "flow" for e in flow)
+    assert flow[0]["agent_name"] == "TwoCrewFlow"
+    assert flow[0]["payload"]["inputs"] == {"q": 1}
+    assert flow[1]["payload"]["outputs"] == {"output": "done"}
+    assert flow[1]["latency_ms"] == 3000
+    crews = [e for e in rec.events if e["agent_type"] == "crew"]
+    assert {e["parent_event_id"] for e in crews} == {"f0"}
+    assert not any(e["event_type"].startswith("method") for e in rec.events)
+
+
+def test_flow_sets_session_status_once_at_the_end(mapper, rec):
+    flow_run(mapper, 0)
+    assert rec.status == [], "crews inside a flow must not set the session status"
+    mapper.handle(ev("flow_finished", "f0e", started="f0"), USER_FLOW)
+    assert rec.status == ["completed"]
+
+
+def test_failed_flow_sets_session_status_failed_once(mapper, rec):
+    flow_run(mapper, 0, second_fails=True)
+    assert rec.status == []
+    mapper.handle(
+        ev("flow_failed", "f0e", started="f0", error=RuntimeError("boom")), USER_FLOW
+    )
+    assert rec.status == ["failed"]
+    end = rec.events[-1]
+    assert (end["event_id"], end["event_type"]) == ("f0", "chain_error")
+    assert end["payload"]["error"] == "boom"
+
+
+def test_standalone_crew_still_sets_session_status(mapper, rec):
+    mapper.handle(ev("crew_kickoff_started", "c1"))
+    mapper.handle(ev("crew_kickoff_completed", "c1e", started="c1"))
+    assert rec.status == ["completed"]
+
+
+def test_only_the_outermost_flow_sets_session_status(mapper, rec):
+    mapper.handle(ev("flow_started", "outer", flow_name="Outer"), USER_FLOW)
+    mapper.handle(ev("method_execution_started", "m", parent="outer"), USER_FLOW)
+    # A flow kicked off from inside a method of the outer flow.
+    mapper.handle(ev("flow_started", "inner", parent="m", flow_name="Inner"), USER_FLOW)
+    mapper.handle(ev("flow_finished", "inner-e", parent="m", started="inner"))
+    assert rec.status == [], "a nested flow must not set the session status"
+    inner = [e for e in rec.events if e["event_id"] == "inner"]
+    assert {e["parent_event_id"] for e in inner} == {"outer"}
+    mapper.handle(ev("method_execution_finished", "m-e", parent="outer", started="m"))
+    mapper.handle(ev("flow_finished", "outer-e", started="outer"), USER_FLOW)
+    assert rec.status == ["completed"]
+
+
+def test_crew_nested_in_a_tool_inside_a_flow_does_not_set_status(mapper, rec):
+    mapper.handle(ev("flow_started", "f", flow_name="F"), USER_FLOW)
+    mapper.handle(ev("crew_kickoff_started", "c", parent="f"))
+    mapper.handle(ev("tool_usage_started", "u", parent="c", tool_name="delegate"))
+    mapper.handle(ev("crew_kickoff_started", "n", parent="u", crew_name="inner"))
+    mapper.handle(ev("crew_kickoff_failed", "n-e", parent="u", started="n"))
+    mapper.handle(ev("tool_usage_finished", "u-e", parent="c", started="u"))
+    mapper.handle(ev("crew_kickoff_completed", "c-e", parent="f", started="c"))
+    assert rec.status == []
+    mapper.handle(ev("flow_finished", "f-e", started="f"), USER_FLOW)
+    assert rec.status == ["completed"]
+    inner = [e for e in rec.events if e["event_id"] == "n"]
+    assert {e["parent_event_id"] for e in inner} == {"u"}
+
+
+def test_internal_flows_stay_hidden_and_never_set_status(mapper, rec):
+    mapper.handle(ev("agent_execution_started", "a", agent_role="R"))
+    mapper.handle(
+        ev("flow_started", "x", parent="a", flow_name="AgentExecutor"), INTERNAL_FLOW
+    )
+    mapper.handle(ev("llm_call_started", "m", parent="x", model="gpt-4o"))
+    mapper.handle(ev("llm_call_completed", "m-e", parent="x", started="m"))
+    mapper.handle(ev("flow_finished", "x-e", parent="a", started="x"), INTERNAL_FLOW)
+    assert {e["event_id"] for e in rec.events} == {"a", "m"}
+    assert {e["parent_event_id"] for e in rec.events if e["event_id"] == "m"} == {"a"}
+    assert rec.status == []
+
+
+def test_paused_flow_is_forgotten_without_setting_status(mapper, rec):
+    mapper.handle(ev("flow_started", "f", flow_name="F"), USER_FLOW)
+    mapper.handle(ev("flow_paused", "f-p", started="f", method_name="ask"), USER_FLOW)
+    assert rec.status == []
+    assert [e["status"] for e in rec.events] == ["running"]
+    assert (len(mapper._parents), len(mapper._shown), len(mapper._started_at)) == (
+        0,
+        0,
+        0,
+    )
+
+
+def test_bookkeeping_stays_flat_across_many_flows(mapper, rec):
+    for i in range(50):
+        flow_run(mapper, i, second_fails=bool(i % 2))
+        end = "flow_failed" if i % 2 else "flow_finished"
+        mapper.handle(ev(end, f"f{i}e", started=f"f{i}", error="x"), USER_FLOW)
+        assert (len(mapper._parents), len(mapper._shown), len(mapper._started_at)) == (
+            0,
+            0,
+            0,
+        )
+    assert rec.status == ["completed", "failed"] * 25
+
+
+def test_user_flow_that_suppresses_flow_events_is_still_shown(mapper, rec):
+    mapper.handle(ev("flow_started", "f", flow_name="Quiet"), QUIET_USER_FLOW)
+    mapper.handle(ev("crew_kickoff_started", "c", parent="f"))
+    mapper.handle(ev("crew_kickoff_completed", "c-e", parent="f", started="c"))
+    assert rec.status == []
+    mapper.handle(ev("flow_finished", "f-e", started="f"), QUIET_USER_FLOW)
+    assert rec.status == ["completed"]
+    crew = [e for e in rec.events if e["event_id"] == "c"]
+    assert {e["parent_event_id"] for e in crew} == {"f"}
+
+
+def test_internal_marker_wins_over_suppress_flow_events(mapper, rec):
+    loud_internal = _InternalFlow(suppress_flow_events=False)
+    mapper.handle(ev("flow_started", "x", flow_name="AgentExecutor"), loud_internal)
+    assert rec.events == []
+
+
+def test_flow_source_without_the_marker_falls_back_to_suppress_flow_events(mapper, rec):
+    """For CrewAI releases that predate ``is_crewai_internal``."""
+    mapper.handle(
+        ev("flow_started", "x", flow_name="AgentExecutor"),
+        SimpleNamespace(suppress_flow_events=True),
+    )
+    mapper.handle(
+        ev("flow_started", "f", flow_name="Mine"),
+        SimpleNamespace(suppress_flow_events=False),
+    )
+    assert [e["event_id"] for e in rec.events] == ["f"]

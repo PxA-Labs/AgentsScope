@@ -21,6 +21,7 @@ crewai = pytest.importorskip("crewai")
 from crewai import Agent, Crew, Process, Task  # noqa: E402
 from crewai.events import crewai_event_bus  # noqa: E402
 from crewai.events.types.llm_events import LLMCallType  # noqa: E402
+from crewai.flow.flow import Flow, listen, start  # noqa: E402
 from crewai.llms.base_llm import BaseLLM  # noqa: E402
 from crewai.tools import tool  # noqa: E402
 
@@ -79,12 +80,16 @@ class Recorder:
     def __init__(self):
         self.events = []
         self.status = []
+        # Events and status patches in arrival order.
+        self.timeline = []
 
     def emit(self, event):
         self.events.append(event)
+        self.timeline.append(("event", event))
 
     def patch_session_status(self, status):
         self.status.append(status)
+        self.timeline.append(("status", status))
 
     def stop(self):
         pass
@@ -295,3 +300,110 @@ def test_standalone_agent_kickoff_is_recorded(recorder):
     assert len(children) == 3
     assert all(n["parent_event_id"] == solo["event_id"] for n in children)
     assert all(n["status"] == "completed" for n in children)
+
+
+def one_agent_crew(name, fail=False):
+    agent = Agent(
+        role=f"{name}-agent",
+        goal="g",
+        backstory="b",
+        llm=ScriptedLLM([f"Thought: done\nFinal Answer: {name} done."], fail=fail),
+        max_retry_limit=0,
+    )
+    return Crew(
+        name=name,
+        agents=[agent],
+        tasks=[Task(description=f"{name} task", expected_output="o", agent=agent)],
+    )
+
+
+def two_crew_flow(second_fails=False, **flow_kwargs):
+    class TwoCrewFlow(Flow):
+        @start()
+        def first(self):
+            return one_agent_crew("first-crew").kickoff().raw
+
+        @listen(first)
+        def second(self, previous):
+            return one_agent_crew("second-crew", fail=second_fails).kickoff().raw
+
+    return TwoCrewFlow(**flow_kwargs)
+
+
+def run_flow(flow):
+    try:
+        return flow.kickoff()
+    finally:
+        crewai_event_bus.flush()
+
+
+def test_flow_patches_session_status_once_when_it_finishes(recorder):
+    assert run_flow(two_crew_flow()) == "second-crew done."
+
+    assert recorder.status == ["completed"]
+    # Nothing between the crews: the only patch comes after the flow's end.
+    kind, last = recorder.timeline[-2]
+    assert kind == "event" and last["agent_type"] == "flow"
+    assert last["status"] == "completed"
+    assert recorder.timeline[-1] == ("status", "completed")
+
+
+def test_flow_is_a_node_with_its_crews_under_it(recorder):
+    run_flow(two_crew_flow())
+
+    final = nodes(recorder)
+    (flow,) = [n for n in final.values() if n["agent_type"] == "flow"]
+    crews = {n["agent_name"]: n for n in final.values() if n["agent_type"] == "crew"}
+    assert flow["agent_name"] == "TwoCrewFlow"
+    assert flow["parent_event_id"] is None
+    assert flow["event_type"] == "chain_end" and flow["status"] == "completed"
+    assert flow["payload"]["outputs"]["output"] == "second-crew done."
+    assert set(crews) == {"first-crew", "second-crew"}
+    assert all(c["parent_event_id"] == flow["event_id"] for c in crews.values())
+    # CrewAI's internal AgentExecutor flows stay hidden.
+    agents = [n for n in final.values() if n["agent_type"] == "agent"]
+    llms = [n for n in final.values() if n["agent_type"] == "llm"]
+    assert {a["event_id"] for a in agents} == {m["parent_event_id"] for m in llms}
+
+
+def test_flow_whose_second_crew_fails_patches_failed_once(recorder):
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        run_flow(two_crew_flow(second_fails=True))
+
+    assert recorder.status == ["failed"]
+    assert recorder.timeline[-1] == ("status", "failed")
+    final = nodes(recorder)
+    (flow,) = [n for n in final.values() if n["agent_type"] == "flow"]
+    assert flow["event_type"] == "chain_error" and flow["status"] == "error"
+    assert "provider unavailable" in flow["payload"]["error"]
+    crews = {n["agent_name"]: n for n in final.values() if n["agent_type"] == "crew"}
+    assert crews["first-crew"]["status"] == "completed"
+    assert crews["second-crew"]["status"] == "error"
+
+
+def test_bookkeeping_stays_flat_across_many_flows():
+    rec = Recorder()
+    listener = AgentScopeCrewAIListener(client=rec)
+    try:
+        sizes = []
+        for _ in range(5):
+            run_flow(two_crew_flow())
+            m = listener.mapper
+            sizes.append((len(m._parents), len(m._shown), len(m._started_at)))
+    finally:
+        listener.close()
+    assert sizes == [(0, 0, 0)] * 5, sizes
+    assert rec.status == ["completed"] * 5
+
+
+def test_user_flow_with_suppressed_flow_events_still_patches_once(recorder):
+    """``suppress_flow_events`` only quiets CrewAI's console output; CrewAI
+    marks its own flows with ``is_crewai_internal`` instead."""
+    run_flow(two_crew_flow(suppress_flow_events=True))
+
+    assert recorder.status == ["completed"]
+    final = nodes(recorder)
+    (flow,) = [n for n in final.values() if n["agent_type"] == "flow"]
+    crews = [n for n in final.values() if n["agent_type"] == "crew"]
+    assert len(crews) == 2
+    assert all(c["parent_event_id"] == flow["event_id"] for c in crews)
