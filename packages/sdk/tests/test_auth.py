@@ -1,19 +1,23 @@
 """SDK-side API-key handling (no real server)."""
 
-import asyncio
 import io
 import logging
+import threading
+import time
 import urllib.error
 import urllib.request
 
 import pytest
 
+import agentscope.client
 from agentscope.client import (
     API_KEY_ENV,
     MAX_BACKOFF_SECONDS,
     WS_CLOSE_UNAUTHORIZED,
     AgentScopeClient,
 )
+
+RealThread = threading.Thread
 
 
 @pytest.fixture(autouse=True)
@@ -67,21 +71,16 @@ def test_explicit_key_overrides_environment(monkeypatch):
     assert captured[0].get_header("Authorization") == "Bearer arg-key"
 
 
-def test_status_patch_carries_key(monkeypatch):
+def test_status_patch_carries_key(monkeypatch, inline_status_patch):
     captured = capture_urlopen(monkeypatch, response=io.BytesIO(b"{}"))
-    started = []
-
-    class InlineThread:
-        def __init__(self, target, name=None, daemon=None):
-            self.target = target
-
-        def start(self):
-            started.append(True)
-            self.target()
-
-    monkeypatch.setattr("agentscope.client.threading.Thread", InlineThread)
     AgentScopeClient(api_key="k-123")._send_status_patch("sess-1", "completed")
-    assert started
+    assert inline_status_patch
+    # Only the PATCH thread runs inline: threading.Thread itself and the
+    # threads the sender creates through agentscope.client stay real.
+    assert threading.Thread is RealThread
+    assert isinstance(
+        agentscope.client.threading.Thread(target=lambda: None), RealThread
+    )
     assert captured[0].get_method() == "PATCH"
     assert captured[0].get_header("Authorization") == "Bearer k-123"
 
@@ -108,7 +107,7 @@ def test_other_http_errors_keep_generic_warning(monkeypatch, caplog):
     assert not any("rejected the API key" in m for m in messages)
 
 
-def test_websocket_connect_receives_auth_header(monkeypatch):
+def test_websocket_connect_receives_auth_header(monkeypatch, run_sender_loop):
     """The background loop must pass the Bearer header to websockets.connect."""
     calls = []
 
@@ -122,32 +121,17 @@ def test_websocket_connect_receives_auth_header(monkeypatch):
     monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
     client = AgentScopeClient(api_key="k-ws")
     client.session_id = "sess-1"  # skip REST registration
-    client.running = True
-    client.loop = asyncio.new_event_loop()
+    # StopLoop is caught by the generic handler, which backs off; the fixture
+    # stops the sender at that first backoff.
+    run_sender_loop(client)
 
-    async def run_once():
-        # StopLoop is caught by the generic handler; stop after first attempt.
-        original_sleep = asyncio.sleep
-
-        async def stop_sleep(_):
-            client.running = False
-            await original_sleep(0)
-
-        monkeypatch.setattr("agentscope.client.asyncio.sleep", stop_sleep)
-        await client._main_async_loop()
-
-    try:
-        client.loop.run_until_complete(run_once())
-    finally:
-        client.loop.close()
-
-    assert calls, "websockets.connect was not called"
+    assert len(calls) == 1, "websockets.connect was not called"
     uri, kwargs = calls[0]
     assert uri == "ws://localhost:8765/ws?client_type=sdk"
     assert kwargs["additional_headers"] == {"Authorization": "Bearer k-ws"}
 
 
-def test_websocket_connect_without_key_sends_no_headers(monkeypatch):
+def test_websocket_connect_without_key_sends_no_headers(monkeypatch, run_sender_loop):
     calls = []
 
     def fake_connect(uri, **kwargs):
@@ -157,17 +141,8 @@ def test_websocket_connect_without_key_sends_no_headers(monkeypatch):
     monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
     client = AgentScopeClient()
     client.session_id = "sess-1"
-    client.running = True
-    client.loop = asyncio.new_event_loop()
-
-    async def stop_sleep(_):
-        client.running = False
-
-    monkeypatch.setattr("agentscope.client.asyncio.sleep", stop_sleep)
-    try:
-        client.loop.run_until_complete(client._main_async_loop())
-    finally:
-        client.loop.close()
+    run_sender_loop(client)
+    assert len(calls) == 1
     assert calls[0]["additional_headers"] is None
 
 
@@ -195,63 +170,79 @@ def test_api_key_not_exposed_in_repr():
     assert "super-secret" not in str(vars(client).get("api_key", ""))
 
 
-def run_against_4401_server(monkeypatch, attempts):
-    """Drive the loop against a server that accepts, then closes with 4401."""
-    from websockets.exceptions import ConnectionClosedError
-    from websockets.frames import Close
+class RejectingSocket:
+    """A server that completes the handshake, then closes with 4401."""
 
-    connects = []
-    sleeps = []
-
-    class RejectingSocket:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def send(self, _message):
-            raise ConnectionClosedError(
-                Close(WS_CLOSE_UNAUTHORIZED, "Unauthorized"), None
-            )
-
-    def fake_connect(uri, **kwargs):
+    def __init__(self, connects, uri):
         connects.append(uri)
-        return RejectingSocket()
 
-    client = AgentScopeClient(api_key="bad-key")
-    client.session_id = "sess-1"
-    client.running = True
-    client.loop = asyncio.new_event_loop()
-    client.queue.put({"event_id": "e1"})
+    async def __aenter__(self):
+        return self
 
-    async def fake_sleep(seconds):
-        sleeps.append(seconds)
-        if len(sleeps) >= attempts:
-            client.running = False
+    async def __aexit__(self, *exc):
+        return False
 
-    monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
-    monkeypatch.setattr("agentscope.client.asyncio.sleep", fake_sleep)
-    try:
-        client.loop.run_until_complete(client._main_async_loop())
-    finally:
-        client.loop.close()
-    return connects, sleeps
+    async def send(self, _message):
+        from websockets.exceptions import ConnectionClosedError
+        from websockets.frames import Close
+
+        raise ConnectionClosedError(Close(WS_CLOSE_UNAUTHORIZED, "Unauthorized"), None)
+
+
+def patch_4401_server(monkeypatch):
+    connects = []
+    monkeypatch.setattr(
+        "agentscope.client.websockets.connect",
+        lambda uri, **kwargs: RejectingSocket(connects, uri),
+    )
+    return connects
 
 
 def test_4401_close_backs_off_to_max_instead_of_reconnecting_every_second(
-    monkeypatch, caplog
+    monkeypatch, caplog, run_sender_loop
 ):
+    connects = patch_4401_server(monkeypatch)
+    client = AgentScopeClient(api_key="bad-key")
+    client.session_id = "sess-1"
+    client.queue.put({"event_id": "e1"})
     with caplog.at_level(logging.DEBUG):
-        connects, sleeps = run_against_4401_server(monkeypatch, attempts=5)
+        sleeps = run_sender_loop(client, backoffs=5)
     assert len(connects) == 5
     # The handshake succeeds before the 4401 close, which used to reset the
     # backoff to 1 s each time. Rejected credentials won't fix themselves.
     assert sleeps == [MAX_BACKOFF_SECONDS] * 5
+    assert AgentScopeClient._max_backoff == MAX_BACKOFF_SECONDS
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     # One actionable hint; the per-retry noise is demoted to DEBUG.
     assert warnings == [warnings[0]] and "rejected the API key" in warnings[0]
     assert all("bad-key" not in r.getMessage() for r in caplog.records)
+
+
+def test_stop_interrupts_the_4401_backoff(monkeypatch, caplog):
+    """stop() must not wait out the 30 s backoff after a 4401 close."""
+    connects = patch_4401_server(monkeypatch)
+
+    def register(self):
+        self.session_id = "sess-1"
+
+    monkeypatch.setattr(AgentScopeClient, "_create_session_sync", register)
+    client = AgentScopeClient(api_key="bad-key")
+    with caplog.at_level(logging.WARNING):
+        client.emit({"event_id": "e1"})
+        deadline = time.monotonic() + 5
+        while not connects and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert connects, "the sender never connected"
+        time.sleep(0.1)  # now inside the 30 s backoff
+        started = time.monotonic()
+        client.stop(timeout=0.5)
+        elapsed = time.monotonic() - started
+    assert elapsed < 2.0
+    assert client.running is False
+    # Retries continue only until the stop deadline.
+    assert len(connects) <= 3
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1 and "rejected the API key" in warnings[0]
 
 
 # --- the key must not follow redirects ---------------------------------------

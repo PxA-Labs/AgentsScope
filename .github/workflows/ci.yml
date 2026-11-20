@@ -79,7 +79,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
 
@@ -93,6 +93,30 @@ jobs:
       - name: Run CrewAI tests
         run: |
           pytest packages/sdk/tests/test_crewai_mapper.py packages/sdk/tests/test_crewai_integration.py
+
+  test-llamaindex-integration:
+    name: Test LlamaIndex Integration
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Separate job so the LlamaIndex dependency tree stays out of the main SDK job.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Install SDK with LlamaIndex
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/sdk[dev,llamaindex]"
+
+      - name: Run LlamaIndex tests
+        run: |
+          pytest packages/sdk/tests/test_llamaindex_mapper.py packages/sdk/tests/test_llamaindex_integration.py
 
   test-python-server:
     name: Test FastAPI Server (py${{ matrix.python-version }})

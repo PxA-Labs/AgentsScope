@@ -5,28 +5,28 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Added
-- **sdk**: Add AutoGen integration (model client wrapper + run tracer)
+- **sdk**: Add LlamaIndex integration via the instrumentation API
 
 ### Fixed
-- **sdk**: Stop the AutoGen team on early close and close the run last
-- **sdk**: Treat a cancelled AutoGen stream finalizer as an early close
-- **sdk**: Make the traced AutoGen model client serializable
-- **sdk**: Start a new AutoGen turn for each agent response
-- **sdk**: Resolve the global client per event in the AutoGen integration
-- **sdk**: Close AutoGen runs cleanly when the consumer stops early
+- **sdk**: Fold LlamaIndex LLM calls made inside an async stream into one node
+- **sdk**: Never block on the LlamaIndex mapper lock from a stream finalizer
+- **sdk**: Stop doubling streamed text when LlamaIndex folds a nested call
+- **sdk**: Switch LlamaIndex client when instrumenting again with one
+- **sdk**: Cap open LlamaIndex nodes and document FIFO eviction
+- **sdk**: Close LlamaIndex nodes that never get an end event
+- **sdk**: Resolve the global client per event in the LlamaIndex integration
 
 ### Documentation
-- **sdk**: Describe what early close does to an AutoGen team
-- **sdk**: Describe AutoGen early close, turns and reconfiguration
-- **sdk**: Document the AutoGen integration and add an example
+- **sdk**: Note that LlamaIndex async streams on CustomLLM are one node
+- **sdk**: Describe LlamaIndex stream closing and client switching
+- **sdk**: Document the LlamaIndex integration and add an offline example
 
 ### Tests
-- **sdk**: Rename AutoGen turn-grouping test to match its behaviour
-- **sdk**: Unit-test AutoGen run tracer edge cases without AutoGen
-- **sdk**: Exercise the AutoGen integration with real teams
+- **sdk**: Unit-test LlamaIndex event mapping without LlamaIndex
+- **sdk**: Exercise the LlamaIndex integration with real query engines
 
 ### Miscellaneous
-- Build(sdk): add autogen extra and run AutoGen tests in CI
+- Build(sdk): add llamaindex extra and a Python 3.11 CI job
 
 ## [1.0.0] - 2026-08-10
 
