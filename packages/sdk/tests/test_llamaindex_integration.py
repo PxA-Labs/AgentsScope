@@ -23,9 +23,9 @@ from llama_index.core.embeddings import MockEmbedding  # noqa: E402
 from llama_index.core.llms import CustomLLM, MockLLM  # noqa: E402
 from llama_index.core.llms.callbacks import llm_completion_callback  # noqa: E402
 
-from agentscope._pricing import calculate_cost  # noqa: E402
-from agentscope.decorators import trace  # noqa: E402
-from agentscope.integrations.llamaindex import (  # noqa: E402
+from agentscope_trace._pricing import calculate_cost  # noqa: E402
+from agentscope_trace.decorators import trace  # noqa: E402
+from agentscope_trace.integrations.llamaindex import (  # noqa: E402
     instrument_llamaindex,
     uninstrument_llamaindex,
 )
@@ -180,7 +180,7 @@ def test_streaming_query_keeps_stream_intact_and_records_llm(index, rec):
 
 
 def test_streamed_llm_nests_under_enclosing_trace(index, rec, monkeypatch):
-    monkeypatch.setattr("agentscope.decorators.get_global_client", lambda: rec)
+    monkeypatch.setattr("agentscope_trace.decorators.get_global_client", lambda: rec)
 
     @trace(name="rag_request")
     def handle():
@@ -224,7 +224,7 @@ def test_failure_marks_open_nodes_as_errors(index, rec):
 
 def test_direct_chat_call_and_nesting_under_trace(rec, monkeypatch):
     # @trace emits through the global client; route it to the recorder too.
-    monkeypatch.setattr("agentscope.decorators.get_global_client", lambda: rec)
+    monkeypatch.setattr("agentscope_trace.decorators.get_global_client", lambda: rec)
     llm = MockLLM(max_tokens=3)
     llm.chat([ChatMessage(role="user", content="hi")])
     # MockLLM implements chat() via complete(): still exactly one LLM node.

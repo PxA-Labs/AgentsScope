@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from agentscope.integrations.autogen import _Emitter, _RunState
+from agentscope_trace.integrations.autogen import _Emitter, _RunState
 
 
 class Recorder:

@@ -7,8 +7,8 @@ Start the AgentScope server first (see the README), then run this script.
 import os
 import time
 
-from agentscope import patch_gemini, trace
-from agentscope.decorators import configure
+from agentscope_trace import patch_gemini, trace
+from agentscope_trace.decorators import configure
 from google import genai
 from google.genai import types
 

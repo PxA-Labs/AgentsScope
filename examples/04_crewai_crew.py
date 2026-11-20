@@ -5,7 +5,7 @@ default model (e.g. OPENAI_API_KEY). Start the AgentScope server first (see the
 README), then run this script and open the dashboard.
 """
 
-from agentscope.integrations.crewai import AgentScopeCrewAIListener
+from agentscope_trace.integrations.crewai import AgentScopeCrewAIListener
 from crewai import Agent, Crew, Process, Task
 from crewai.tools import tool
 

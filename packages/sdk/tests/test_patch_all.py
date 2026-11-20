@@ -7,8 +7,8 @@ import types
 
 import pytest
 
-from agentscope import patch as patch_module
-from agentscope.patch import patch_all, unpatch_all
+from agentscope_trace import patch as patch_module
+from agentscope_trace.patch import patch_all, unpatch_all
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +19,7 @@ def _cleanup():
 
 def test_importing_agentscope_does_not_import_provider_sdks():
     code = (
-        "import sys, agentscope; "
+        "import sys, agentscope_trace; "
         "print(sorted(m for m in ('openai', 'anthropic', 'google.genai') "
         "if m in sys.modules))"
     )

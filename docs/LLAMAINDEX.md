@@ -3,8 +3,8 @@
 For `llama-index-core` **0.14+** (Python 3.11+). Install with `pip install -e "packages/sdk[llamaindex]"`.
 
 ```python
-from agentscope.decorators import configure
-from agentscope.integrations.llamaindex import instrument_llamaindex, uninstrument_llamaindex
+from agentscope_trace.decorators import configure
+from agentscope_trace.integrations.llamaindex import instrument_llamaindex, uninstrument_llamaindex
 
 configure(session_name="rag-app")   # server host/port, session name
 instrument_llamaindex()             # once per process (idempotent)

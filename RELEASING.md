@@ -17,7 +17,7 @@ The Python SDK in `packages/sdk` is published to PyPI as **`agentscope-trace`** 
 ## Cutting a release
 
 1. Open a PR that:
-   - bumps `__version__` in [`packages/sdk/agentscope/_version.py`](packages/sdk/agentscope/_version.py) (SemVer: patch for fixes, minor for features, major for breaking changes; `X.Y.ZrcN` for release candidates)
+   - bumps `__version__` in [`packages/sdk/agentscope_trace/_version.py`](packages/sdk/agentscope_trace/_version.py) (SemVer: patch for fixes, minor for features, major for breaking changes; `X.Y.ZrcN` for release candidates)
    - moves the relevant `CHANGELOG.md` entries under the new version
 2. After it merges, tag the merge commit on `main` and push the tag:
    ```bash
@@ -40,6 +40,11 @@ If any step fails, nothing further is published. Fix the problem in a PR, delete
 - Update the install instructions in `README.md` and `packages/sdk/README.md` to `pip install agentscope-trace` (they currently say to install from source, because nothing is published yet).
 - Add a PyPI version badge to the README.
 
-## Known follow-up
+## The `agentscope` compatibility shim
 
-The import package is still named `agentscope`, the same top-level module as the unrelated `agentscope` project on PyPI, so the two can't be installed in the same environment. Renaming the import package is tracked in [#297](https://github.com/PxA-Labs/AgentsScope/issues/297) and will ship with a compatibility shim.
+The import package is `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297)). The wheel still ships a one-file `agentscope` package (`packages/sdk/agentscope/__init__.py`) that aliases `agentscope_trace` and emits a `DeprecationWarning`, so existing `import agentscope` code keeps working.
+
+That shim is the only file that still clashes with the unrelated `agentscope` project on PyPI: installing both overwrites `agentscope/__init__.py` (`packages/sdk/tests/test_wheel_install.py` documents this). So:
+
+- The GitHub release notes of the first release that contains the rename must include the migration notes from [CHANGELOG.md](CHANGELOG.md) (`--generate-notes` only lists PR titles; edit the release after it is created).
+- Keep the shim for at least one full minor release after that first release, then remove it in a minor release: delete `packages/sdk/agentscope/`, drop `"agentscope"` from `packages` in `packages/sdk/pyproject.toml`, delete `packages/sdk/tests/test_import_shim.py`, invert the clash test in `test_wheel_install.py`, and drop the shim check from the release smoke test.

@@ -6,8 +6,8 @@ Start the AgentScope server first (see the README), then run this script.
 Swap Settings.llm / Settings.embed_model for real models in your app.
 """
 
-from agentscope.decorators import configure, get_global_client
-from agentscope.integrations.llamaindex import instrument_llamaindex
+from agentscope_trace.decorators import configure, get_global_client
+from agentscope_trace.integrations.llamaindex import instrument_llamaindex
 from llama_index.core import Document, Settings, VectorStoreIndex
 from llama_index.core.embeddings import MockEmbedding
 from llama_index.core.llms import MockLLM

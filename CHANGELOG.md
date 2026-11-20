@@ -20,6 +20,20 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ### Miscellaneous
 - Build(ui): move to Tailwind CSS 4 with @tailwindcss/postcss
 
+## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
+
+Migration notes for the next `agentscope-trace` release. The distribution name (`agentscope-trace`) and the `agentscope` CLI command are unchanged; only the Python import name moves.
+
+- **Migrate**: `s/from agentscope/from agentscope_trace/` and `s/import agentscope/import agentscope_trace/`, plus `agentscope.<name>` attribute uses and module-name strings (`monkeypatch.setattr("agentscope....")` targets):
+  ```bash
+  perl -pi -e 's/\b(from|import) agentscope\b/$1 agentscope_trace/g; 1 while s/^(\s*import\s[^#]*,\s*)agentscope\b/$1agentscope_trace/; s/(?<![\w.\/@-])agentscope(?=\.\w)/agentscope_trace/g' *.py
+  ```
+  Review the diff: it can also rewrite a bare `agentscope.<host>` string or imports of agentscope-ai's unrelated `agentscope`. Alternatively, `import agentscope_trace as agentscope` keeps `agentscope.<name>` uses working. Logging config must be updated by hand: loggers are now `agentscope_trace.*`. See [packages/sdk/README.md](packages/sdk/README.md#migrating-from-import-agentscope).
+- **Compatibility**: `import agentscope` and `agentscope.<submodule>` imports keep working through a deprecated shim that emits one `DeprecationWarning`. It aliases the same module objects, so old and new imports can be mixed during migration. Import the package once at startup, before starting threads (a thread's first import of `agentscope.<name>` can fail while another thread's first `import agentscope` is still running).
+- **Deprecation timeline**: the shim ships in the first release with the rename and stays for at least one further minor release; it is removed in a later minor release (first shipped in 0.N.0, kept through 0.N+1.x, removed in 0.N+2.0 at the earliest).
+- **Why**: the shim is the one file that still clashes with the unrelated `agentscope` package on PyPI (agentscope-ai). Until it is removed, the two cannot be installed in the same environment.
+- **Contributors**: an editable install made before the rename only maps `agentscope`, so both import names fail until you re-run `make setup-sdk` (or `pip install -e packages/sdk`).
+
 ## [1.0.0] - 2026-08-10
 
 ### Added

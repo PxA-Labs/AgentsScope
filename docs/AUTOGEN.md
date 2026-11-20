@@ -14,8 +14,8 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 
-from agentscope.decorators import configure
-from agentscope.integrations.autogen import AgentScopeAutoGenTracer, trace_model_client
+from agentscope_trace.decorators import configure
+from agentscope_trace.integrations.autogen import AgentScopeAutoGenTracer, trace_model_client
 
 configure(session_name="autogen-team")      # server host/port, session name
 model = trace_model_client(OpenAIChatCompletionClient(model="gpt-4o"))

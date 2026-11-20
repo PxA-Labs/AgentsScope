@@ -71,7 +71,7 @@ def server():
 
 def run_sdk_script(port, session_name, body, timeout=30, host="127.0.0.1"):
     prelude = (
-        "from agentscope.decorators import configure, get_global_client, trace\n"
+        "from agentscope_trace.decorators import configure, get_global_client, trace\n"
         f"configure(host={host!r}, port={port}, session_name={session_name!r})\n"
     )
     started = time.monotonic()

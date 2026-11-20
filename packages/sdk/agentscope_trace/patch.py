@@ -3,9 +3,14 @@ import importlib.util
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from agentscope.decorators import get_global_client
-from agentscope.exceptions import AgentScopeError
-from agentscope.providers._base import ProviderAdapter, Usage, wrap_async, wrap_sync
+from agentscope_trace.decorators import get_global_client
+from agentscope_trace.exceptions import AgentScopeError
+from agentscope_trace.providers._base import (
+    ProviderAdapter,
+    Usage,
+    wrap_async,
+    wrap_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +159,7 @@ def patch_openai() -> bool:
         openai = importlib.import_module("openai")
     except ImportError:
         logger.warning(
-            "OpenAI package not installed. Skipping agentscope.patch_openai()."
+            "OpenAI package not installed. Skipping agentscope_trace.patch_openai()."
         )
         return False
 
@@ -223,10 +228,10 @@ def _patch_function(provider: str) -> Callable[[], bool]:
     if provider == "openai":
         return patch_openai
     if provider == "anthropic":
-        from agentscope.providers.anthropic import patch_anthropic
+        from agentscope_trace.providers.anthropic import patch_anthropic
 
         return patch_anthropic
-    from agentscope.providers.gemini import patch_gemini
+    from agentscope_trace.providers.gemini import patch_gemini
 
     return patch_gemini
 
@@ -257,8 +262,8 @@ def patch_all() -> Dict[str, bool]:
 
 def unpatch_all() -> None:
     """Undo :func:`patch_all` (safe to call even if nothing was patched)."""
-    from agentscope.providers.anthropic import unpatch_anthropic
-    from agentscope.providers.gemini import unpatch_gemini
+    from agentscope_trace.providers.anthropic import unpatch_anthropic
+    from agentscope_trace.providers.gemini import unpatch_gemini
 
     unpatch_openai()
     unpatch_anthropic()

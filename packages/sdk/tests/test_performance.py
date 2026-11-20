@@ -14,8 +14,8 @@ The PRD target is "emit() returns in < 1 ms".
 import socket
 import time
 
-from agentscope.client import AgentScopeClient
-from agentscope.decorators import trace
+from agentscope_trace.client import AgentScopeClient
+from agentscope_trace.decorators import trace
 
 EMIT_P99_BUDGET_US = 1000.0
 TRACE_P50_BUDGET_US = 500.0
@@ -53,7 +53,7 @@ def test_trace_decorator_overhead_under_budget(monkeypatch):
         def emit(self, event):
             pass
 
-    monkeypatch.setattr("agentscope.decorators.get_global_client", NullClient)
+    monkeypatch.setattr("agentscope_trace.decorators.get_global_client", NullClient)
 
     @trace(name="hot_path")
     def work(x):

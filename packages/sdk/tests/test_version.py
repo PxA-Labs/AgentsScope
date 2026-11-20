@@ -3,8 +3,8 @@
 import importlib.metadata
 import re
 
-import agentscope
-from agentscope._version import __version__
+import agentscope_trace
+from agentscope_trace._version import __version__
 
 DIST_NAME = "agentscope-trace"
 
@@ -16,7 +16,7 @@ def test_version_is_pep440_release():
 
 
 def test_package_exposes_version():
-    assert agentscope.__version__ == __version__
+    assert agentscope_trace.__version__ == __version__
 
 
 def test_installed_distribution_metadata_matches():

@@ -5,8 +5,8 @@ import time
 
 import pytest
 
-import agentscope.client as client_module
-from agentscope import _pricing
+import agentscope_trace.client as client_module
+from agentscope_trace import _pricing
 
 
 @pytest.fixture(autouse=True)
@@ -34,7 +34,7 @@ def run_sender_loop(monkeypatch):
     recorder that asks the sender to stop (``request_stop``) once it has been
     called ``backoffs`` times. Returns the requested backoff durations.
     """
-    from agentscope.client import _Sender, _SenderEventLoop
+    from agentscope_trace.client import _Sender, _SenderEventLoop
 
     def run(client, backoffs=1):
         waits = []
@@ -61,7 +61,7 @@ def run_sender_loop(monkeypatch):
 def inline_status_patch(monkeypatch):
     """Run the status-PATCH helper thread inline; leave every other thread real.
 
-    Only ``agentscope.client``'s view of ``threading`` is replaced, and only
+    Only ``agentscope_trace.client``'s view of ``threading`` is replaced, and only
     the thread named AgentScopeSessionPatchThread runs inline. The global
     ``threading.Thread`` and the sender's own threads stay untouched. Returns
     a list that records each inline start.

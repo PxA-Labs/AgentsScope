@@ -98,7 +98,7 @@ step "start server"
 
 python - "$PORT" <<'PY'
 import json, sys, time, urllib.request
-from agentscope.decorators import configure, get_global_client, trace
+from agentscope_trace.decorators import configure, get_global_client, trace
 port = int(sys.argv[1])
 configure(host="127.0.0.1", port=port, session_name="time-to-value")
 

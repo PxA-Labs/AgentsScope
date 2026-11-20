@@ -1,6 +1,6 @@
 import time
 
-from agentscope.callback import AgentScopeCallback
+from agentscope_trace.callback import AgentScopeCallback
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_community.llms.fake import FakeListLLM
 from langchain_core.prompts import PromptTemplate

@@ -1,6 +1,6 @@
 """Bounded in-memory buffer semantics of AgentScopeClient."""
 
-from agentscope.client import AgentScopeClient
+from agentscope_trace.client import AgentScopeClient
 
 
 def _event(i: int) -> dict:

@@ -2,9 +2,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agentscope._pricing import calculate_cost
-from agentscope.callback import AgentScopeCallback
-from agentscope.decorators import get_global_client, trace
+from agentscope_trace._pricing import calculate_cost
+from agentscope_trace.callback import AgentScopeCallback
+from agentscope_trace.decorators import get_global_client, trace
 
 
 def test_calculate_cost():
@@ -49,7 +49,7 @@ def test_calculate_cost():
         calculate_cost("gpt-4o", 100, -1)
 
     # Custom programmatic updates
-    from agentscope._pricing import update_pricing_table
+    from agentscope_trace._pricing import update_pricing_table
 
     update_pricing_table({"custom-model-x": {"input": 1.0, "output": 2.0}})
     assert calculate_cost("custom-model-x-v1", 1_000_000, 1_000_000) == 3.0
@@ -57,7 +57,7 @@ def test_calculate_cost():
     # Environment variable overrides
     import os
 
-    from agentscope._pricing import _load_env_overrides
+    from agentscope_trace._pricing import _load_env_overrides
 
     os.environ["AGENTSCOPE_CUSTOM_PRICING"] = (
         '{"custom-env-y": {"input": 5.0, "output": 10.0}}'
@@ -261,7 +261,7 @@ async def test_callback_handler():
 def test_client_pending_status_patch():
     from unittest.mock import MagicMock
 
-    from agentscope.client import AgentScopeClient
+    from agentscope_trace.client import AgentScopeClient
 
     client = AgentScopeClient(host="localhost", port=8765, session_name="test_session")
     # session_id is initially None

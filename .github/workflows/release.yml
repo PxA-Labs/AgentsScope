@@ -54,12 +54,22 @@ jobs:
         run: |
           python -m venv /tmp/smoke
           /tmp/smoke/bin/pip install dist/*.whl
+          cd /tmp  # so the checkout can't shadow the installed wheel
           /tmp/smoke/bin/python - <<'PY'
           import importlib.metadata as metadata
-          import agentscope
-          assert agentscope.__version__ == metadata.version("agentscope-trace")
-          from agentscope import AgentScopeCallback, trace  # noqa: F401
-          print("agentscope-trace", agentscope.__version__)
+          import warnings
+          import agentscope_trace
+          assert agentscope_trace.__version__ == metadata.version("agentscope-trace")
+          from agentscope_trace import AgentScopeCallback, trace  # noqa: F401
+          # Deprecated `agentscope` shim (#297): same objects, one warning.
+          with warnings.catch_warnings(record=True) as caught:
+              warnings.simplefilter("always")
+              import agentscope
+              import agentscope.decorators
+          assert agentscope is agentscope_trace
+          assert agentscope.decorators is agentscope_trace.decorators
+          assert [w.category for w in caught] == [DeprecationWarning], caught
+          print("agentscope-trace", agentscope_trace.__version__)
           PY
           /tmp/smoke/bin/agentscope --help
 

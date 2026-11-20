@@ -12,8 +12,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from agentscope._pricing import calculate_cost
-from agentscope.decorators import current_parent_run_id
+from agentscope_trace._pricing import calculate_cost
+from agentscope_trace.decorators import current_parent_run_id
 
 Usage = Tuple[Optional[int], Optional[int], Optional[int]]
 EMPTY_USAGE: Usage = (None, None, None)

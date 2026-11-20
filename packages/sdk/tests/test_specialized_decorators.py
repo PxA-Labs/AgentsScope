@@ -3,7 +3,7 @@ import traceback
 
 import pytest
 
-from agentscope.decorators import trace, trace_llm, trace_retriever, trace_tool
+from agentscope_trace.decorators import trace, trace_llm, trace_retriever, trace_tool
 
 
 class MockClient:
@@ -17,7 +17,7 @@ class MockClient:
 @pytest.fixture(autouse=True)
 def mock_client(monkeypatch):
     client = MockClient()
-    monkeypatch.setattr("agentscope.decorators.get_global_client", lambda: client)
+    monkeypatch.setattr("agentscope_trace.decorators.get_global_client", lambda: client)
     return client
 
 

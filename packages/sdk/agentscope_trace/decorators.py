@@ -6,8 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
-from agentscope._pricing import estimate_tokens
-from agentscope.client import AgentScopeClient
+from agentscope_trace._pricing import estimate_tokens
+from agentscope_trace.client import AgentScopeClient
 
 # ContextVar to track the hierarchy of traces in a thread/async context
 current_parent_run_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(

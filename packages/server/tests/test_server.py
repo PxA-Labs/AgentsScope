@@ -365,7 +365,7 @@ def test_sdk_client_integration(db_engine):
     import uuid
 
     import uvicorn
-    from agentscope.client import AgentScopeClient
+    from agentscope_trace.client import AgentScopeClient
 
     # Get a free port
     s = socket.socket()

@@ -24,7 +24,7 @@ from crewai.events.types.llm_events import LLMCallType  # noqa: E402
 from crewai.llms.base_llm import BaseLLM  # noqa: E402
 from crewai.tools import tool  # noqa: E402
 
-from agentscope.integrations.crewai import (  # noqa: E402
+from agentscope_trace.integrations.crewai import (  # noqa: E402
     AgentScopeCrewAIListener,
     instrument_crewai,
 )

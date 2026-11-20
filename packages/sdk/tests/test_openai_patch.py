@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agentscope.exceptions import AgentScopeError
-from agentscope.patch import (
+from agentscope_trace.exceptions import AgentScopeError
+from agentscope_trace.patch import (
     _extract_completion,
     _extract_prompts,
     _extract_token_usage,
@@ -27,7 +27,7 @@ class MockClient:
 @pytest.fixture(autouse=True)
 def mock_client(monkeypatch):
     client = MockClient()
-    monkeypatch.setattr("agentscope.patch.get_global_client", lambda: client)
+    monkeypatch.setattr("agentscope_trace.patch.get_global_client", lambda: client)
     return client
 
 

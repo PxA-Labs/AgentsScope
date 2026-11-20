@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from agentscope._pricing import calculate_cost
-from agentscope.integrations.crewai import CrewAIEventMapper
+from agentscope_trace._pricing import calculate_cost
+from agentscope_trace.integrations.crewai import CrewAIEventMapper
 
 T0 = datetime(2026, 11, 15, 12, 0, 0, tzinfo=timezone.utc)
 

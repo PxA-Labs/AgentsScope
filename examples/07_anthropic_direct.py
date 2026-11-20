@@ -8,8 +8,8 @@ import os
 import time
 
 import anthropic
-from agentscope import patch_anthropic, trace
-from agentscope.decorators import configure
+from agentscope_trace import patch_anthropic, trace
+from agentscope_trace.decorators import configure
 
 configure(host="127.0.0.1", port=8765, session_name="Anthropic direct calls")
 patch_anthropic()  # instruments every Anthropic client in this process

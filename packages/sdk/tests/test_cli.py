@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agentscope.cli import find_repo_paths, main
+from agentscope_trace.cli import find_repo_paths, main
 
 
 def test_find_repo_paths():
@@ -12,7 +12,7 @@ def test_find_repo_paths():
     assert len((root, server, ui, docker_compose)) == 4
 
 
-@patch("agentscope.cli.find_repo_paths")
+@patch("agentscope_trace.cli.find_repo_paths")
 @patch("argparse.ArgumentParser.parse_args")
 def test_cli_main_start_docker(mock_parse_args, mock_find_paths):
     """Test that running 'agentscope start --docker' invokes docker compose."""
@@ -43,7 +43,7 @@ def test_cli_main_start_docker(mock_parse_args, mock_find_paths):
         )
 
 
-@patch("agentscope.cli.find_repo_paths")
+@patch("agentscope_trace.cli.find_repo_paths")
 @patch("argparse.ArgumentParser.parse_args")
 def test_cli_main_start_local(mock_parse_args, mock_find_paths):
     """Test that running 'agentscope start' spawns local processes."""
@@ -91,7 +91,7 @@ def _run_main(argv, monkeypatch, tmp_path):
     monkeypatch.setattr("sys.argv", ["agentscope", *argv])
     monkeypatch.chdir(tmp_path)  # not a repository checkout
     monkeypatch.setattr(
-        "agentscope.cli.find_repo_paths", lambda: (None, None, None, None)
+        "agentscope_trace.cli.find_repo_paths", lambda: (None, None, None, None)
     )
     main()
 
@@ -109,7 +109,7 @@ def test_start_outside_checkout_explains_what_to_do(
 
 
 def test_version_flag(monkeypatch, tmp_path, capsys):
-    from agentscope import __version__
+    from agentscope_trace import __version__
 
     with pytest.raises(SystemExit) as exc:
         _run_main(["--version"], monkeypatch, tmp_path)

@@ -35,8 +35,8 @@ from _harness import (
     settled_count,
     spread,
 )
-from agentscope import decorators
-from agentscope.client import AgentScopeClient
+from agentscope_trace import decorators
+from agentscope_trace.client import AgentScopeClient
 
 
 def time_emits(client: AgentScopeClient, n: int, rate: float = 0.0) -> list:

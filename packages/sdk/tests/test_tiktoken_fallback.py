@@ -1,4 +1,4 @@
-﻿from agentscope._pricing import estimate_tokens
+﻿from agentscope_trace._pricing import estimate_tokens
 
 
 def test_estimate_tokens_with_text():
