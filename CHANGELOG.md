@@ -5,33 +5,27 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Added
-- **sdk**: Trace anthropic messages.parse()
-- **sdk**: Export provider patches and add patch_all / unpatch_all
-- **sdk**: Add patch_gemini / unpatch_gemini for google-genai
-- **sdk**: Add patch_anthropic / unpatch_anthropic
-- **sdk**: Let provider adapters attach usage details to llm_end
-
-### Fixed
-- **sdk**: Normalise Vertex AI model resource names for Gemini
-- **sdk**: Count Gemini thought tokens as completion tokens
-- **sdk**: Start the anthropic stream() trace when the with block is entered
-- **sdk**: Record anthropic stream() as llm_end when the caller raises
+- **ui**: Name CSV downloads with the server's Content-Disposition filename
+- **ui**: Add CSV option to session export
+- **server**: Stream CSV from the session export endpoint
+- **server**: Add CSV serializer for session events
 
 ### Documentation
-- **sdk**: Correct provider streaming claims and add known limitations
-- **sdk**: Document provider auto-instrumentation and add examples
+- **server**: Note that a CSV export holds a DB connection while streaming
+- **schema**: Document JSON and CSV session export formats
 
-### Refactor
-- **sdk**: Extract provider-agnostic LLM tracing into providers/_base
+### Performance
+- **server**: Send the CSV export one chunk per batch, not per row
 
 ### Tests
-- **sdk**: Make the Gemini nesting test fail when nothing is traced
-- **sdk**: Cover patch_all, unpatch_all and lazy SDK imports
-- **sdk**: Exercise patch_gemini against the real SDK
-- **sdk**: Exercise patch_anthropic against the real SDK
+- **server**: Catch an early db.close() during CSV streaming
+- **server**: Seed CSV export test sessions relative to now
+- **server**: Cover CSV export over HTTP, including streaming
 
-### Miscellaneous
-- Build(sdk): add anthropic and gemini extras; test them in CI
+### Style
+- **server**: Bind the wrapped close() in the CSV lifetime test
+- **server**: Spell the remaining CSV BOM in the API tests as an escape
+- **server**: Spell the CSV BOM as an escape in tests
 
 ## [1.0.0] - 2026-08-10
 
