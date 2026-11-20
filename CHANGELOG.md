@@ -4,30 +4,31 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Fixed
-- **ui**: Keep the live WebSocket open across session_update messages
+### Added
+- **sdk**: Make the offline event buffer size configurable
 
 ### Documentation
-- **ui**: Describe the component layout and how to run the UI tests
-
-### Refactor
-- **ui**: Keep the live socket independent of the refresh callback
-- **ui**: Drop explicit any and restore the strict lint rules
-- **ui**: Split the dashboard page into components
-- **ui**: Move data fetching and the WebSocket into hooks
-- **ui**: Keep graph and stats in the session store
-- **ui**: Add typed REST helpers to lib/api
+- **perf**: Don't overstate the latency tail
+- Note that dashboard timings predate the React bump
+- **sdk**: Mention the max_queue_size option in the SDK README
+- Re-measure performance against PRD targets after #296
+- Record measured performance against PRD targets
 
 ### Tests
-- **ui**: Add a Playwright E2E smoke test against the real server
-- **ui**: Add Vitest, Testing Library and msw unit tests
+- **sdk**: Drop the #289 workaround from the perf gate, fix headroom
+- **bench**: Add a cold-cache mode to the time-to-value script
+- **bench**: Time outage recovery from server health, repeat runs
+- **bench**: Repeat the end-to-end latency sweep and report spread
+- **bench**: Pace the server-up emit() benchmark and report drops
+- **sdk**: Add CI regression gate for emit() and @trace overhead
+- **bench**: Add time-to-value script (clone to first stored event)
+- **bench**: Measure delivery and recovery across a server outage
+- **bench**: Measure end-to-end emit-to-dashboard latency
+- **bench**: Add benchmark harness and SDK overhead benchmark
 
 ### CI/CD
-- Run the UI unit and E2E tests
-
-### Miscellaneous
-- Build(ui): keep make test-ui light; document the Node versions tests need
-- Build(ui): align react with react-dom 19.3
+- Fail the benchmark job when a benchmark fails
+- Add make bench / make ttv and a weekly benchmark workflow
 
 ## [1.0.0] - 2026-08-10
 
