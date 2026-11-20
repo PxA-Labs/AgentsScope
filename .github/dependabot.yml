@@ -62,6 +62,12 @@ updates:
           - "eslint-config-next"
           - "@typescript-eslint/*"
           - "typescript-eslint"
+      # @tailwindcss/postcss pins tailwindcss to its exact version, so bumping
+      # one without the other installs two Tailwind copies.
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
     ignore:
       # eslint-config-next 16 pulls in eslint-plugin-react, eslint-plugin-import
       # and eslint-plugin-jsx-a11y, which only declare peer support up to
@@ -73,6 +79,13 @@ updates:
       # ESLint 9), so it would arrive alone and fail the same way. Bump majors
       # of this pair together by hand.
       - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      # Tailwind majors change the config format and default styles, so a
+      # version bump alone fails the build (#321) or silently changes the look.
+      # Migrate by hand with @tailwindcss/upgrade and a visual check (#330).
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tailwindcss/*"
         update-types: ["version-update:semver-major"]
 
   # Server Docker image
