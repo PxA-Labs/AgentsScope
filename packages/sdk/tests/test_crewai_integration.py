@@ -263,3 +263,35 @@ def test_bookkeeping_stays_flat_across_many_kickoffs():
         listener.close()
     assert len(set(sizes)) == 1, sizes
     assert sizes[-1] == (0, 0, 0), sizes
+
+
+def test_standalone_agent_kickoff_is_recorded(recorder):
+    agent = Agent(
+        role="Solo",
+        goal="answer",
+        backstory="b",
+        tools=[lookup],
+        llm=ScriptedLLM(
+            [
+                'Thought: use the tool\nAction: lookup\nAction Input: {"q": "paris"}',
+                "Thought: done\nFinal Answer: Paris.",
+            ]
+        ),
+    )
+    try:
+        result = agent.kickoff("What is the capital of France?")
+    finally:
+        crewai_event_bus.flush()
+    assert result.raw == "Paris."
+
+    final = nodes(recorder)
+    (solo,) = [n for n in final.values() if n["agent_type"] == "agent"]
+    assert solo["agent_name"] == "Solo" and solo["parent_event_id"] is None
+    assert solo["status"] == "completed"
+    assert solo["payload"]["outputs"]["output"] == "Paris."
+    start = next(e for e in recorder.events if e["event_id"] == solo["event_id"])
+    assert "What is the capital of France?" in str(start["payload"]["inputs"])
+    children = [n for n in final.values() if n["agent_type"] in ("tool", "llm")]
+    assert len(children) == 3
+    assert all(n["parent_event_id"] == solo["event_id"] for n in children)
+    assert all(n["status"] == "completed" for n in children)

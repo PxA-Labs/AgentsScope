@@ -16,6 +16,7 @@ CrewAI event                                AgentScope event
 crew kickoff started / completed / failed   chain_start / end / error (crew)
 task started / completed / failed           chain_* (task)
 agent execution started / completed / error chain_* (agent)
+lite agent execution (``Agent.kickoff()``)  chain_* (agent)
 tool usage started / finished / error       tool_start / end / error
 LLM call started / completed / failed       llm_start / end / error
 ==========================================  ================================
@@ -55,6 +56,10 @@ _EVENT_MAP: Dict[str, Tuple[str, str, str]] = {
     "agent_execution_started": ("chain_start", "agent", "start"),
     "agent_execution_completed": ("chain_end", "agent", "end"),
     "agent_execution_error": ("chain_error", "agent", "error"),
+    # Standalone ``Agent.kickoff()`` (no crew) runs as a "lite agent".
+    "lite_agent_execution_started": ("chain_start", "agent", "start"),
+    "lite_agent_execution_completed": ("chain_end", "agent", "end"),
+    "lite_agent_execution_error": ("chain_error", "agent", "error"),
     "tool_usage_started": ("tool_start", "tool", "start"),
     "tool_usage_finished": ("tool_end", "tool", "end"),
     "tool_usage_error": ("tool_error", "tool", "error"),
@@ -318,12 +323,23 @@ class CrewAIEventMapper:
             }
         else:  # agent
             agent = getattr(event, "agent", None)
+            agent_info = getattr(event, "agent_info", None)
+            if not isinstance(agent_info, dict):
+                agent_info = {}
             name = str(
                 getattr(event, "agent_role", None)
                 or getattr(agent, "role", None)
+                or agent_info.get("role")
                 or "Agent"
             )
-            inputs = {"task_prompt": _truncate(getattr(event, "task_prompt", "") or "")}
+            if getattr(event, "type", "").startswith("lite_agent"):
+                inputs = {
+                    "messages": _render_messages(getattr(event, "messages", None))
+                }
+            else:
+                inputs = {
+                    "task_prompt": _truncate(getattr(event, "task_prompt", "") or "")
+                }
 
         payload = {
             "chain_type": agent_type,
