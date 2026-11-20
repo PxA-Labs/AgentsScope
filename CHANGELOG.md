@@ -4,17 +4,15 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
+### Fixed
+- **sdk**: Never block in AgentScopeClient.stop() on a full buffer
+
+### Documentation
+- **sdk**: State that stop(timeout) can take timeout + 0.5 s
+
 ### Tests
-- **sdk**: Verify PEP 639 license metadata and bundled LICENSE
-- **ci**: Guard action SHA pinning and codeql-action version parity
-
-### Maintenance
-- **sdk**: Declare license as PEP 639 SPDX expression
-
-### CI/CD
-- **dependabot**: Group github/codeql-action updates into one PR
-- Pin scorecard-action and git-auto-commit-action to commit SHAs
-- **codeql**: Pin every codeql-action step to v4.39.3
+- **sdk**: Name the draining test after what it verifies
+- **sdk**: Regression tests for stop() with a full buffer
 
 ## [1.0.0] - 2026-08-10
 
