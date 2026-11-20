@@ -564,7 +564,8 @@ _install_lock = threading.Lock()
 def instrument_llamaindex(agentscope_client: Any = None) -> LlamaIndexEventMapper:
     """Add AgentScope span and event handlers to LlamaIndex's root dispatcher.
 
-    Idempotent: calling it again returns the existing mapper.
+    Idempotent: calling it again returns the existing mapper. Passing
+    ``agentscope_client`` again switches that mapper to the new client.
 
     Args:
         agentscope_client: Override the AgentScope client (defaults to the
@@ -573,7 +574,10 @@ def instrument_llamaindex(agentscope_client: Any = None) -> LlamaIndexEventMappe
     global _installed
     with _install_lock:
         if _installed is not None:
-            return _installed[3]
+            mapper = _installed[3]
+            if agentscope_client is not None:
+                mapper._client = agentscope_client
+            return mapper
 
         from llama_index.core.instrumentation import get_dispatcher
         from llama_index.core.instrumentation.event_handlers import BaseEventHandler

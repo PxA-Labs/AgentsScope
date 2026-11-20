@@ -305,3 +305,10 @@ def test_stream_failing_midway_marks_llm_error(index, rec):
     llm = one(nodes(rec), "llm")
     assert llm["event_type"] == "llm_error"
     assert llm["payload"]["error"] == "stream cut"
+
+
+def test_instrumenting_again_with_a_client_switches_to_it(index, rec):
+    other = Recorder()
+    assert instrument_llamaindex(agentscope_client=other) is instrument_llamaindex()
+    index.as_query_engine(similarity_top_k=1).query("anything")
+    assert rec.events == [] and other.events
