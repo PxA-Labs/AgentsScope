@@ -32,12 +32,16 @@ result = await tracer.run(team, task="Write about Paris")
 await Console(tracer.trace(team.run_stream(task="..."), task="..."))
 ```
 
-`trace()` yields every stream item unchanged. Both pieces report to the global client from `configure()`, so they land in the same session.
+`trace()` yields every stream item unchanged. Both pieces report to the global client from `configure()`, so they land in the same session; it is looked up on every event, so calling `configure()` again redirects clients and tracers you already created.
+
+Stopping early (`break`, or `aclose()` on the stream) is a normal close: the run ends as `chain_end` with `closed_early: true`, the session is marked `completed`, and the team's stream is closed so the team stops.
+
+The traced client is an AutoGen component, so agents and teams that use it can still be saved with `dump_component()`. A loaded client reports to the global client.
 
 ## What you see
 
 - **Run node** (`agent_type="team"`): the task as input; stop reason, message count and final message as output. The session is marked `completed` / `failed` when the run ends (`mark_session_status=False` to opt out).
-- **Agent turn nodes** (`agent_type="agent"`): one per consecutive group of messages from the same agent, under the run. The output is the turn's last message. Handoff targets and thoughts are included, and AutoGen's per-message `models_usage` is attached as information.
+- **Agent turn nodes** (`agent_type="agent"`): one per agent response, under the run. A turn holds the agent's events (tool calls, thoughts) and ends with its chat message, which is the turn's output; if the same agent responds again, that is a new turn. Handoff targets and thoughts are included, and AutoGen's per-message `models_usage` is attached as information.
 - **Tool nodes** under the turn that requested them, paired by tool-call id. Results with `is_error=True` become `tool_error`.
 - **LLM nodes** from traced model clients: tokens and cost come **only** from here, so using the tracer and the wrapper together never double-counts.
 
