@@ -41,6 +41,10 @@ langchain = [
 tiktoken = [
     "tiktoken>=0.14.0",
 ]
+autogen = [
+    "autogen-agentchat>=0.7.5",
+    "autogen-core>=0.7.5",
+]
 anthropic = [
     "anthropic>=2.8.0",
 ]
@@ -68,7 +72,7 @@ select = ["E", "F", "I", "W"]
 ignore = []
 
 [tool.setuptools]
-packages = ["agentscope", "agentscope.providers"]
+packages = ["agentscope", "agentscope.integrations", "agentscope.providers"]
 
 [tool.setuptools.dynamic]
 version = { attr = "agentscope._version.__version__" }
