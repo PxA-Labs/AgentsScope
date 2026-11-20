@@ -58,7 +58,13 @@ class AgentScopeClient:
             self.thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:
-        """Stop the background client and close resources."""
+        """Stop the background client and close resources.
+
+        Never blocks indefinitely, even with a full buffer and an unreachable
+        server. It can take up to ``timeout + 0.5`` seconds: up to 0.5 s
+        (capped at ``timeout``) waiting for buffer space for the shutdown
+        sentinel, then up to ``timeout`` joining the background thread.
+        """
         with self._lock:
             if not self.running:
                 return
