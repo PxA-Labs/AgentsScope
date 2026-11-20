@@ -29,12 +29,15 @@ type LiveMessage =
  * Reconnects with exponential backoff (2s, 4s, ... capped at 30s, reset on a
  * successful open). A close with code 4401 (rejected credentials) does not
  * reconnect; it raises UNAUTHORIZED_EVENT so the AuthBanner can ask for a key.
- * The socket is replaced whenever the active session object changes.
+ * The socket is replaced when another session becomes active; updates to the
+ * active session's aggregates (session_update) keep the same socket.
  *
  * Returns the connection status for the header indicator.
  */
 export function useLiveEvents(refreshGraphAndStats: (sessionId: string) => void): WsStatus {
-  const activeSession = useSessionStore((s) => s.activeSession);
+  // Keyed by id: session_update replaces the activeSession object on every
+  // event, and reconnecting then would drop events sent in the meantime.
+  const sessionId = useSessionStore((s) => s.activeSession?.session_id ?? null);
   const addEvent = useSessionStore((s) => s.addEvent);
   const applyGraphUpdate = useSessionStore((s) => s.applyGraphUpdate);
   const updateSessionMeta = useSessionStore((s) => s.updateSessionMeta);
@@ -43,8 +46,7 @@ export function useLiveEvents(refreshGraphAndStats: (sessionId: string) => void)
   const onTerminalEvent = useEffectEvent((sessionId: string) => refreshGraphAndStats(sessionId));
 
   useEffect(() => {
-    if (!activeSession) return;
-    const sessionId = activeSession.session_id;
+    if (!sessionId) return;
 
     let ws: WebSocket | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -127,7 +129,7 @@ export function useLiveEvents(refreshGraphAndStats: (sessionId: string) => void)
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws) ws.close();
     };
-  }, [activeSession, addEvent, applyGraphUpdate, updateSessionMeta]);
+  }, [sessionId, addEvent, applyGraphUpdate, updateSessionMeta]);
 
   return wsStatus;
 }

@@ -257,6 +257,18 @@ describe("useLiveEvents messages", () => {
     expect(state.sessions[0]).toMatchObject({ total_tokens: 500 });
   });
 
+  it("keeps the same socket when session_update replaces the active session object", () => {
+    connect();
+    const ws = FakeWebSocket.latest();
+
+    act(() => ws.message({ type: "session_update", session_id: "s1", session: { total_tokens: 1 } }));
+    act(() => ws.message({ type: "event", session_id: "s1", event: makeEvent({ event_id: "late", session_id: "s1" }) }));
+
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(ws.closed).toBe(false);
+    expect(useSessionStore.getState().events.map((e) => e.event_id)).toEqual(["late"]);
+  });
+
   it("logs and survives malformed payloads", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     connect();
