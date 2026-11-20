@@ -47,6 +47,8 @@ def run_python(code):
         capture_output=True,
         text=True,
         check=False,
+        # A shim regression can deadlock the import system; fail, don't hang CI.
+        timeout=60,
     )
     assert result.returncode == 0, result.stderr
     return result
@@ -205,6 +207,7 @@ def test_python_dash_m_through_old_name():
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
         assert out.returncode == 0, out.stderr
         assert out.stdout.strip() == f"agentscope-trace {agentscope_trace.__version__}"
@@ -288,7 +291,9 @@ def test_concurrent_imports_after_startup_are_safe():
             except Exception as exc:
                 errors.append(f"{name}: {exc!r}")
 
-        threads = [threading.Thread(target=load, args=(n,)) for n in names]
+        threads = [
+            threading.Thread(target=load, args=(n,), daemon=True) for n in names
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -351,6 +356,7 @@ def test_documented_migration_command_produces_working_code(tmp_path):
         text=True,
         cwd=tmp_path,
         check=False,
+        timeout=60,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
