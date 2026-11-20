@@ -75,7 +75,8 @@ jobs:
       fail-fast: false
       matrix:
         # Keep the lowest entry in sync with requires-python in packages/sdk/pyproject.toml.
-        python-version: ["3.11", "3.12", "3.13"]
+        # 3.14 is what the server Docker image (python:3.14-slim) runs.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
