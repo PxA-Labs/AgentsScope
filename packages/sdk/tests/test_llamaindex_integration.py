@@ -312,3 +312,43 @@ def test_instrumenting_again_with_a_client_switches_to_it(index, rec):
     assert instrument_llamaindex(agentscope_client=other) is instrument_llamaindex()
     index.as_query_engine(similarity_top_k=1).query("anything")
     assert rec.events == [] and other.events
+
+
+class ChunkedUsageLLM(UsageLLM):
+    """Streams two chunks and reports usage on the last, like OpenAI."""
+
+    @llm_completion_callback()
+    def stream_complete(
+        self, prompt: str, formatted: bool = False, **kwargs: Any
+    ) -> CompletionResponseGen:
+        yield CompletionResponse(text="Par", delta="Par")
+        yield CompletionResponse(
+            text="Paris",
+            delta="is",
+            additional_kwargs={"prompt_tokens": 40, "completion_tokens": 2},
+        )
+
+
+def llm_nodes(rec):
+    return [n for n in nodes(rec).values() if n["agent_type"] == "llm"]
+
+
+def assert_one_streamed_call(rec):
+    (llm,) = llm_nodes(rec)
+    assert llm["event_type"] == "llm_end" and llm["status"] == "completed"
+    assert llm["parent_event_id"] is None
+    assert llm["payload"]["completion"] == "Paris"
+    assert llm["payload"]["streaming"] is True
+    assert llm["payload"]["total_tokens"] == 42
+    assert llm["payload"]["cost_usd"] == pytest.approx(calculate_cost("gpt-4o", 40, 2))
+    return llm
+
+
+@pytest.mark.parametrize("method", ["stream_complete", "stream_chat"])
+def test_sync_streaming_on_custom_llm_is_one_node(rec, method):
+    llm = ChunkedUsageLLM()
+    if method == "stream_complete":
+        list(llm.stream_complete("q"))
+    else:
+        list(llm.stream_chat([ChatMessage(role="user", content="q")]))
+    assert_one_streamed_call(rec)

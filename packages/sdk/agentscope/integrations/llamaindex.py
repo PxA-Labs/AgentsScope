@@ -381,10 +381,15 @@ class LlamaIndexEventMapper:
         if not span_id or not isinstance(delta, str):
             return
         with self._lock:
-            node_id = self._span_node.get(span_id) or self._absorbed.get(span_id)
+            # A folded inner call streams the same chunks the outer call
+            # re-emits; its deltas are kept apart and used only as a fallback.
+            key = "stream_parts"
+            node_id = self._span_node.get(span_id)
+            if node_id is None:
+                node_id, key = self._absorbed.get(span_id), "inner_parts"
             node = self._open.get(node_id) if node_id else None
             if node is not None and node["kind"] == "llm":
-                node.setdefault("stream_parts", []).append(delta)
+                node.setdefault(key, []).append(delta)
 
     def _end(self, kind: str, span_id: Optional[str], event: Any) -> None:
         with self._lock:
@@ -475,7 +480,7 @@ class LlamaIndexEventMapper:
             if prompt is None and completion is None and node.get("inner_usage"):
                 prompt, completion, total = node["inner_usage"]
             payload = dict(node["start_payload"])
-            parts = node.get("stream_parts")
+            parts = node.get("stream_parts") or node.get("inner_parts")
             if parts:
                 payload["streaming"] = True
             payload.update(
