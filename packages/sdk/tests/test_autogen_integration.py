@@ -27,7 +27,7 @@ from autogen_core.models import (  # noqa: E402
 )
 
 from agentscope._pricing import calculate_cost  # noqa: E402
-from agentscope.decorators import trace  # noqa: E402
+from agentscope.decorators import current_parent_run_id, trace  # noqa: E402
 from agentscope.integrations.autogen import (  # noqa: E402
     AgentScopeAutoGenTracer,
     trace_model_client,
@@ -284,3 +284,62 @@ def test_wrapper_is_idempotent_and_delegates():
     assert wrapped.total_usage() == inner.total_usage()
     msgs = [UserMessage(content="count me", source="u")]
     assert wrapped.count_tokens(msgs) == inner.count_tokens(msgs)
+
+
+def test_breaking_out_early_is_a_normal_close_and_restores_context():
+    rec = Recorder()
+    standalone = trace_model_client(
+        ReplayChatCompletionClient(["unrelated"], model_info=INFO),
+        name="gpt-4o",
+        agentscope_client=rec,
+    )
+    loop_errors = []
+
+    async def main():
+        asyncio.get_running_loop().set_exception_handler(
+            lambda loop, ctx: loop_errors.append(ctx)
+        )
+        tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+        async for _ in tracer.trace(make_team(rec).run_stream(task="t"), task="t"):
+            break  # abandon the stream; asyncio finalizes it in another Context
+        parent_after_break = current_parent_run_id.get()
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+        await standalone.create([UserMessage(content="hi", source="u")])
+        return parent_after_break
+
+    parent_after_break = asyncio.run(main())
+
+    assert parent_after_break is None
+    assert loop_errors == []
+    nodes = final_nodes(rec)
+    (team_node,) = of(nodes, "team")
+    assert team_node["event_type"] == "chain_end"
+    assert team_node["status"] == "completed"
+    assert "failed" not in rec.status
+    unrelated = [
+        e
+        for e in rec.events
+        if e["agent_type"] == "llm" and e["payload"].get("completion") == "unrelated"
+    ]
+    assert unrelated and unrelated[-1]["parent_event_id"] is None
+
+
+def test_explicit_aclose_closes_the_run_and_the_team():
+    rec = Recorder()
+    team = make_team(rec)
+
+    async def main():
+        traced = AgentScopeAutoGenTracer(agentscope_client=rec).trace(
+            team.run_stream(task="t"), task="t"
+        )
+        await traced.__anext__()
+        await traced.aclose()
+        # The team was closed too: reset() raises while a team is still running.
+        await team.reset()
+
+    asyncio.run(main())
+    (team_node,) = of(final_nodes(rec), "team")
+    assert team_node["event_type"] == "chain_end"
+    assert rec.status == ["completed"]
+

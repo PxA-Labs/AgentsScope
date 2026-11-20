@@ -368,10 +368,21 @@ class AgentScopeAutoGenTracer:
         from autogen_agentchat.base import TaskResult
 
         state = _RunState(self._emitter, self.name)
-        token = current_parent_run_id.set(state.run_id)
         state.start(task)
+        iterator = stream.__aiter__()
         try:
-            async for item in stream:
+            while True:
+                # Hold the run as parent only while the inner stream is working,
+                # never across our own ``yield``: the caller's context stays
+                # untouched between items, and a generator abandoned mid-stream
+                # (finalized later, in another Context) has nothing to reset.
+                token = current_parent_run_id.set(state.run_id)
+                try:
+                    item = await iterator.__anext__()
+                except StopAsyncIteration:
+                    break
+                finally:
+                    current_parent_run_id.reset(token)
                 try:
                     if isinstance(item, TaskResult):
                         state.finish(item)
@@ -380,12 +391,20 @@ class AgentScopeAutoGenTracer:
                 except Exception as e:  # tracing must never break the run
                     logger.debug(f"AgentScope AutoGen tracer ignored an item: {e}")
                 yield item
+        except GeneratorExit:
+            # The consumer stopped early (``break`` / ``aclose()``): a normal
+            # close, not a failure. Close the inner stream too so the team stops.
+            if not state.finished:
+                state.finish(None, closed_early=True)
+            self._patch("completed")
+            aclose = getattr(iterator, "aclose", None)
+            if aclose is not None:
+                await aclose()
+            raise
         except BaseException as e:
             state.fail(e)
             self._patch("failed")
             raise
-        finally:
-            current_parent_run_id.reset(token)
         if not state.finished:
             state.finish(None)
         self._patch("completed")
@@ -433,10 +452,12 @@ class _RunState:
             self.parent_id,
         )
 
-    def finish(self, result: Any) -> None:
+    def finish(self, result: Any, closed_early: bool = False) -> None:
         self._close_turn()
         self._close_tools(error="run finished before the tool returned")
         outputs: Dict[str, Any] = {"message_count": self.message_count}
+        if closed_early:
+            outputs["closed_early"] = True
         if result is not None:
             outputs["stop_reason"] = getattr(result, "stop_reason", None)
             messages = getattr(result, "messages", None) or []
