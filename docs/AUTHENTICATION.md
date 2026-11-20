@@ -67,7 +67,7 @@ configure(host="agentscope.example.com", port=443, secure=True, api_key="<key>")
 - The defaults are unchanged (`http://localhost:8765`). If an API key is set and the SDK would send it over plain `http`/`ws` to a host other than localhost, it logs a warning once.
 - Invalid URLs, URLs containing credentials or a query string, and `secure=True` combined with a plain `http://` base URL raise `ValueError` when the client is created.
 
-The SDK sends `Authorization: Bearer <key>` on REST calls and on the WebSocket handshake. If the server rejects the key, the SDK logs a single warning and keeps retrying in the background, waiting the maximum backoff (30 s) between attempts. It never raises into your code.
+The SDK sends `Authorization: Bearer <key>` on REST calls and on the WebSocket handshake. If the server rejects the key, the SDK logs a single warning and keeps retrying in the background with exponential backoff capped at 30 s (a WebSocket closed with 4401 goes straight to the 30 s cap). It never raises into your code. The key is only sent to the configured server: it is not forwarded if a REST call is redirected.
 
 ## Dashboard
 
