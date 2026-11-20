@@ -9,8 +9,8 @@ import urllib.request
 
 import pytest
 
-import agentscope.client
-from agentscope.client import (
+import agentscope_trace.client
+from agentscope_trace.client import (
     API_KEY_ENV,
     MAX_BACKOFF_SECONDS,
     WS_CLOSE_UNAUTHORIZED,
@@ -76,10 +76,10 @@ def test_status_patch_carries_key(monkeypatch, inline_status_patch):
     AgentScopeClient(api_key="k-123")._send_status_patch("sess-1", "completed")
     assert inline_status_patch
     # Only the PATCH thread runs inline: threading.Thread itself and the
-    # threads the sender creates through agentscope.client stay real.
+    # threads the sender creates through agentscope_trace.client stay real.
     assert threading.Thread is RealThread
     assert isinstance(
-        agentscope.client.threading.Thread(target=lambda: None), RealThread
+        agentscope_trace.client.threading.Thread(target=lambda: None), RealThread
     )
     assert captured[0].get_method() == "PATCH"
     assert captured[0].get_header("Authorization") == "Bearer k-123"
@@ -118,7 +118,7 @@ def test_websocket_connect_receives_auth_header(monkeypatch, run_sender_loop):
         calls.append((uri, kwargs))
         raise StopLoop
 
-    monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
+    monkeypatch.setattr("agentscope_trace.client.websockets.connect", fake_connect)
     client = AgentScopeClient(api_key="k-ws")
     client.session_id = "sess-1"  # skip REST registration
     # StopLoop is caught by the generic handler, which backs off; the fixture
@@ -138,7 +138,7 @@ def test_websocket_connect_without_key_sends_no_headers(monkeypatch, run_sender_
         calls.append(kwargs)
         raise RuntimeError("stop")
 
-    monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
+    monkeypatch.setattr("agentscope_trace.client.websockets.connect", fake_connect)
     client = AgentScopeClient()
     client.session_id = "sess-1"
     run_sender_loop(client)
@@ -148,7 +148,7 @@ def test_websocket_connect_without_key_sends_no_headers(monkeypatch, run_sender_
 
 def test_callback_and_configure_forward_api_key(monkeypatch):
     pytest.importorskip("langchain_core")
-    from agentscope import AgentScopeCallback, decorators
+    from agentscope_trace import AgentScopeCallback, decorators
 
     cb = AgentScopeCallback(api_key="cb-key")
     assert cb.client._auth_headers() == {"Authorization": "Bearer cb-key"}
@@ -192,7 +192,7 @@ class RejectingSocket:
 def patch_4401_server(monkeypatch):
     connects = []
     monkeypatch.setattr(
-        "agentscope.client.websockets.connect",
+        "agentscope_trace.client.websockets.connect",
         lambda uri, **kwargs: RejectingSocket(connects, uri),
     )
     return connects

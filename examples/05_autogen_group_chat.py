@@ -6,8 +6,11 @@ OPENAI_API_KEY. Start the AgentScope server first (see the README).
 
 import asyncio
 
-from agentscope.decorators import configure
-from agentscope.integrations.autogen import AgentScopeAutoGenTracer, trace_model_client
+from agentscope_trace.decorators import configure
+from agentscope_trace.integrations.autogen import (
+    AgentScopeAutoGenTracer,
+    trace_model_client,
+)
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_agentchat.teams import RoundRobinGroupChat

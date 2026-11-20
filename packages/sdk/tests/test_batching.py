@@ -1,4 +1,4 @@
-from agentscope.client import AgentScopeClient
+from agentscope_trace.client import AgentScopeClient
 
 
 def test_client_batching_configuration():

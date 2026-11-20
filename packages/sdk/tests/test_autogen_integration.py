@@ -27,9 +27,9 @@ from autogen_core.models import (  # noqa: E402
     UserMessage,
 )
 
-from agentscope._pricing import calculate_cost  # noqa: E402
-from agentscope.decorators import current_parent_run_id, trace  # noqa: E402
-from agentscope.integrations.autogen import (  # noqa: E402
+from agentscope_trace._pricing import calculate_cost  # noqa: E402
+from agentscope_trace.decorators import current_parent_run_id, trace  # noqa: E402
+from agentscope_trace.integrations.autogen import (  # noqa: E402
     AgentScopeAutoGenTracer,
     trace_model_client,
 )
@@ -228,9 +228,9 @@ def test_model_client_standalone_and_nested_under_trace(monkeypatch):
     rec = Recorder()
     # The integration resolves the global client from its own module namespace.
     monkeypatch.setattr(
-        "agentscope.integrations.autogen.get_global_client", lambda: rec
+        "agentscope_trace.integrations.autogen.get_global_client", lambda: rec
     )
-    monkeypatch.setattr("agentscope.decorators.get_global_client", lambda: rec)
+    monkeypatch.setattr("agentscope_trace.decorators.get_global_client", lambda: rec)
     client = trace_model_client(
         ReplayChatCompletionClient(["hello", "again"], model_info=INFO), name="gpt-4o"
     )
@@ -486,7 +486,7 @@ def test_aclose_without_a_token_waits_for_the_team_then_closes_the_run():
 
 
 def test_events_follow_reconfigured_global_client(monkeypatch):
-    import agentscope.decorators as decorators
+    import agentscope_trace.decorators as decorators
 
     clients = []
 
@@ -529,14 +529,15 @@ def test_traced_client_round_trips_through_dump_component(monkeypatch):
 
     rec = Recorder()
     monkeypatch.setattr(
-        "agentscope.integrations.autogen.get_global_client", lambda: rec
+        "agentscope_trace.integrations.autogen.get_global_client", lambda: rec
     )
     wrapped = trace_model_client(
         ReplayChatCompletionClient(["restored"], model_info=INFO), name="gpt-4o"
     )
     config = wrapped.dump_component()
     assert (
-        config.provider == "agentscope.integrations.autogen.TracedChatCompletionClient"
+        config.provider
+        == "agentscope_trace.integrations.autogen.TracedChatCompletionClient"
     )
 
     loaded = ChatCompletionClient.load_component(config)

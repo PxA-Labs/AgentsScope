@@ -6,7 +6,7 @@ import urllib.request
 
 import pytest
 
-from agentscope.client import API_KEY_ENV, AgentScopeClient, server_urls
+from agentscope_trace.client import API_KEY_ENV, AgentScopeClient, server_urls
 
 
 @pytest.fixture(autouse=True)
@@ -116,7 +116,7 @@ def test_websocket_uses_wss(monkeypatch, run_sender_loop):
         uris.append(uri)
         raise RuntimeError("stop")
 
-    monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
+    monkeypatch.setattr("agentscope_trace.client.websockets.connect", fake_connect)
     client = AgentScopeClient(host="obs.example.com", port=443, secure=True)
     client.session_id = "sess-1"
     run_sender_loop(client)
@@ -153,7 +153,7 @@ def test_no_cleartext_warning_when_safe(caplog, kwargs):
 
 
 def test_callback_and_configure_forward_url_options(monkeypatch):
-    from agentscope import decorators
+    from agentscope_trace import decorators
 
     monkeypatch.setattr(decorators, "_global_client", None)
     decorators.configure(base_url="https://obs.example.com")
@@ -172,7 +172,7 @@ def test_callback_and_configure_forward_url_options(monkeypatch):
         monkeypatch.setattr(decorators, "_global_client", None)
 
     pytest.importorskip("langchain_core")
-    from agentscope import AgentScopeCallback
+    from agentscope_trace import AgentScopeCallback
 
     cb = AgentScopeCallback(base_url="https://obs.example.com")
     assert cb.client.http_base_url == "https://obs.example.com"

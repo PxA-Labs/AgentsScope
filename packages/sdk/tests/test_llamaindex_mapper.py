@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from agentscope.integrations import llamaindex as li
-from agentscope.integrations.llamaindex import LlamaIndexEventMapper, _BoundedDict
+from agentscope_trace.integrations import llamaindex as li
+from agentscope_trace.integrations.llamaindex import LlamaIndexEventMapper, _BoundedDict
 
 
 class Recorder:
@@ -141,7 +141,7 @@ def test_emit_errors_are_swallowed():
 
 
 def test_events_follow_reconfigured_global_client(monkeypatch):
-    import agentscope.decorators as decorators
+    import agentscope_trace.decorators as decorators
 
     clients = []
 

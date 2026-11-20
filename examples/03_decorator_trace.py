@@ -1,7 +1,7 @@
 import asyncio
 import time
 
-import agentscope.decorators as as_deco
+import agentscope_trace.decorators as as_deco
 
 # 1. Configure the global telemetry client settings
 as_deco.configure(host="127.0.0.1", port=8765, session_name="Decorator Tracing Session")

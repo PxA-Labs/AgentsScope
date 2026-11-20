@@ -17,11 +17,11 @@ except ImportError:  # pragma: no cover - depends on installed SDK version
 from google.genai import types  # noqa: E402
 from google.genai.models import AsyncModels, Models  # noqa: E402
 
-from agentscope import trace  # noqa: E402
-from agentscope._pricing import calculate_cost  # noqa: E402
-from agentscope.exceptions import AgentScopeError  # noqa: E402
-from agentscope.providers import gemini as provider  # noqa: E402
-from agentscope.providers.gemini import patch_gemini, unpatch_gemini  # noqa: E402
+from agentscope_trace import trace  # noqa: E402
+from agentscope_trace._pricing import calculate_cost  # noqa: E402
+from agentscope_trace.exceptions import AgentScopeError  # noqa: E402
+from agentscope_trace.providers import gemini as provider  # noqa: E402
+from agentscope_trace.providers.gemini import patch_gemini, unpatch_gemini  # noqa: E402
 
 MODEL = "gemini-1.5-flash"
 
@@ -113,7 +113,7 @@ class Recorder:
 def recorder(monkeypatch):
     rec = Recorder()
     monkeypatch.setattr(provider, "get_global_client", lambda: rec)
-    monkeypatch.setattr("agentscope.decorators.get_global_client", lambda: rec)
+    monkeypatch.setattr("agentscope_trace.decorators.get_global_client", lambda: rec)
     yield rec
     unpatch_gemini()
 

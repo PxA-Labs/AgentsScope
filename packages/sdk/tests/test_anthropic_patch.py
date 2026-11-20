@@ -21,10 +21,10 @@ except ImportError:  # pragma: no cover - depends on installed SDK version
 
 from anthropic.resources.messages import AsyncMessages, Messages  # noqa: E402
 
-from agentscope import trace  # noqa: E402
-from agentscope.exceptions import AgentScopeError  # noqa: E402
-from agentscope.providers import anthropic as provider  # noqa: E402
-from agentscope.providers.anthropic import (  # noqa: E402
+from agentscope_trace import trace  # noqa: E402
+from agentscope_trace.exceptions import AgentScopeError  # noqa: E402
+from agentscope_trace.providers import anthropic as provider  # noqa: E402
+from agentscope_trace.providers.anthropic import (  # noqa: E402
     patch_anthropic,
     unpatch_anthropic,
 )
@@ -155,7 +155,7 @@ class Recorder:
 def recorder(monkeypatch):
     rec = Recorder()
     monkeypatch.setattr(provider, "get_global_client", lambda: rec)
-    monkeypatch.setattr("agentscope.decorators.get_global_client", lambda: rec)
+    monkeypatch.setattr("agentscope_trace.decorators.get_global_client", lambda: rec)
     yield rec
     unpatch_anthropic()
 

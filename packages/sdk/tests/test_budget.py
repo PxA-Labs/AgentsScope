@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.outputs import Generation, LLMResult
 
-from agentscope.callback import AgentScopeCallback
-from agentscope.exceptions import BudgetExceededError
+from agentscope_trace.callback import AgentScopeCallback
+from agentscope_trace.exceptions import BudgetExceededError
 
 
 @pytest.mark.asyncio

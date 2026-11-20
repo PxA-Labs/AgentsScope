@@ -34,7 +34,7 @@ from _harness import (
     print_table,
     spread,
 )
-from agentscope.client import AgentScopeClient
+from agentscope_trace.client import AgentScopeClient
 
 
 def wait_for_count(port: int, session_id: str, expected: int, timeout: float) -> tuple:

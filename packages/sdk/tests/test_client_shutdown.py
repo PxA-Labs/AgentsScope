@@ -18,7 +18,7 @@ import weakref
 
 import pytest
 
-from agentscope.client import AgentScopeClient
+from agentscope_trace.client import AgentScopeClient
 
 SDK_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -52,7 +52,7 @@ class FakeWebSocket:
 def _fake_network(monkeypatch, create, received, arrivals=None):
     monkeypatch.setattr(AgentScopeClient, "_create_session_sync", create)
     monkeypatch.setattr(
-        "agentscope.client.websockets.connect",
+        "agentscope_trace.client.websockets.connect",
         lambda uri, **kwargs: FakeWebSocket(received, arrivals=arrivals),
     )
 
@@ -81,7 +81,7 @@ def fake_server(monkeypatch):
 
     monkeypatch.setattr(AgentScopeClient, "_create_session_sync", fake_create)
     monkeypatch.setattr(
-        "agentscope.client.websockets.connect",
+        "agentscope_trace.client.websockets.connect",
         lambda uri, **kwargs: FakeWebSocket(received),
     )
     return received
@@ -240,7 +240,7 @@ def test_events_stop_could_not_deliver_go_out_after_restart(monkeypatch):
 
     monkeypatch.setattr(AgentScopeClient, "_create_session_sync", _register_instantly)
     monkeypatch.setattr(
-        "agentscope.client.websockets.connect",
+        "agentscope_trace.client.websockets.connect",
         lambda uri, **kwargs: FlakyWebSocket(received),
     )
     client = AgentScopeClient()
@@ -278,8 +278,8 @@ def test_stopped_clients_are_garbage_collected(monkeypatch):
 SCRIPT_PRELUDE = """
 import atexit, json, sys, time
 sys.path.insert(0, {sdk_dir!r})
-import agentscope.client as client_module
-from agentscope.client import AgentScopeClient
+import agentscope_trace.client as client_module
+from agentscope_trace.client import AgentScopeClient
 
 received = []
 
@@ -321,7 +321,7 @@ def run_script(body, fake=True, timeout=20):
 def test_process_exits_and_delivers_without_explicit_stop():
     """Regression for #294: a connected process never exited."""
     proc, elapsed = run_script("""
-        from agentscope.decorators import configure, trace
+        from agentscope_trace.decorators import configure, trace
         configure(session_name="exit-test")
 
         @trace(name="step")
@@ -377,7 +377,7 @@ def test_short_script_without_stop_or_sleep_delivers_and_exits_fast():
     flush at exit cannot rely on the default executor.
     """
     proc, elapsed = run_script("""
-        from agentscope.decorators import configure, trace
+        from agentscope_trace.decorators import configure, trace
         configure(session_name="short-script")
 
         @trace(name="step")

@@ -34,7 +34,7 @@ from _harness import (
     settled_count,
     spread,
 )
-from agentscope.client import AgentScopeClient
+from agentscope_trace.client import AgentScopeClient
 
 
 class Subscriber:
