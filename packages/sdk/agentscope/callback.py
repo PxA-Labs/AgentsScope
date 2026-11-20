@@ -27,6 +27,42 @@ except ImportError:
 class AgentScopeCallback(AsyncCallbackHandler):
     """LangChain callback handler that streams telemetry to the AgentScope server."""
 
+    # LangChain logs and swallows exceptions from callback handlers unless this
+    # is set. BudgetExceededError has to propagate so that budget_limit_usd
+    # actually stops the run; every handler method catches and logs its own
+    # telemetry errors, so nothing else escapes.
+    raise_error = True
+
+    # Even with raise_error, LangChain swallows exceptions raised inside an
+    # async handler's coroutine when the run is synchronous (llm.invoke(...)):
+    # those coroutines are run by langchain_core's _run_coros, which only logs.
+    # The ignore_* flags, however, are read synchronously by the callback
+    # manager on both the sync and async paths, inside the block that honours
+    # raise_error. Checking the budget there lets it stop sync and async runs
+    # alike, before the next model call is made.
+    @property
+    def ignore_llm(self) -> bool:
+        self._check_budget()
+        return False
+
+    @property
+    def ignore_chat_model(self) -> bool:
+        self._check_budget()
+        return False
+
+    def _check_budget(self) -> None:
+        """Raise BudgetExceededError if the cumulative cost is over the limit."""
+        # getattr: LangChain may read the ignore_* flags before __init__ ran.
+        if getattr(self, "budget_limit_usd", None) is None:
+            return
+        with self._cost_lock:
+            if self.cumulative_cost_usd > self.budget_limit_usd:
+                raise BudgetExceededError(
+                    f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
+                    f"USD exceeded. Cumulative cost: "
+                    f"${self.cumulative_cost_usd:.4f} USD."
+                )
+
     def __init__(
         self,
         host: str = "localhost",
@@ -215,15 +251,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
         metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
-        if self.budget_limit_usd is not None:
-            with self._cost_lock:
-                if self.cumulative_cost_usd > self.budget_limit_usd:
-                    msg = (
-                        f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
-                        f"USD exceeded. Cumulative cost: "
-                        f"${self.cumulative_cost_usd:.4f} USD."
-                    )
-                    raise BudgetExceededError(msg)
+        self._check_budget()
         try:
             agent_name = self._resolve_name(serialized, metadata, default="LLM")
             model = ""
