@@ -4,6 +4,8 @@ The Python SDK in `packages/sdk` is published to PyPI as **`agentscope-trace`** 
 
 ## One-time setup (maintainers)
 
+Status for `PxA-Labs/AgentsScope` (2026-11-20): steps 2 and 3 are done. The `testpypi` and `pypi` environments only accept `v*` tags, `pypi` requires a maintainer's approval, and the `Release tags (v*)` ruleset limits tag creation, update and deletion to admins and maintainers. Step 1 (the pending Trusted Publishers on PyPI and TestPyPI) still has to be done by a PyPI account owner before the first tag.
+
 1. **Reserve the name.** Create the project on PyPI and TestPyPI by configuring a *pending* Trusted Publisher. No upload or API token is needed:
    - PyPI → *Your account → Publishing → Add a new pending publisher*
      - PyPI project name: `agentscope-trace`
