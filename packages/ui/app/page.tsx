@@ -4,7 +4,13 @@ import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { PromptDiffViewer } from "../components/PromptDiffViewer";
 import { useSessionStore } from "../store/sessionStore";
-import { apiFetch, notifyUnauthorized, openWebSocket, WS_CLOSE_UNAUTHORIZED } from "../lib/api";
+import {
+  apiFetch,
+  notifyUnauthorized,
+  openWebSocket,
+  UNAUTHORIZED_EVENT,
+  WS_CLOSE_UNAUTHORIZED,
+} from "../lib/api";
 import {
   Session,
   AgentEvent,
@@ -75,6 +81,9 @@ export default function Dashboard() {
     type: "success" | "error";
   } | null>(null);
   const [wsStatus, setWsStatus] = useState<"connected" | "connecting" | "disconnected">("connecting");
+  // Set once the server rejects our credentials. Polling stops until the user
+  // saves a key in the AuthBanner, which reloads the page.
+  const [unauthorized, setUnauthorized] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eventFeedEndRef = useRef<HTMLDivElement>(null);
@@ -103,10 +112,19 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    const onUnauthorized = () => setUnauthorized(true);
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
+
+  useEffect(() => {
+    // Retrying with rejected credentials cannot succeed and only adds load
+    // (and log lines) on the server, so pause polling while unauthorized.
+    if (unauthorized) return;
     fetchSessionsList();
     const interval = setInterval(fetchSessionsList, 4000);
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [activeSession, unauthorized]);
 
   // Handle active session selection
   const handleSelectSession = async (session: Session) => {
