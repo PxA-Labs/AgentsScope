@@ -74,6 +74,10 @@ jobs:
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           repository-url: https://test.pypi.org/legacy/
+          # Re-tagging the same version after a failed or rejected PyPI step
+          # (see RELEASING.md) must not fail here because TestPyPI already
+          # has the files. PyPI itself never skips: a duplicate there is an error.
+          skip-existing: true
 
   publish-pypi:
     name: Publish to PyPI

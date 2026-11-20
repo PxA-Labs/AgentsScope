@@ -31,7 +31,7 @@ The Python SDK in `packages/sdk` is published to PyPI as **`agentscope-trace`** 
    4. attaches build-provenance attestations and creates a **GitHub Release** with the artifacts and generated notes
 4. Verify: `pip install agentscope-trace==0.2.0` in a fresh virtualenv.
 
-If any step fails, nothing further is published. Fix the problem in a PR, delete the tag (`git push --delete origin v0.2.0`), and tag again. PyPI never accepts the same version twice, so if a broken build was already uploaded, bump to the next patch version instead.
+If any step fails, nothing further is published. Fix the problem in a PR, delete the tag (`git push --delete origin v0.2.0`), and tag again. The TestPyPI step uses `skip-existing`, so re-tagging the same version still gets through it to the PyPI step. PyPI never accepts the same version twice, so if a broken build was already uploaded to PyPI, bump to the next patch version instead.
 
 ## After the first release
 
