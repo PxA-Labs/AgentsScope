@@ -108,7 +108,7 @@ async def seed_session(db: AsyncSession, name: str = "CSV Run", n_events: int = 
 
 
 def parse_csv(text: str):
-    assert text.startswith("﻿"), "CSV must start with a UTF-8 BOM"
+    assert text.startswith("\ufeff"), "CSV must start with a UTF-8 BOM"
     return list(csv.DictReader(io.StringIO(text[1:])))
 
 
