@@ -18,7 +18,7 @@ AgentScope is structured as a monorepo containing three core packages:
 
 ### Prerequisites
 *   **Python**: Version `3.11` or higher.
-*   **Node.js**: Version `18` or higher (with `npm`).
+*   **Node.js** (with `npm`): `20.9` or higher to run and build the dashboard; `22.22`+ (or `24.15`+) for the UI unit tests (Vitest, jsdom and msw require it).
 *   **Git**: For version control.
 
 ### Python Backend & SDK Setup

@@ -69,6 +69,28 @@ else
     echo "Skipping UI Build (packages/ui not found)."
 fi
 
+# 6. Next.js UI Unit Tests (Vitest)
+echo -e "${YELLOW}Step 6: Next.js UI Type Check & Unit Tests${RESET}"
+if [ -d "packages/ui" ] && [ -f "packages/ui/package.json" ]; then
+    run_step "UI Type Check" bash -c "cd packages/ui && npx tsc --noEmit"
+    run_step "UI Unit Tests (Vitest + coverage)" bash -c "cd packages/ui && npm run test:coverage"
+else
+    echo "Skipping UI Unit Tests (packages/ui not found)."
+fi
+
+# 7. Next.js UI E2E Smoke Test (Playwright)
+# Needs the server's Python dependencies and Playwright's Chromium
+# (cd packages/ui && npx playwright install --only-shell chromium).
+# Set SKIP_UI_E2E=1 to skip it.
+echo -e "${YELLOW}Step 7: Next.js UI E2E Smoke Test${RESET}"
+if [ "${SKIP_UI_E2E:-0}" = "1" ]; then
+    echo "Skipping UI E2E smoke test (SKIP_UI_E2E=1)."
+elif [ -d "packages/ui" ] && [ -f "packages/ui/package.json" ]; then
+    run_step "UI E2E Smoke Test (Playwright)" bash -c "cd packages/ui && npm run test:e2e"
+else
+    echo "Skipping UI E2E smoke test (packages/ui not found)."
+fi
+
 echo -e "${BOLD}${CYAN}======================================================================${RESET}"
 if [ "$FAILED_STEPS" -eq 0 ]; then
     echo -e "${BOLD}${GREEN}✔ ALL PRE-PR CHECKS PASSED! Your branch is ready for Pull Request.${RESET}"

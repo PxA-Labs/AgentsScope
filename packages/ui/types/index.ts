@@ -10,7 +10,7 @@ export interface Session {
   total_cost_usd: number;
   error_count: number;
   agent_count: number;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export type EventType =
@@ -50,14 +50,14 @@ export interface ToolPayload {
 
 export interface ChainPayload {
   chain_type: string;
-  inputs: Record<string, any>;
-  outputs: Record<string, any> | null;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown> | null;
   error: string | null;
 }
 
 export interface Document {
   content: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface RetrieverPayload {
@@ -75,7 +75,7 @@ export interface AgentEvent {
   timestamp: string; // ISO 8601
   latency_ms: number | null;
   status: "running" | "completed" | "error";
-  payload: LLMPayload | ToolPayload | ChainPayload | RetrieverPayload | Record<string, any>;
+  payload: LLMPayload | ToolPayload | ChainPayload | RetrieverPayload | Record<string, unknown>;
 }
 
 // React Flow Layout Types
@@ -135,7 +135,7 @@ export interface MemoryItem {
   memory?: string;
   text?: string;
   categories?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
   score?: number;
