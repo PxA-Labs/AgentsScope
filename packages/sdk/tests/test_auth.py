@@ -335,6 +335,27 @@ def test_stop_requested_before_the_401_arrives_returns_promptly(monkeypatch):
     assert client.queue.qsize() == 1
 
 
+def test_key_fixed_during_the_backoff_is_retried_once_on_stop(monkeypatch):
+    """stop() wakes a backoff that followed a rejection that may be up to 30 s
+    old. If the key was fixed on the server meanwhile, one more attempt must
+    deliver the events instead of giving up on the stale rejection."""
+    state = patch_session_endpoint(monkeypatch)
+    received = []
+    monkeypatch.setattr(
+        "agentscope_trace.client.websockets.connect",
+        lambda uri, **kwargs: RecordingSocket(received),
+    )
+    client = AgentScopeClient(api_key="rotated-in-key")
+    client.emit({"event_id": "e1"})
+    assert _wait_for(lambda: state["posts"] >= 1)
+    time.sleep(0.1)  # now in the backoff after the first 401
+    state["accept"] = True  # the server's key list was fixed meanwhile
+    elapsed = _timed_stop(client, 5.0)
+    assert received == ["e1"], "the woken backoff must retry once and deliver"
+    assert elapsed < 1.0, f"stop(5) took {elapsed:.2f}s"
+    assert client.queue.qsize() == 0
+
+
 def test_events_kept_after_a_401_give_up_are_sent_after_restart(monkeypatch):
     state = patch_session_endpoint(monkeypatch)
     received = []
