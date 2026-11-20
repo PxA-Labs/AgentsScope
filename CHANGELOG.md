@@ -5,16 +5,16 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Fixed
-- **sdk**: Tell CrewAI's internal flows apart by is_crewai_internal
-- **sdk**: Patch CrewAI session status once per Flow, not per crew
+- **sdk**: Retry once after stop() wakes a post-rejection backoff
+- **sdk**: Give up at shutdown right after an auth rejection
 
 ### Documentation
-- Note how CrewAI internal flows and resumed flows appear
-- Document CrewAI Flow support in the integrations guide
+- **sdk**: Note that shutdown gives up after an auth rejection
 
 ### Tests
-- **sdk**: A user Flow with suppress_flow_events must still be shown
-- **sdk**: Cover CrewAI Flow session status and flow nodes
+- **sdk**: A key fixed during the backoff must be retried once on stop()
+- **server**: Let the SDK e2e tests start a server with an API key
+- **sdk**: Pin retries that must survive the auth fail-fast change
 
 ## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 
