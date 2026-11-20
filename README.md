@@ -60,7 +60,7 @@ agent.run(input, callbacks=[cb])
 - **Real-time Event Feed** — Watch your agents work in real-time
 - **Live Agent DAG Graph** — Visualize the full call hierarchy, streamed as it grows
 - **Token & Cost Tracking** — Token usage and estimated USD cost per call and per session
-- **Cost Budgets** — Optional `budget_limit_usd` stops a run once it exceeds a spend limit
+- **Cost Budgets** — Optional `budget_limit_usd` marks the session failed and stops the run before the next model call once a spend limit is exceeded ([#316](https://github.com/PxA-Labs/AgentsScope/issues/316))
 - **Event Inspector** — Click any event to see full prompt + completion text, with prompt diffs
 - **Stats Dashboard** — Token breakdown, latency heatmap, error log
 - **Session History & Diffing** — Browse past runs and compare two sessions side by side
@@ -116,7 +116,7 @@ pip install -e "packages/sdk[langchain]"
 AgentScope supports both **SQLite** (default zero-config) and **PostgreSQL** via `asyncpg`:
 
 - **SQLite (Default)**: `sqlite+aiosqlite:///./agentscope.db`
-- **PostgreSQL**: Set `DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/agentscope` in your `.env` or `docker-compose.yml`. Standard PostgreSQL URIs (`postgresql://...`) are also automatically normalized to use `asyncpg`.
+- **PostgreSQL**: Set `DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/agentscope` in the server's environment (`export`, `uvicorn --env-file .env`, or `docker-compose.yml`). Standard PostgreSQL URIs (`postgresql://...`) are also automatically normalized to use `asyncpg`.
 
 ### Instrument Your Code
 
@@ -189,7 +189,7 @@ def process_data(data):
 
 ## Configuration
 
-**Server** (see [`packages/server/.env.example`](packages/server/.env.example)):
+**Server** (see [`packages/server/.env.example`](packages/server/.env.example)). The server reads real environment variables only; it does not load a `.env` file by itself, so pass one explicitly with `uvicorn main:app --env-file .env` or export the variables:
 
 | Variable | Default | Description |
 |---|---|---|

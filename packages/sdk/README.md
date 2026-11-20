@@ -84,7 +84,7 @@ Nested decorated calls are linked automatically, so they appear as parent and ch
 
 ### Budgets
 
-When `budget_limit_usd` is set on `AgentScopeCallback`, the callback tracks cumulative LLM cost for the session. When the limit is exceeded it marks the session `failed` and raises `agentscope.BudgetExceededError` (a subclass of `AgentScopeError`), which stops the LangChain run.
+When `budget_limit_usd` is set on `AgentScopeCallback`, the callback tracks cumulative LLM cost for the session. Once the limit is exceeded it marks the session `failed` and raises `agentscope.BudgetExceededError` (a subclass of `AgentScopeError`) out of the run. The call that crosses the limit completes, since its cost is only known when it ends; the run then stops before the next model call (sync or async). This requires the fix in [#317](https://github.com/PxA-Labs/AgentsScope/pull/317): before it, LangChain caught the exception and the run continued ([#316](https://github.com/PxA-Labs/AgentsScope/issues/316)).
 
 ### Token counting
 
