@@ -295,6 +295,7 @@ class AgentScopeClient:
         secure: bool = False,
         base_url: Optional[str] = None,
         shutdown_timeout: float = 5.0,
+        max_queue_size: int = 5000,
     ):
         """Create a client.
 
@@ -313,6 +314,9 @@ class AgentScopeClient:
                 plain and TLS connections.
             shutdown_timeout: Upper bound for delivering buffered events when
                 the interpreter exits (see :meth:`stop`).
+            max_queue_size: Events buffered in memory while the server is
+                unreachable or slower than the producer. When full, the
+                oldest event is dropped so emit() never blocks.
         """
         self.http_base_url, self.ws_base_url = server_urls(host, port, secure, base_url)
         if base_url is None:
@@ -341,7 +345,8 @@ class AgentScopeClient:
         self.flush_interval_seconds = max(0.01, flush_interval_seconds)
         self.session_id: Optional[str] = None
         self.pending_status: Optional[str] = None
-        self.queue: queue.Queue = queue.Queue(maxsize=5000)
+        self.max_queue_size = max(1, int(max_queue_size))
+        self.queue: queue.Queue = queue.Queue(maxsize=self.max_queue_size)
         self.thread: Optional[threading.Thread] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.running = False
