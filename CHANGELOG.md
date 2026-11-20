@@ -4,15 +4,34 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
+### Added
+- **sdk**: Trace anthropic messages.parse()
+- **sdk**: Export provider patches and add patch_all / unpatch_all
+- **sdk**: Add patch_gemini / unpatch_gemini for google-genai
+- **sdk**: Add patch_anthropic / unpatch_anthropic
+- **sdk**: Let provider adapters attach usage details to llm_end
+
+### Fixed
+- **sdk**: Normalise Vertex AI model resource names for Gemini
+- **sdk**: Count Gemini thought tokens as completion tokens
+- **sdk**: Start the anthropic stream() trace when the with block is entered
+- **sdk**: Record anthropic stream() as llm_end when the caller raises
+
+### Documentation
+- **sdk**: Correct provider streaming claims and add known limitations
+- **sdk**: Document provider auto-instrumentation and add examples
+
 ### Refactor
-- **ui**: Remove unused imports and catch binding
+- **sdk**: Extract provider-agnostic LLM tracing into providers/_base
 
-### Maintenance
-- **ui**: Upgrade to ESLint 9 and eslint-config-next 16 flat config
+### Tests
+- **sdk**: Make the Gemini nesting test fail when nothing is traced
+- **sdk**: Cover patch_all, unpatch_all and lazy SDK imports
+- **sdk**: Exercise patch_gemini against the real SDK
+- **sdk**: Exercise patch_anthropic against the real SDK
 
-### CI/CD
-- **dependabot**: Also hold back eslint-config-next majors
-- **dependabot**: Bump eslint packages together, hold ESLint 10
+### Miscellaneous
+- Build(sdk): add anthropic and gemini extras; test them in CI
 
 ## [1.0.0] - 2026-08-10
 
