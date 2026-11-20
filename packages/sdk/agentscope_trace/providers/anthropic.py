@@ -4,7 +4,7 @@ Patches, at class level (affecting every client in the process):
 
 * ``Messages.create`` / ``AsyncMessages.create``, including ``stream=True``
 * ``Messages.parse`` / ``AsyncMessages.parse`` (structured outputs, which post
-  directly rather than through ``create``)
+  directly rather than through ``create``), when the installed SDK has them
 * ``Messages.stream`` / ``AsyncMessages.stream`` (the streaming helper, which
   does not go through ``create``)
 """
@@ -254,14 +254,23 @@ def _wrap_stream_helper(orig: Callable[..., Any]) -> Callable[..., Any]:
     return traced
 
 
+# Methods every supported SDK version has: patching fails without them.
 _TARGETS = (
     ("Messages", "create", wrap_sync),
     ("AsyncMessages", "create", wrap_async),
-    ("Messages", "parse", wrap_sync),
-    ("AsyncMessages", "parse", wrap_async),
     ("Messages", "stream", None),
     ("AsyncMessages", "stream", None),
 )
+
+# Patched when present, skipped otherwise: older SDKs have no messages.parse.
+_OPTIONAL_TARGETS = (
+    ("Messages", "parse", wrap_sync),
+    ("AsyncMessages", "parse", wrap_async),
+)
+
+
+def _has_method(module: Any, cls_name: str, method: str) -> bool:
+    return callable(getattr(getattr(module, cls_name, None), method, None))
 
 
 def patch_anthropic() -> bool:
@@ -271,8 +280,9 @@ def patch_anthropic() -> bool:
         True once patched, False if ``anthropic`` is not installed.
 
     Raises:
-        AgentScopeError: If the installed SDK does not expose the expected
-            ``Messages`` / ``AsyncMessages`` methods.
+        AgentScopeError: If the installed SDK does not expose ``create`` and
+            ``stream`` on ``Messages`` / ``AsyncMessages``. ``parse`` is
+            optional and patched only when present.
     """
     global _is_patched
     if _is_patched:
@@ -299,7 +309,7 @@ def patch_anthropic() -> bool:
     missing = [
         f"{cls}.{method}"
         for cls, method, _ in _TARGETS
-        if not callable(getattr(getattr(module, cls, None), method, None))
+        if not _has_method(module, cls, method)
     ]
     if missing:
         raise AgentScopeError(
@@ -307,7 +317,8 @@ def patch_anthropic() -> bool:
             f"{_MESSAGES_MODULE!r}. This Anthropic SDK version is not supported."
         )
 
-    for cls_name, method, wrapper in _TARGETS:
+    present = [t for t in _OPTIONAL_TARGETS if _has_method(module, t[0], t[1])]
+    for cls_name, method, wrapper in (*_TARGETS, *present):
         cls = getattr(module, cls_name)
         orig = getattr(cls, method)
         _original_methods[f"{cls_name}.{method}"] = orig
@@ -322,7 +333,11 @@ def patch_anthropic() -> bool:
 
 
 def unpatch_anthropic() -> None:
-    """Restore the original Anthropic SDK methods."""
+    """Restore the original Anthropic SDK methods.
+
+    Only methods that patch_anthropic() replaced are restored, so an optional
+    method it skipped (``parse`` on older SDKs) is left absent.
+    """
     global _is_patched
     if _original_methods:
         try:

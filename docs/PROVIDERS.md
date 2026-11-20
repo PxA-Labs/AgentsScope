@@ -5,7 +5,7 @@ Besides the LangChain callback and the `@trace` decorators, the SDK can patch of
 | Function | SDK | Calls traced | Install |
 |---|---|---|---|
 | `patch_openai()` | `openai` | `chat.completions.create` (sync, async, `stream=True`) | `openai` |
-| `patch_anthropic()` | `anthropic` | `messages.create` (sync, async, `stream=True`), `messages.parse`, and the `messages.stream(...)` helper | `packages/sdk[anthropic]` |
+| `patch_anthropic()` | `anthropic` | `messages.create` (sync, async, `stream=True`), `messages.parse` (when the installed SDK has it), and the `messages.stream(...)` helper | `packages/sdk[anthropic]` |
 | `patch_gemini()` | `google-genai` (Python 3.11+) | `models.generate_content`, `models.generate_content_stream`, and their `client.aio` versions | `packages/sdk[gemini]` |
 | `patch_all()` | all of the above | patches whichever SDKs are installed | |
 
