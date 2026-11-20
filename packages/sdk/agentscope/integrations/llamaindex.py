@@ -33,6 +33,7 @@ garbage-collected before the end it is closed with ``closed_early``.
 
 import inspect
 import logging
+import sys
 import threading
 import time
 import uuid
@@ -53,6 +54,8 @@ _MAX_DOCS = 20
 # cannot simply be dropped on span exit: streamed LLM events arrive after
 # their spans have exited.
 _MAX_TRACKED_SPANS = 10_000
+# How far up the stack to look for the stream an LLM call runs inside.
+_MAX_STACK_DEPTH = 64
 
 # class_name -> (kind, phase)
 _EVENTS: Dict[str, Tuple[str, str]] = {
@@ -110,6 +113,13 @@ def _response_output(response: Any) -> str:
 
 def _is_stream(value: Any) -> bool:
     return inspect.isgenerator(value) or inspect.isasyncgen(value)
+
+
+def _stream_frame(stream: Any) -> Any:
+    """The frame a (sync or async) generator runs in, while it is alive."""
+    if stream is None:
+        return None
+    return getattr(stream, "ag_frame", None) or getattr(stream, "gi_frame", None)
 
 
 def _span_owner(span_id: Optional[str]) -> str:
@@ -266,6 +276,11 @@ class LlamaIndexEventMapper:
         # span id -> outer LLM node id, for LLM calls implemented on top of
         # another LLM call (e.g. chat() via complete()); shown as one node.
         self._absorbed: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)
+        # span id -> id() of the object whose method opened the span
+        self._span_instance: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)
+        # node id -> (instance id, weakref to the stream) for open LLM nodes
+        # whose span returned a stream that has not finished yet.
+        self._streams: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)
 
     @property
     def client(self) -> Any:
@@ -280,22 +295,63 @@ class LlamaIndexEventMapper:
 
     # -- spans ------------------------------------------------------------
 
-    def on_span_enter(self, span_id: str, parent_span_id: Optional[str]) -> None:
+    def on_span_enter(
+        self, span_id: str, parent_span_id: Optional[str], instance: Any = None
+    ) -> None:
         try:
-            self._enter(span_id, parent_span_id)
+            self._enter(span_id, parent_span_id, instance)
         finally:
             self._flush_deferred_closes()
 
-    def _enter(self, span_id: str, parent_span_id: Optional[str]) -> None:
+    def _enter(
+        self, span_id: str, parent_span_id: Optional[str], instance: Any
+    ) -> None:
         with self._lock:
+            if instance is not None:
+                self._span_instance[span_id] = id(instance)
             if parent_span_id is None:
-                # Root span: attach to the surrounding @trace context, if any.
-                anchor = current_parent_run_id.get()
+                # Root span: either an LLM call made while one of our open
+                # streams is producing its next item (CustomLLM's astream_*
+                # runs stream_* there, after the outer span has exited), or
+                # a new operation under the surrounding @trace context.
+                anchor = self._enclosing_stream(instance) or (
+                    current_parent_run_id.get()
+                )
             else:
                 anchor = self._span_node.get(parent_span_id) or self._anchor.get(
                     parent_span_id
                 )
             self._anchor[span_id] = anchor
+
+    def _enclosing_stream(self, instance: Any) -> Optional[str]:
+        """The open LLM stream of ``instance`` that is running this call.
+
+        Matched by frame identity: the stream's generator frame must be on
+        the current stack, so calls the application makes on the same LLM
+        between (or while consuming) items are never folded into it.
+        Called with the lock held.
+        """
+        if instance is None or not self._streams:
+            return None
+        for node_id in [n for n in self._streams if n not in self._open]:
+            del self._streams[node_id]
+        candidates = {}
+        for node_id, (owner, stream_ref) in self._streams.items():
+            stream = stream_ref() if owner == id(instance) else None
+            frame = _stream_frame(stream)
+            if frame is not None:  # both alive, so equal ids mean identity
+                candidates[id(frame)] = node_id
+        if not candidates:
+            return None
+        frame = sys._getframe(1)
+        for _ in range(_MAX_STACK_DEPTH):
+            if frame is None:
+                break
+            node_id = candidates.get(id(frame))
+            if node_id is not None:
+                return node_id
+            frame = frame.f_back
+        return None
 
     def on_span_exit(self, span_id: str, result: Any = None) -> None:
         try:
@@ -321,6 +377,12 @@ class LlamaIndexEventMapper:
                     weakref.finalize(result, self._close_early, node_id).atexit = False
                 except TypeError:
                     pass
+                if node["kind"] == "llm":
+                    try:
+                        stream_ref = weakref.ref(result)
+                    except TypeError:
+                        return
+                    self._streams[node_id] = (node.get("instance"), stream_ref)
                 return
             self._open.pop(node_id, None)
         payload = self._describe_end(node["kind"], node, None)
@@ -425,6 +487,7 @@ class LlamaIndexEventMapper:
             "kind": kind,
             "name": name,
             "parent": parent,
+            "instance": self._span_instance.get(span_id) if span_id else None,
             "t0": time.perf_counter(),
             "start_payload": payload,
         }
@@ -665,7 +728,7 @@ def instrument_llamaindex(agentscope_client: Any = None) -> LlamaIndexEventMappe
                 tags: Optional[Dict[str, Any]] = None,
                 **kwargs: Any,
             ) -> SimpleSpan:
-                self._mapper.on_span_enter(id_, parent_span_id)
+                self._mapper.on_span_enter(id_, parent_span_id, instance)
                 return SimpleSpan(id_=id_, parent_id=parent_span_id, tags=tags or {})
 
             def prepare_to_exit_span(

@@ -333,6 +333,10 @@ def llm_nodes(rec):
     return [n for n in nodes(rec).values() if n["agent_type"] == "llm"]
 
 
+async def drain(stream):
+    return [chunk async for chunk in stream]
+
+
 def assert_one_streamed_call(rec):
     (llm,) = llm_nodes(rec)
     assert llm["event_type"] == "llm_end" and llm["status"] == "completed"
@@ -352,3 +356,78 @@ def test_sync_streaming_on_custom_llm_is_one_node(rec, method):
     else:
         list(llm.stream_chat([ChatMessage(role="user", content="q")]))
     assert_one_streamed_call(rec)
+
+
+@pytest.mark.parametrize("method", ["astream_complete", "astream_chat"])
+def test_async_streaming_on_custom_llm_is_one_node(rec, method):
+    # CustomLLM's astream_* runs the sync stream_* inside the async generator,
+    # after the outer span has exited: LlamaIndex reports it without a parent.
+    llm = ChunkedUsageLLM()
+
+    async def main():
+        if method == "astream_complete":
+            await drain(await llm.astream_complete("q"))
+        else:
+            await drain(await llm.astream_chat([ChatMessage(role="user", content="q")]))
+
+    asyncio.run(main())
+    assert_one_streamed_call(rec)
+    assert instrument_llamaindex()._open == {}
+
+
+def test_async_stream_failing_midway_on_custom_llm_is_one_error(rec):
+    async def main():
+        stream = await BrokenStreamLLM().astream_complete("q")
+        with pytest.raises(RuntimeError, match="stream cut"):
+            await drain(stream)
+
+    asyncio.run(main())
+    (llm,) = llm_nodes(rec)
+    assert llm["event_type"] == "llm_error"
+    assert llm["payload"]["error"] == "stream cut"
+
+
+def test_async_streaming_on_mock_llm_is_one_node(rec):
+    async def main():
+        return await drain(await MockLLM(max_tokens=3).astream_complete("a b c d"))
+
+    chunks = asyncio.run(main())
+    (llm,) = llm_nodes(rec)
+    assert llm["status"] == "completed"
+    assert llm["payload"]["completion"] == "".join(c.delta for c in chunks)
+
+
+def test_concurrent_async_streams_on_one_llm_stay_separate(rec):
+    llm = ChunkedUsageLLM()
+
+    async def main():
+        first = await llm.astream_complete("first")
+        second = await llm.astream_complete("second")
+        # Consumed out of order and interleaved with unrelated calls on the
+        # same instance, made by the consumer while a stream is open.
+        await second.__anext__()
+        llm.complete("side, sync")
+        await first.__anext__()
+        await llm.acomplete("side, async")
+        async for _ in first:
+            llm.complete("side, inside the loop")
+        await drain(second)
+
+    asyncio.run(main())
+    final = llm_nodes(rec)
+    by_prompt = {tuple(n["payload"]["prompts"]): n for n in final}
+    assert sorted(by_prompt) == sorted(
+        [
+            ("first",),
+            ("second",),
+            ("side, sync",),
+            ("side, async",),
+            ("side, inside the loop",),
+        ]
+    )
+    for prompt in ("first", "second"):
+        node = by_prompt[(prompt,)]
+        assert node["payload"]["completion"] == "Paris"
+        assert node["payload"]["total_tokens"] == 42
+    assert all(n["parent_event_id"] is None for n in final)
+    assert sum(n["payload"]["total_tokens"] for n in final) == 5 * 42
