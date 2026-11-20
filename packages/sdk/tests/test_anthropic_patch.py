@@ -304,6 +304,28 @@ def test_stream_helper_early_break_records_partial_usage(recorder):
     assert end["payload"]["completion_tokens"] == 1
 
 
+def test_stream_helper_not_entered_emits_nothing(recorder):
+    patch_anthropic()
+    sync_client().messages.stream(**REQUEST)  # never used in a with block
+    assert llm_events(recorder) == []
+
+
+def test_stream_helper_nests_under_traced_function_at_enter(recorder):
+    patch_anthropic()
+    manager = sync_client().messages.stream(**REQUEST)
+
+    @trace(name="planner", agent_type="agent")
+    def plan():
+        with manager as stream:
+            return stream.get_final_message()
+
+    plan()
+    agent = [e for e in recorder.events if e["agent_type"] == "agent"]
+    llm = llm_events(recorder)
+    assert agent and len(llm) == 2
+    assert all(e["parent_event_id"] == agent[0]["event_id"] for e in llm)
+
+
 def test_api_error_emits_llm_error_and_reraises(recorder):
     patch_anthropic()
     with pytest.raises(anthropic.BadRequestError):

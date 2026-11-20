@@ -159,14 +159,22 @@ def _client() -> Any:
 class _TracedMessageStreamManager:
     """Wraps ``MessageStreamManager`` returned by ``messages.stream(...)``.
 
-    The final message snapshot (text + usage) is recorded when the ``with``
-    block exits, whether or not the caller consumed the whole stream.
+    The trace starts when the ``with`` block is entered (that is when the
+    request is sent), so a manager that is never entered emits nothing. The
+    final message snapshot (text + usage) is recorded when the block exits,
+    whether or not the caller consumed the whole stream.
     """
 
-    def __init__(self, manager: Any, trace: LLMCallTrace):
+    def __init__(self, manager: Any, kwargs: Dict[str, Any]):
         self._manager = manager
-        self._trace = trace
+        self._kwargs = kwargs
+        self._trace: Any = None
         self._stream: Any = None
+
+    def _start(self) -> LLMCallTrace:
+        self._trace = LLMCallTrace(_ADAPTER, self._kwargs, _client, streaming=True)
+        self._trace.start()
+        return self._trace
 
     def _finish(self, exc: Optional[BaseException]) -> None:
         snapshot = None
@@ -187,11 +195,12 @@ class _TracedMessageStreamManager:
             self._trace.end_from_response(snapshot)
 
     def __enter__(self) -> Any:
-        token = current_parent_run_id.set(self._trace.run_id)
+        trace = self._start()
+        token = current_parent_run_id.set(trace.run_id)
         try:
             self._stream = self._manager.__enter__()
         except Exception as e:
-            self._trace.error(e)
+            trace.error(e)
             raise
         finally:
             current_parent_run_id.reset(token)
@@ -201,14 +210,16 @@ class _TracedMessageStreamManager:
         try:
             return self._manager.__exit__(exc_type, exc, tb)
         finally:
-            self._finish(exc)
+            if self._trace is not None:
+                self._finish(exc)
 
     async def __aenter__(self) -> Any:
-        token = current_parent_run_id.set(self._trace.run_id)
+        trace = self._start()
+        token = current_parent_run_id.set(trace.run_id)
         try:
             self._stream = await self._manager.__aenter__()
         except Exception as e:
-            self._trace.error(e)
+            trace.error(e)
             raise
         finally:
             current_parent_run_id.reset(token)
@@ -218,7 +229,8 @@ class _TracedMessageStreamManager:
         try:
             return await self._manager.__aexit__(exc_type, exc, tb)
         finally:
-            self._finish(exc)
+            if self._trace is not None:
+                self._finish(exc)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._manager, name)
@@ -227,14 +239,15 @@ class _TracedMessageStreamManager:
 def _wrap_stream_helper(orig: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(orig)
     def traced(self: Any, *args: Any, **kwargs: Any) -> Any:
-        trace = LLMCallTrace(_ADAPTER, kwargs, _client, streaming=True)
-        trace.start()
         try:
             manager = orig(self, *args, **kwargs)
         except Exception as e:
+            # Rejected before any request (e.g. bad arguments): still record it.
+            trace = LLMCallTrace(_ADAPTER, kwargs, _client, streaming=True)
+            trace.start()
             trace.error(e)
             raise
-        return _TracedMessageStreamManager(manager, trace)
+        return _TracedMessageStreamManager(manager, kwargs)
 
     return traced
 
