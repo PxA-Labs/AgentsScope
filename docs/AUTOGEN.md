@@ -29,12 +29,20 @@ tracer = AgentScopeAutoGenTracer(name="research-team")
 result = await tracer.run(team, task="Write about Paris")
 
 # or keep your own stream consumer (e.g. Console):
+await Console(tracer.run_stream(team, task="..."))
+
+# or trace a stream you start yourself:
 await Console(tracer.trace(team.run_stream(task="..."), task="..."))
 ```
 
 `trace()` yields every stream item unchanged. Both pieces report to the global client from `configure()`, so they land in the same session; it is looked up on every event, so calling `configure()` again redirects clients and tracers you already created.
 
-Stopping early (`break`, or `aclose()` on the stream) is a normal close: the run ends as `chain_end` with `closed_early: true`, the session is marked `completed`, and the team's stream is closed so the team stops.
+Stopping early (`break`, or `aclose()` on the stream) is a normal close: the run ends as `chain_end` with `closed_early: true` and the session is marked `completed`. What happens to the team depends on who started the stream:
+
+- **`tracer.run(...)` / `tracer.run_stream(...)`**: the tracer passes a `CancellationToken` to `run_stream` (or yours, if you pass `cancellation_token=`) and cancels it, so the team stops: in-flight model calls are cancelled and no new ones start.
+- **`tracer.trace(team.run_stream(...))`**: pass the same token to both, `tracer.trace(team.run_stream(task=t, cancellation_token=token), task=t, cancellation_token=token)`, and the tracer cancels it. Without a token, AutoGen's `aclose()` does **not** stop the team: it waits until the team goes idle, so the conversation can keep running (and calling the model) until its termination condition. To stop it gracefully after the current turn instead, add an `ExternalTermination` to the team and call `set()` on it before closing.
+
+In every case the run node is closed only after the inner stream has finished closing, so LLM calls made while the team winds down are recorded under the run, never after it ended. Cancelling a token can leave the team in an inconsistent state (AutoGen's own caveat); call `team.reset()` before reusing it if that matters.
 
 The traced client is an AutoGen component, so agents and teams that use it can still be saved with `dump_component()`. A loaded client reports to the global client.
 
