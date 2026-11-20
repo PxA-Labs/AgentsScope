@@ -4,13 +4,17 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Miscellaneous
-- Build(deps): bump next from 16.4.5 to 16.4.6 in /packages/ui
-- Build(deps): bump zustand from 5.0.15 to 5.1.0 in /packages/ui
-- Build(deps-dev): update pytest-asyncio requirement in /packages/sdk
-- Build(deps): update fastapi requirement in /packages/server
-- Build(deps-dev): update ruff requirement in /packages/sdk
-- Build(deps-dev): update pytest-asyncio requirement in /packages/server
+### Tests
+- **sdk**: Verify PEP 639 license metadata and bundled LICENSE
+- **ci**: Guard action SHA pinning and codeql-action version parity
+
+### Maintenance
+- **sdk**: Declare license as PEP 639 SPDX expression
+
+### CI/CD
+- **dependabot**: Group github/codeql-action updates into one PR
+- Pin scorecard-action and git-auto-commit-action to commit SHAs
+- **codeql**: Pin every codeql-action step to v4.39.3
 
 ## [1.0.0] - 2026-08-10
 
