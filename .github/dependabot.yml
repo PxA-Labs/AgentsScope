@@ -57,6 +57,12 @@ updates:
       # ESLint 9. Drop this once they support ESLint 10.
       - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
+      # The group above only helps when both sides get a minor/patch bump. A
+      # major of eslint-config-next can require a new ESLint major (16 needed
+      # ESLint 9), so it would arrive alone and fail the same way. Bump majors
+      # of this pair together by hand.
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
 
   # Server Docker image
   - package-ecosystem: "docker"
