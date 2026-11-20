@@ -5,11 +5,20 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Fixed
-- **server**: Log event persist failures accurately (#329)
-- **server**: Let SQLAlchemy emit BEGIN on SQLite so SAVEPOINTs nest (#329)
+- **ui**: Keep two more Tailwind 3 behaviours found in review
+- **ui**: Keep the Tailwind 3 look after the upgrade
 
-### Tests
-- **server**: Reproduce non-atomic event persist on SQLite (#329)
+### Documentation
+- **ui**: Describe the Tailwind 4 setup
+
+### Refactor
+- **ui**: Rename utilities changed in Tailwind 4
+
+### Maintenance
+- **dependabot**: Group Tailwind packages and skip its majors
+
+### Miscellaneous
+- Build(ui): move to Tailwind CSS 4 with @tailwindcss/postcss
 
 ## [1.0.0] - 2026-08-10
 
