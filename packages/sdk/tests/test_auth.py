@@ -8,7 +8,12 @@ import urllib.request
 
 import pytest
 
-from agentscope.client import API_KEY_ENV, AgentScopeClient
+from agentscope.client import (
+    API_KEY_ENV,
+    MAX_BACKOFF_SECONDS,
+    WS_CLOSE_UNAUTHORIZED,
+    AgentScopeClient,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -188,3 +193,62 @@ def test_api_key_not_exposed_in_repr():
     client = AgentScopeClient(api_key="super-secret")
     assert "super-secret" not in repr(client)
     assert "super-secret" not in str(vars(client).get("api_key", ""))
+
+
+def run_against_4401_server(monkeypatch, attempts):
+    """Drive the loop against a server that accepts, then closes with 4401."""
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    connects = []
+    sleeps = []
+
+    class RejectingSocket:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def send(self, _message):
+            raise ConnectionClosedError(
+                Close(WS_CLOSE_UNAUTHORIZED, "Unauthorized"), None
+            )
+
+    def fake_connect(uri, **kwargs):
+        connects.append(uri)
+        return RejectingSocket()
+
+    client = AgentScopeClient(api_key="bad-key")
+    client.session_id = "sess-1"
+    client.running = True
+    client.loop = asyncio.new_event_loop()
+    client.queue.put({"event_id": "e1"})
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) >= attempts:
+            client.running = False
+
+    monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
+    monkeypatch.setattr("agentscope.client.asyncio.sleep", fake_sleep)
+    try:
+        client.loop.run_until_complete(client._main_async_loop())
+    finally:
+        client.loop.close()
+    return connects, sleeps
+
+
+def test_4401_close_backs_off_to_max_instead_of_reconnecting_every_second(
+    monkeypatch, caplog
+):
+    with caplog.at_level(logging.DEBUG):
+        connects, sleeps = run_against_4401_server(monkeypatch, attempts=5)
+    assert len(connects) == 5
+    # The handshake succeeds before the 4401 close, which used to reset the
+    # backoff to 1 s each time. Rejected credentials won't fix themselves.
+    assert sleeps == [MAX_BACKOFF_SECONDS] * 5
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    # One actionable hint; the per-retry noise is demoted to DEBUG.
+    assert warnings == [warnings[0]] and "rejected the API key" in warnings[0]
+    assert all("bad-key" not in r.getMessage() for r in caplog.records)

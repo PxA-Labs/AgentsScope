@@ -16,6 +16,7 @@ import websockets.exceptions
 
 API_KEY_ENV = "AGENTSCOPE_API_KEY"
 WS_CLOSE_UNAUTHORIZED = 4401
+MAX_BACKOFF_SECONDS = 30.0
 # A plain literal (no interpolated values) so log scanners can see that no
 # credential is ever logged; it only names the environment variable.
 _UNAUTHORIZED_HINT = (
@@ -73,6 +74,15 @@ def server_urls(
     if is_secure:
         return f"https://{prefix}", f"wss://{prefix}"
     return f"http://{prefix}", f"ws://{prefix}"
+
+
+def _is_auth_close(exc: BaseException) -> bool:
+    """True if the server closed the WebSocket because it rejected the key."""
+    return (
+        isinstance(exc, websockets.exceptions.ConnectionClosed)
+        and exc.rcvd is not None
+        and exc.rcvd.code == WS_CLOSE_UNAUTHORIZED
+    )
 
 
 class AgentScopeClient:
@@ -272,7 +282,7 @@ class AgentScopeClient:
 
     async def _main_async_loop(self) -> None:
         backoff = 1.0
-        max_backoff = 30.0
+        max_backoff = MAX_BACKOFF_SECONDS
         failed_batch = []
 
         while self.running:
@@ -341,10 +351,11 @@ class AgentScopeClient:
                             for _ in range(len(batch)):
                                 self.queue.task_done()
                         except Exception as e:
-                            logging.warning(
-                                "Failed to send event batch to AgentScope "
-                                f"server: {e}. Re-queueing."
-                            )
+                            if not _is_auth_close(e):
+                                logging.warning(
+                                    "Failed to send event batch to AgentScope "
+                                    f"server: {e}. Re-queueing."
+                                )
                             failed_batch = batch
                             raise e  # Trigger reconnection and retry
 
@@ -356,16 +367,22 @@ class AgentScopeClient:
                 self.ws_connected = False
                 if not self.running:
                     break
-                if (
-                    isinstance(e, websockets.exceptions.ConnectionClosed)
-                    and e.rcvd is not None
-                    and e.rcvd.code == WS_CLOSE_UNAUTHORIZED
-                ):
+                if _is_auth_close(e):
+                    # The server completes the handshake and then closes with
+                    # 4401, so the reset-on-connect above would otherwise
+                    # retry every second. Retrying with the same key cannot
+                    # succeed: wait the maximum and log the hint only once.
                     self._warn_unauthorized()
-                logging.warning(
-                    "AgentScope server connection failed: "
-                    f"{e}. Retrying in {backoff}s..."
-                )
+                    backoff = max_backoff
+                    logging.debug(
+                        "AgentScope server rejected the API key (4401). "
+                        f"Retrying in {backoff}s..."
+                    )
+                else:
+                    logging.warning(
+                        "AgentScope server connection failed: "
+                        f"{e}. Retrying in {backoff}s..."
+                    )
                 try:
                     await asyncio.sleep(backoff)
                 except Exception:
