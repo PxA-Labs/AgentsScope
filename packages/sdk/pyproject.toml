@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "websockets>=16.1.1",
-    "pydantic>=2.14.3",
+    "pydantic>=2.9",
 ]
 
 [project.urls]
@@ -54,6 +54,10 @@ anthropic = [
 gemini = [
     # google-genai 3.x requires Python 3.11+; on older Pythons the extra is a no-op.
     "google-genai>=3.3.0; python_version >= '3.11'",
+]
+crewai = [
+    # started_event_id / parent_event_id on events are required by the listener.
+    "crewai>=1.15.41",
 ]
 dev = [
     "pytest>=9.2.0",

@@ -66,6 +66,34 @@ jobs:
         run: |
           if [ -d packages/sdk/tests ]; then pytest packages/sdk/tests; else echo "No SDK tests found yet."; fi
 
+  test-crewai-integration:
+    name: Test CrewAI Integration
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CREWAI_DISABLE_TELEMETRY: "true"
+      OTEL_SDK_DISABLED: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      # CrewAI pulls in a large dependency tree, so it gets its own job instead
+      # of slowing down the main SDK test job.
+      - name: Install SDK with CrewAI
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/sdk[dev,crewai]"
+
+      - name: Run CrewAI tests
+        run: |
+          pytest packages/sdk/tests/test_crewai_mapper.py packages/sdk/tests/test_crewai_integration.py
+
   test-llamaindex-integration:
     name: Test LlamaIndex Integration
     runs-on: ubuntu-latest
