@@ -485,6 +485,159 @@ def test_aclose_without_a_token_waits_for_the_team_then_closes_the_run():
     assert rec.status == ["completed"]
 
 
+async def wait_for_calls(calls, n):
+    while len(calls) < n:
+        await asyncio.sleep(0.001)
+
+
+def run_ends(rec):
+    return [
+        e for e in rec.events if e["agent_type"] == "team" and e["status"] != "running"
+    ]
+
+
+def assert_recorded_as_cancelled(rec):
+    (end,) = run_ends(rec)  # recorded exactly once
+    assert end["event_type"] == "chain_end" and end["status"] == "completed"
+    assert end["payload"]["outputs"]["closed_early"] is True
+    assert end["payload"]["outputs"]["cancelled"] is True
+    assert run_end_is_last(rec)
+    assert rec.status == ["completed"]
+
+
+def assert_team_stopped(calls, cancelled_at):
+    # At most one call can start in the loop iteration before the cancellation
+    # is delivered; the 20-message conversation must not carry on.
+    assert len([c for c in calls if c > cancelled_at]) <= 1
+    assert len(calls) < 6
+
+
+def test_cancelling_the_consumer_task_stops_the_team():
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls)
+
+    async def main():
+        tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+
+        async def consume():
+            async for _ in tracer.run_stream(team, task="go"):
+                pass
+
+        consumer = asyncio.create_task(consume())
+        await wait_for_calls(calls, 2)  # the consumer is awaiting the next item
+        cancelled_at = time.perf_counter()
+        consumer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await consumer
+        assert consumer.cancelled()
+        await asyncio.sleep(0.3)
+        await team.reset()  # raises if the team is still running
+        return cancelled_at
+
+    cancelled_at = asyncio.run(main())
+
+    assert_team_stopped(calls, cancelled_at)
+    assert_recorded_as_cancelled(rec)
+
+
+def test_cancelling_tracer_run_stops_the_team():
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls)
+
+    async def main():
+        runner = asyncio.create_task(
+            AgentScopeAutoGenTracer(agentscope_client=rec).run(team, task="go")
+        )
+        await wait_for_calls(calls, 2)
+        cancelled_at = time.perf_counter()
+        runner.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await runner
+        assert runner.cancelled()
+        await asyncio.sleep(0.3)
+        await team.reset()
+        return cancelled_at
+
+    cancelled_at = asyncio.run(main())
+
+    assert_team_stopped(calls, cancelled_at)
+    assert_recorded_as_cancelled(rec)
+
+
+def test_timeout_around_tracer_run_stops_the_team_and_raises_timeout_error():
+    # asyncio.timeout() cancels the task and relies on Task.uncancel() to turn
+    # the CancelledError into TimeoutError, so the cancellation must propagate
+    # unchanged and leave the task's cancel count balanced.
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls)
+
+    async def main():
+        tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.03):
+                await tracer.run(team, task="go")
+        timed_out_at = time.perf_counter()
+        assert asyncio.current_task().cancelling() == 0
+        await asyncio.sleep(0.3)
+        await team.reset()
+        return timed_out_at
+
+    timed_out_at = asyncio.run(main())
+
+    assert_team_stopped(calls, timed_out_at)
+    assert_recorded_as_cancelled(rec)
+
+
+def test_cancelling_the_callers_token_is_recorded_as_cancelled():
+    from autogen_core import CancellationToken
+
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls)
+    token = CancellationToken()
+
+    async def main():
+        runner = asyncio.create_task(
+            AgentScopeAutoGenTracer(agentscope_client=rec).run(
+                team, task="go", cancellation_token=token
+            )
+        )
+        await wait_for_calls(calls, 2)
+        cancelled_at = time.perf_counter()
+        token.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await runner
+        return cancelled_at
+
+    cancelled_at = asyncio.run(main())
+
+    assert_team_stopped(calls, cancelled_at)
+    assert_recorded_as_cancelled(rec)
+
+
+def test_cancelling_the_consumer_of_trace_without_a_token_is_recorded_as_cancelled():
+    # Without a token the tracer cannot stop the team (AutoGen waits for it to
+    # go idle), but the run is still a cancellation, not a failure.
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls, turns=6)
+
+    async def main():
+        tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+
+        async def consume():
+            async for _ in tracer.trace(team.run_stream(task="go"), task="go"):
+                pass
+
+        consumer = asyncio.create_task(consume())
+        await wait_for_calls(calls, 2)
+        consumer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await consumer
+
+    asyncio.run(main())
+
+    assert_recorded_as_cancelled(rec)
+
+
 def test_events_follow_reconfigured_global_client(monkeypatch):
     import agentscope_trace.decorators as decorators
 
