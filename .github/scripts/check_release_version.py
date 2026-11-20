@@ -2,7 +2,7 @@
 
 Usage: python .github/scripts/check_release_version.py <tag>   (e.g. v0.2.0)
 
-Reads packages/sdk/agentscope/_version.py without importing the package, so
+Reads packages/sdk/agentscope_trace/_version.py without importing the package, so
 it runs before anything is installed.
 """
 
@@ -14,7 +14,7 @@ VERSION_FILE = (
     Path(__file__).resolve().parents[2]
     / "packages"
     / "sdk"
-    / "agentscope"
+    / "agentscope_trace"
     / "_version.py"
 )
 TAG_RE = re.compile(r"^v(?P<version>\d+\.\d+\.\d+((a|b|rc)\d+)?(\.post\d+)?)$")
@@ -34,7 +34,7 @@ def check(tag: str, version: str) -> str:
         return f"tag {tag!r} is not a release tag like v1.2.3, v1.2.3rc1"
     if match.group("version") != version:
         return (
-            f"tag {tag!r} does not match agentscope/_version.py ({version!r}); "
+            f"tag {tag!r} does not match agentscope_trace/_version.py ({version!r}); "
             "bump the version in a PR before tagging"
         )
     return ""
