@@ -163,3 +163,26 @@ def test_call_that_crosses_the_limit_blocks_the_next_call_in_a_sync_chain():
     with pytest.raises(BudgetExceededError):
         chain.invoke("start", config={"callbacks": [callback]})
     assert completed == ["first"]
+
+
+def test_session_stays_failed_when_the_last_call_crosses_the_limit_in_a_sync_run():
+    """A sync run can't be interrupted after its final model call, but the
+    root chain ending must not overwrite the failed status with completed."""
+    from langchain_core.language_models import FakeListLLM
+    from langchain_core.runnables import RunnableLambda
+
+    callback = AgentScopeCallback(budget_limit_usd=0.0001)
+    callback.client.emit = MagicMock()
+    callback.client.patch_session_status = MagicMock()
+    llm = FakeListLLM(responses=["only"])
+
+    def call_model(prompt):
+        out = llm.invoke(prompt)
+        callback.cumulative_cost_usd += 1.0  # this last call crosses the limit
+        return out
+
+    chain = RunnableLambda(lambda x: x) | RunnableLambda(call_model)
+    assert chain.invoke("start", config={"callbacks": [callback]}) == "only"
+    statuses = [c.args[0] for c in callback.client.patch_session_status.call_args_list]
+    assert statuses and statuses[-1] == "failed", statuses
+    assert "completed" not in statuses
