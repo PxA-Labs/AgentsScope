@@ -225,6 +225,38 @@ def test_restart_after_timed_out_stop_never_runs_two_senders(monkeypatch):
     assert [e["event_id"] for e in received] == ["a", "b", "c"]
 
 
+def test_events_stop_could_not_deliver_go_out_after_restart(monkeypatch):
+    """Nothing is dropped when stop() times out, not even the batch whose
+    send failed: a later emit() restarts the sender, which delivers it."""
+    received = []
+    broken = threading.Event()
+    broken.set()
+
+    class FlakyWebSocket(FakeWebSocket):
+        async def send(self, raw):
+            if broken.is_set():
+                raise OSError("connection reset")
+            await super().send(raw)
+
+    monkeypatch.setattr(AgentScopeClient, "_create_session_sync", _register_instantly)
+    monkeypatch.setattr(
+        "agentscope.client.websockets.connect",
+        lambda uri, **kwargs: FlakyWebSocket(received),
+    )
+    client = AgentScopeClient()
+    for i in range(3):
+        client.emit({"event_id": str(i)})
+    returned, elapsed = _run_stop(client, timeout=0.3)
+    assert returned and elapsed < 1.5
+    assert client.running is False
+    assert received == []
+
+    broken.clear()  # the server is healthy again
+    client.emit({"event_id": "3"})
+    assert _run_stop(client, 2.0)[0]
+    assert [e["event_id"] for e in received] == ["0", "1", "2", "3"]
+
+
 def test_stopped_clients_are_garbage_collected(monkeypatch):
     """The exit hook must not keep every client ever started alive."""
     _fake_network(monkeypatch, _register_instantly, [])

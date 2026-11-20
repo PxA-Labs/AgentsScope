@@ -349,6 +349,10 @@ class AgentScopeClient:
         self.shutdown_timeout = max(0.0, shutdown_timeout)
         self._lock = threading.Lock()
         self._sender: Optional[_Sender] = None
+        # A batch taken from the buffer whose send failed. It outlives the
+        # sender, so the next one (after a reconnect or a restart following
+        # a timed-out stop) delivers it first, in order.
+        self._unsent: list = []
 
     def start(self) -> None:
         """Start the background connection thread and event loop."""
@@ -375,8 +379,13 @@ class AgentScopeClient:
 
         Returns within ``timeout + 0.5`` seconds whatever the server state:
         the sender gets ``timeout`` to deliver, plus 0.5 s to close the
-        connection. Events that cannot be delivered in time (server
-        unreachable) are dropped. Never blocks on a full buffer.
+        connection. Never blocks on a full buffer.
+
+        Events that cannot be delivered in time (server unreachable, key
+        rejected) are not discarded: they stay buffered, in order, and are
+        sent when a later emit() restarts the sender. The exit hook flushes
+        only running clients, so events still buffered in a stopped client
+        are lost when the process exits.
 
         ``running`` becomes False once the background thread has exited. If
         the thread is still busy when stop() returns (for example stuck in a
@@ -566,7 +575,6 @@ class AgentScopeClient:
         loop = asyncio.get_running_loop()
         sender.bind(loop)
         backoff = self._initial_backoff
-        failed_batch: list = []
 
         while not sender.expired():
             try:
@@ -591,8 +599,8 @@ class AgentScopeClient:
 
                     # 3. Send buffered events in batches.
                     while not sender.expired():
-                        batch = failed_batch or self._next_batch()
-                        failed_batch = []
+                        batch = self._unsent or self._next_batch()
+                        self._unsent = []
                         if not batch:
                             if sender.shutdown.is_set():
                                 return  # everything delivered
@@ -624,7 +632,7 @@ class AgentScopeClient:
                                     "Failed to send event batch to AgentScope "
                                     f"server: {e}. Re-queueing."
                                 )
-                            failed_batch = batch
+                            self._unsent = batch
                             raise e  # Trigger reconnection and retry
                     return
 
