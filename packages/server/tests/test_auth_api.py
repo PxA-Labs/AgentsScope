@@ -1,6 +1,7 @@
 """End-to-end auth behaviour for REST routes and the /ws endpoint."""
 
 import logging
+import re
 import time
 import uuid
 
@@ -12,8 +13,10 @@ from auth import (
     AuthConfigError,
     encode_ws_auth_protocol,
 )
+from fastapi.routing import APIWebSocketRoute
 from fastapi.testclient import TestClient
 from main import app
+from starlette.routing import Route
 from starlette.websockets import WebSocketDisconnect
 
 KEY = "test-key-Abc123-0123456789"
@@ -100,21 +103,66 @@ def test_rest_rejects_missing_or_invalid_credentials(with_auth, headers):
     assert res.json() == {"detail": "Missing or invalid API key"}
 
 
-def test_every_router_is_protected(with_auth):
+# Routes that are deliberately reachable without a key. Anything else must
+# live under /api or /ws, so a new top-level route cannot silently be public.
+PUBLIC_PATHS = {"/health", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+
+
+def concrete_path(path: str) -> str:
+    return re.sub(r"\{[^}]+\}", "probe-id", path)
+
+
+def http_operations():
+    """Every (method, path) the app serves over HTTP.
+
+    Read from the OpenAPI schema rather than ``app.routes``, because newer
+    FastAPI versions nest included routers there. Top-level routes that are
+    hidden from the schema (the docs pages) are added from ``app.routes``.
+    """
+    ops = {
+        (method.upper(), path)
+        for path, item in app.openapi()["paths"].items()
+        for method in item
+    }
+    for route in app.routes:
+        if isinstance(route, Route) and not isinstance(route, APIWebSocketRoute):
+            ops.update((m, route.path) for m in route.methods)
+    return ops
+
+
+def test_only_known_routes_are_public():
+    paths = {path for _, path in http_operations()}
+    paths.update(r.path for r in app.routes if isinstance(r, APIWebSocketRoute))
+    unexpected = [
+        p
+        for p in sorted(paths)
+        if p not in PUBLIC_PATHS and not (p.startswith("/api/") or p == "/ws")
+    ]
+    assert unexpected == []
+
+
+def test_every_api_route_requires_the_key(with_auth):
+    api_ops = sorted(op for op in http_operations() if op[1].startswith("/api/"))
+    assert len(api_ops) >= 10, "route discovery looks broken"
     with TestClient(app) as client:
-        for path in (
-            "/api/sessions",
-            "/api/sessions/some-id",
-            "/api/sessions/some-id/export",
-            "/api/sessions/some-id/events",
-            "/api/sessions/some-id/memories",
-        ):
+        for method, path in api_ops:
             # 401 comes before routing errors such as 404, so an attacker
             # cannot probe which sessions exist.
-            assert client.get(path).status_code == 401, path
-        assert (
-            client.post("/api/sessions", json={"name": "x"}).status_code == 401
-        ), "writes must be protected too"
+            res = client.request(method, concrete_path(path))
+            assert res.status_code == 401, f"{method} {path}"
+            assert res.headers["www-authenticate"] == "Bearer"
+
+
+def test_every_websocket_route_requires_the_key(with_auth):
+    ws_routes = [r for r in app.routes if isinstance(r, APIWebSocketRoute)]
+    assert ws_routes, "route discovery looks broken"
+    with TestClient(app) as client:
+        for route in ws_routes:
+            path = concrete_path(route.path) + "?client_type=sdk"
+            with client.websocket_connect(path) as ws:
+                with pytest.raises(WebSocketDisconnect) as exc:
+                    ws.receive_text()
+            assert exc.value.code == WS_CLOSE_UNAUTHORIZED, route.path
 
 
 def test_rest_accepts_valid_key(with_auth):
