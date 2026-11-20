@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from agentscope.cli import find_repo_paths, main
 
 
@@ -83,3 +85,33 @@ def test_cli_main_start_local(mock_parse_args, mock_find_paths):
         # Verify terminate was called on both processes during cleanup
         mock_proc_server.terminate.assert_called_once()
         mock_proc_ui.terminate.assert_called_once()
+
+
+def _run_main(argv, monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.argv", ["agentscope", *argv])
+    monkeypatch.chdir(tmp_path)  # not a repository checkout
+    monkeypatch.setattr(
+        "agentscope.cli.find_repo_paths", lambda: (None, None, None, None)
+    )
+    main()
+
+
+@pytest.mark.parametrize("argv", [["start"], ["start", "--docker"]])
+def test_start_outside_checkout_explains_what_to_do(
+    argv, monkeypatch, tmp_path, capsys
+):
+    with pytest.raises(SystemExit) as exc:
+        _run_main(argv, monkeypatch, tmp_path)
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "git clone https://github.com/PxA-Labs/AgentsScope.git" in err
+    assert "agentscope-trace" in err
+
+
+def test_version_flag(monkeypatch, tmp_path, capsys):
+    from agentscope import __version__
+
+    with pytest.raises(SystemExit) as exc:
+        _run_main(["--version"], monkeypatch, tmp_path)
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == f"agentscope-trace {__version__}"

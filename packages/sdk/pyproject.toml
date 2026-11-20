@@ -3,20 +3,33 @@ requires = ["setuptools>=84.2.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentscope-sdk"
-version = "0.1.0"
-description = "Lightweight tracing SDK for AgentScope observability dashboard"
+# Published as "agentscope-trace": "agentscope" and "agentscope-sdk" on PyPI
+# belong to unrelated projects (#274). The import package is still `agentscope`.
+name = "agentscope-trace"
+dynamic = ["version"]
+description = "Lightweight tracing SDK for the AgentScope observability dashboard"
 readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
 ]
 dependencies = [
     "websockets>=16.1.1",
     "pydantic>=2.14.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/PxA-Labs/AgentsScope"
+Repository = "https://github.com/PxA-Labs/AgentsScope"
+Issues = "https://github.com/PxA-Labs/AgentsScope/issues"
+Changelog = "https://github.com/PxA-Labs/AgentsScope/blob/main/CHANGELOG.md"
 
 [project.scripts]
 agentscope = "agentscope.cli:main"
@@ -32,27 +45,37 @@ autogen = [
     "autogen-agentchat>=0.7.5",
     "autogen-core>=0.7.5",
 ]
+anthropic = [
+    "anthropic>=2.8.0",
+]
+gemini = [
+    # google-genai 3.x requires Python 3.11+; on older Pythons the extra is a no-op.
+    "google-genai>=3.3.0; python_version >= '3.11'",
+]
 dev = [
     "pytest>=9.2.0",
-    "pytest-asyncio>=1.4.1.post1",
+    "pytest-asyncio>=1.5.0",
     "black>=26.10.1",
-    "ruff>=0.17.4",
+    "ruff>=0.17.5",
 ]
 
 [tool.black]
 line-length = 88
-target-version = ['py310']
+target-version = ['py311']
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
 ignore = []
 
 [tool.setuptools]
-packages = ["agentscope", "agentscope.integrations"]
+packages = ["agentscope", "agentscope.integrations", "agentscope.providers"]
+
+[tool.setuptools.dynamic]
+version = { attr = "agentscope._version.__version__" }
 
 [tool.setuptools.package-data]
 agentscope = ["pricing.json"]

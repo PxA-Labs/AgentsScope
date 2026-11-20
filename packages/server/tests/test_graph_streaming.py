@@ -13,8 +13,9 @@ class FakeWebSocket:
     def __init__(self):
         self.sent = []
 
-    async def accept(self):
-        pass
+    async def accept(self, subprotocol=None, headers=None):
+        # Mirrors starlette.websockets.WebSocket.accept's signature.
+        self.subprotocol = subprotocol
 
     async def send_text(self, text):
         self.sent.append(json.loads(text))

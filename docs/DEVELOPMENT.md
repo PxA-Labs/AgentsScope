@@ -17,7 +17,7 @@ AgentScope is structured as a monorepo containing three core packages:
 ## 2. Local Environment Setup
 
 ### Prerequisites
-*   **Python**: Version `3.10` or higher.
+*   **Python**: Version `3.11` or higher.
 *   **Node.js**: Version `18` or higher (with `npm`).
 *   **Git**: For version control.
 

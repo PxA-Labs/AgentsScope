@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthBanner } from "../components/AuthBanner";
 
 export const metadata: Metadata = {
   title: "AgentScope Observability Dashboard",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AuthBanner />
+        {children}
+      </body>
     </html>
   );
 }

@@ -222,8 +222,8 @@ sequenceDiagram
 
 ## 10. Future Architecture Considerations
 
-- **PostgreSQL Adapter**: Support swapping SQLite for PostgreSQL via a `DATABASE_URL` environment variable for team deployments.
-- **Multi-framework Support**: Adapters for CrewAI, AutoGen, and raw OpenAI SDKs, expanding beyond LangChain.
-- **Live DAG Updates**: Pushing incremental node/edge updates via WebSockets rather than requiring REST refreshes for the graph view.
-- **Session Diffing**: Infrastructure to compare two runs side-by-side (e.g., comparing token usage or latency before and after a prompt change).
+- ~~**PostgreSQL Adapter**~~: *Implemented in #153.* SQLite can be swapped for PostgreSQL with the `DATABASE_URL` environment variable for team deployments.
+- **Multi-framework Support**: Adapters for CrewAI (#264), AutoGen (#265) and LlamaIndex (#266), expanding beyond LangChain. *Raw OpenAI SDK support is implemented (#150).*
+- ~~**Live DAG Updates**~~: *Implemented in #156.* Incremental node/edge updates are pushed over WebSockets (`graph_update` messages, see `SCHEMA.md` §5.3).
+- ~~**Session Diffing**~~: *Implemented in #155.* Two runs can be compared side by side in the `/diff` view.
 - **Plugin System**: Allow users to register custom event types and provide custom UI components to render them in the inspector.
