@@ -269,7 +269,14 @@ class CrewAIEventMapper:
             }
         )
 
-        if agent_type == "crew" and phase != "start" and self.mark_session_status:
+        # Only the outermost crew decides the session's status: a crew kicked
+        # off from inside another crew's tool or agent has a shown parent.
+        if (
+            agent_type == "crew"
+            and phase != "start"
+            and parent is None
+            and self.mark_session_status
+        ):
             self.client.patch_session_status(
                 "completed" if phase == "end" else "failed"
             )
@@ -374,7 +381,7 @@ class AgentScopeCrewAIListener:
         session_name / session_metadata: Session shown in the dashboard.
         client: Advanced/testing hook to supply an existing client.
         mark_session_status: Patch the session to ``completed`` / ``failed``
-            when a crew kickoff finishes.
+            when a top-level crew kickoff finishes (nested crews don't).
     """
 
     def __init__(

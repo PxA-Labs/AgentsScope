@@ -273,3 +273,20 @@ def test_only_open_scopes_are_remembered(mapper, rec):
     )
     llm = [e for e in rec.events if e["event_type"] == "llm_start"][-1]
     assert llm["parent_event_id"] == "c49"
+
+
+def test_only_the_root_crew_sets_session_status(mapper, rec):
+    mapper.handle(ev("crew_kickoff_started", "c1", crew_name="outer"))
+    mapper.handle(ev("tool_usage_started", "u1", parent="c1", tool_name="delegate"))
+    # A crew kicked off from inside a tool of the outer crew.
+    mapper.handle(ev("crew_kickoff_started", "n1", parent="u1", crew_name="inner"))
+    mapper.handle(ev("crew_kickoff_failed", "n2", parent="u1", started="n1", error="x"))
+    assert rec.status == [], "a nested crew must not set the session status"
+    mapper.handle(
+        ev("tool_usage_finished", "u2", parent="c1", started="u1", output="ok")
+    )
+    mapper.handle(ev("crew_kickoff_completed", "c2", started="c1", output="done"))
+    assert rec.status == ["completed"]
+    inner = [e for e in rec.events if e["event_id"] == "n1"]
+    assert [e["status"] for e in inner] == ["running", "error"]
+    assert all(e["parent_event_id"] == "u1" for e in inner)
