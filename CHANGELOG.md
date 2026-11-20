@@ -4,20 +4,15 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Documentation
-- Update the minimum Python version to 3.11
+### Refactor
+- **ui**: Remove unused imports and catch binding
 
-### Tests
-- **ci**: Parse workflows as YAML in the Python-support guard
-- **ci**: Keep CI Python versions aligned with requires-python
+### Maintenance
+- **ui**: Upgrade to ESLint 9 and eslint-config-next 16 flat config
 
 ### CI/CD
-- Test the server on Python 3.14, the version its image runs
-- Test the SDK and server on Python 3.11, 3.12 and 3.13
-
-### Miscellaneous
-- Build(deps): require SQLAlchemy 2.1 and websockets 17 on the server
-- Build: require Python 3.11+
+- **dependabot**: Also hold back eslint-config-next majors
+- **dependabot**: Bump eslint packages together, hold ESLint 10
 
 ## [1.0.0] - 2026-08-10
 
