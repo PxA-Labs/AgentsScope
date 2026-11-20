@@ -3,6 +3,8 @@
 Patches, at class level (affecting every client in the process):
 
 * ``Messages.create`` / ``AsyncMessages.create``, including ``stream=True``
+* ``Messages.parse`` / ``AsyncMessages.parse`` (structured outputs, which post
+  directly rather than through ``create``)
 * ``Messages.stream`` / ``AsyncMessages.stream`` (the streaming helper, which
   does not go through ``create``)
 """
@@ -255,6 +257,8 @@ def _wrap_stream_helper(orig: Callable[..., Any]) -> Callable[..., Any]:
 _TARGETS = (
     ("Messages", "create", wrap_sync),
     ("AsyncMessages", "create", wrap_async),
+    ("Messages", "parse", wrap_sync),
+    ("AsyncMessages", "parse", wrap_async),
     ("Messages", "stream", None),
     ("AsyncMessages", "stream", None),
 )

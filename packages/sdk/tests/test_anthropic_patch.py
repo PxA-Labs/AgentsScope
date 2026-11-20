@@ -215,6 +215,28 @@ def test_async_create(recorder):
     )
 
 
+def test_sync_parse(recorder):
+    # messages.parse() posts directly rather than going through create().
+    patch_anthropic()
+    res = sync_client().messages.parse(**REQUEST)
+    assert res.content[0].text == "Paris."
+    assert_completed(
+        llm_events(recorder), 'Paris.[tool_use lookup: {"q": "fr"}]', False
+    )
+
+
+def test_async_parse(recorder):
+    patch_anthropic()
+
+    async def run():
+        return await async_client().messages.parse(**REQUEST)
+
+    asyncio.run(run())
+    assert_completed(
+        llm_events(recorder), 'Paris.[tool_use lookup: {"q": "fr"}]', False
+    )
+
+
 def test_sync_create_stream_true(recorder):
     patch_anthropic()
     stream = sync_client().messages.create(**REQUEST, stream=True)
@@ -351,13 +373,22 @@ def test_calls_nest_under_traced_function(recorder):
 
 
 def test_patch_is_idempotent_and_unpatch_restores():
-    originals = (Messages.create, AsyncMessages.create, Messages.stream)
+    def methods():
+        return (
+            Messages.create,
+            AsyncMessages.create,
+            Messages.stream,
+            Messages.parse,
+            AsyncMessages.parse,
+        )
+
+    originals = methods()
     assert patch_anthropic() is True
     patched = Messages.create
     assert patch_anthropic() is True
     assert Messages.create is patched  # not double-wrapped
     unpatch_anthropic()
-    assert (Messages.create, AsyncMessages.create, Messages.stream) == originals
+    assert methods() == originals
 
 
 def test_returns_false_when_sdk_missing(monkeypatch):
