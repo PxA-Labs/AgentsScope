@@ -190,6 +190,39 @@ def test_stop_wakes_a_reconnect_backoff(monkeypatch):
     assert [e["event_id"] for e in received] == ["a"]
 
 
+def test_restart_after_timed_out_stop_never_runs_two_senders(monkeypatch):
+    received = []
+    release = threading.Event()
+    calls = []
+
+    def slow_create(self):
+        calls.append(1)
+        if len(calls) == 1:
+            release.wait(5)  # registration hangs past stop()'s timeout
+        self.session_id = "sess-1"
+
+    _fake_network(monkeypatch, slow_create, received)
+    client = AgentScopeClient()
+    client.emit({"event_id": "a"})
+    first = client.thread
+    client.stop(timeout=0.1)
+
+    assert first.is_alive()
+    assert client.running, "reported stopped while its sender thread still runs"
+    client.emit({"event_id": "b"})
+    assert client.thread is first, "a second sender thread was started"
+
+    release.set()
+    first.join(3)
+    assert not first.is_alive()
+    assert client.running is False
+
+    client.emit({"event_id": "c"})  # a fresh sender picks everything up
+    assert client.thread is not first
+    assert _run_stop(client, 2.0)[0]
+    assert [e["event_id"] for e in received] == ["a", "b", "c"]
+
+
 # --- real interpreters -----------------------------------------------------
 
 SCRIPT_PRELUDE = """
