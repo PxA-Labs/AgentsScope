@@ -278,9 +278,8 @@ async def test_large_csv_export_streams_with_real_db_dependency(
 
     async def tracked_get_db():
         async for session in get_db():
-            real_close = session.close
 
-            async def close():
+            async def close(real_close=session.close):
                 log.append(("db", "close"))
                 await real_close()
 
