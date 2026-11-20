@@ -6,8 +6,10 @@ AgentScope instruments agent frameworks through their own extension points (call
 |---|---|---|
 | LangChain | `AgentScopeCallback` passed in `callbacks=[...]` | `packages/sdk[langchain]` |
 | CrewAI | `AgentScopeCrewAIListener` on CrewAI's event bus | `packages/sdk[crewai]` |
-| AutoGen | planned: [#265](https://github.com/PxA-Labs/AgentsScope/issues/265) | |
-| LlamaIndex | planned: [#266](https://github.com/PxA-Labs/AgentsScope/issues/266) | |
+| AutoGen | `AgentScopeAutoGenTracer` / `trace_model_client` ([docs/AUTOGEN.md](AUTOGEN.md)) | `packages/sdk[autogen]` |
+| LlamaIndex | `instrument_llamaindex()` on the instrumentation API ([docs/LLAMAINDEX.md](LLAMAINDEX.md)) | `packages/sdk[llamaindex]` |
+
+Model SDKs used directly (OpenAI, Anthropic, Gemini) are covered by `patch_all()`; see [PROVIDERS.md](PROVIDERS.md).
 
 ## CrewAI
 

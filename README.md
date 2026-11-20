@@ -64,10 +64,11 @@ agent.run(input, callbacks=[cb])
 - **Event Inspector** — Click any event to see full prompt + completion text, with prompt diffs
 - **Stats Dashboard** — Token breakdown, latency heatmap, error log
 - **Session History & Diffing** — Browse past runs and compare two sessions side by side
-- **Export / Import** — Download a session as JSON and import it into another instance
+- **Export / Import** — Download a session as JSON (re-importable into another instance) or as CSV for spreadsheets
 - **Session Memories** — Attach tagged memories to sessions via [Mem0](https://mem0.ai) (requires `MEM0_API_KEY`)
 - **One-Command Setup** — `docker compose up` and you're running
-- **Integrations** — LangChain callback, raw OpenAI SDK patching, and `@trace` decorators for any code
+- **Integrations** — LangChain, CrewAI, AutoGen and LlamaIndex ([docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)); OpenAI, Anthropic and Gemini SDK auto-instrumentation ([docs/PROVIDERS.md](docs/PROVIDERS.md)); and `@trace` decorators for any code
+- **Optional API-key auth** — Protect the REST API and WebSocket with one or more keys ([docs/AUTHENTICATION.md](docs/AUTHENTICATION.md))
 - **SQLite or PostgreSQL** — Zero-config SQLite by default, PostgreSQL for shared setups
 - **Retention Policies** — Automatic pruning by age or session count
 - **Self-Hosted** — Your data stays on your machine
@@ -201,6 +202,7 @@ def process_data(data):
 | `CORS_ALLOW_ORIGINS` | `http://localhost:3000` | Comma-separated list of allowed UI origins |
 | `AGENTSCOPE_PRICING_FILE` | bundled `pricing.json` | Path to a custom model pricing table |
 | `MEM0_API_KEY` | unset | Enables the session memories API |
+| `AGENTSCOPE_API_KEY` / `AGENTSCOPE_API_KEYS` | unset (auth off) | One key, or a comma-separated list for rotation. When set, `/api` and `/ws` require it; keys must be 16+ characters. See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) |
 
 The server's host and port are set on the `uvicorn` command line (`--host`, `--port`, default port `8765`).
 
@@ -269,17 +271,20 @@ The full execution order is tracked in [#280](https://github.com/PxA-Labs/Agents
 - [x] Retention policies and auto-vacuum ([#152](https://github.com/PxA-Labs/AgentsScope/pull/152))
 - [x] Session memories with category tags ([#151](https://github.com/PxA-Labs/AgentsScope/pull/151), [#154](https://github.com/PxA-Labs/AgentsScope/pull/154))
 - [x] WebSocket reconnect backoff + connection status ([#135](https://github.com/PxA-Labs/AgentsScope/pull/135))
+- [x] CrewAI integration ([#292](https://github.com/PxA-Labs/AgentsScope/pull/292))
+- [x] AutoGen integration ([#293](https://github.com/PxA-Labs/AgentsScope/pull/293))
+- [x] LlamaIndex integration ([#295](https://github.com/PxA-Labs/AgentsScope/pull/295))
+- [x] Anthropic & Gemini SDK auto-instrumentation ([#288](https://github.com/PxA-Labs/AgentsScope/pull/288))
+- [x] Export to CSV ([#286](https://github.com/PxA-Labs/AgentsScope/pull/286))
+- [x] Optional API-key authentication ([#287](https://github.com/PxA-Labs/AgentsScope/pull/287))
+- [x] Graceful SDK shutdown: buffered events are delivered at exit ([#296](https://github.com/PxA-Labs/AgentsScope/pull/296))
+- [x] PyPI release pipeline for `agentscope-trace` ([#298](https://github.com/PxA-Labs/AgentsScope/pull/298)); first release not published yet
 
 **Planned**
-- [ ] CrewAI integration ([#264](https://github.com/PxA-Labs/AgentsScope/issues/264))
-- [ ] AutoGen integration ([#265](https://github.com/PxA-Labs/AgentsScope/issues/265))
-- [ ] LlamaIndex integration ([#266](https://github.com/PxA-Labs/AgentsScope/issues/266))
-- [ ] Anthropic & Gemini SDK auto-instrumentation ([#279](https://github.com/PxA-Labs/AgentsScope/issues/279))
-- [ ] Export to CSV ([#267](https://github.com/PxA-Labs/AgentsScope/issues/267))
-- [ ] Optional API-key authentication ([#268](https://github.com/PxA-Labs/AgentsScope/issues/268))
+- [ ] UI component split with unit and E2E tests ([#275](https://github.com/PxA-Labs/AgentsScope/issues/275))
+- [ ] Rename the import package to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 - [ ] Production / cloud deployment configs ([#269](https://github.com/PxA-Labs/AgentsScope/issues/269))
 - [ ] Multi-user accounts, projects and RBAC ([#277](https://github.com/PxA-Labs/AgentsScope/issues/277))
-- [ ] PyPI release pipeline ([#274](https://github.com/PxA-Labs/AgentsScope/issues/274))
 
 ## FAQ
 
@@ -287,7 +292,7 @@ The full execution order is tracked in [#280](https://github.com/PxA-Labs/Agents
 A: AgentScope is primarily a developer tool designed for local debugging and observability during the development of your pipelines.
 
 **Q: Does it work with CrewAI, AutoGen or LlamaIndex?**  
-A: Not natively yet. Today AgentScope instruments LangChain (`AgentScopeCallback`), the raw OpenAI SDK (`patch_openai()`), and any Python function through the `@trace`, `@trace_llm`, `@trace_tool` and `@trace_retriever` decorators. Native integrations are tracked in [#264](https://github.com/PxA-Labs/AgentsScope/issues/264) (CrewAI), [#265](https://github.com/PxA-Labs/AgentsScope/issues/265) (AutoGen) and [#266](https://github.com/PxA-Labs/AgentsScope/issues/266) (LlamaIndex).
+A: Yes. Each framework is instrumented through its own extension point: `AgentScopeCrewAIListener` on CrewAI's event bus, `AgentScopeAutoGenTracer` / `trace_model_client` for AutoGen, and `instrument_llamaindex()` for LlamaIndex's instrumentation API. Install the matching extra (`packages/sdk[crewai]`, `[autogen]`, `[llamaindex]`); see [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for usage and known limitations. LangChain (`AgentScopeCallback`), the OpenAI, Anthropic and Gemini SDKs (`patch_all()`), and any Python function (`@trace` and friends) are covered too.
 
 **Q: Where is my data stored?**  
 A: Your data never leaves your infrastructure. By default it goes to a local SQLite file (`agentscope.db` in the server's working directory, or the `sqlite_data` volume under Docker Compose). Set `DATABASE_URL` to use PostgreSQL instead. Old sessions can be pruned automatically with `AGENTSCOPE_RETENTION_DAYS` / `AGENTSCOPE_MAX_SESSIONS`.
