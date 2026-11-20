@@ -4,17 +4,8 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Fixed
-- **sdk**: Retry once after stop() wakes a post-rejection backoff
-- **sdk**: Give up at shutdown right after an auth rejection
-
-### Documentation
-- **sdk**: Note that shutdown gives up after an auth rejection
-
-### Tests
-- **sdk**: A key fixed during the backoff must be retried once on stop()
-- **server**: Let the SDK e2e tests start a server with an API key
-- **sdk**: Pin retries that must survive the auth fail-fast change
+### Miscellaneous
+- Build(deps): bump actions/setup-python from 7.0.0 to 7.1.0
 
 ## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 
