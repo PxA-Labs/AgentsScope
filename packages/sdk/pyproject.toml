@@ -41,8 +41,11 @@ langchain = [
 tiktoken = [
     "tiktoken>=0.14.0",
 ]
+autogen = [
+    "autogen-agentchat>=0.7.5",
+    "autogen-core>=0.7.5",
+]
 llamaindex = [
-    # llama-index-core 0.14 requires Python 3.11+.
     "llama-index-core>=0.14.26",
 ]
 anthropic = [
