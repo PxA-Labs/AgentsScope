@@ -181,3 +181,123 @@ def test_short_script_without_stop_or_sleep_exits_fast_and_delivers(server):
     assert proc.returncode == 0, proc.stderr
     assert elapsed < 3, f"exit took {elapsed:.1f}s"
     assert wait_for_event_count(server, session, 30) == 30
+
+
+# --- a server that requires an API key (#325) --------------------------------
+#
+# A rejected key cannot start working on a retry, so once shutdown has been
+# requested the SDK gives up right after the rejection instead of retrying
+# until shutdown_timeout / the stop() deadline.
+
+RIGHT_KEY = "e2e-right-key-0123456789"
+WRONG_KEY = "e2e-wrong-key-0123456789"
+
+# Waits until the sender has seen the rejection, then times stop(5).
+TIMED_STOP_AFTER_REJECTION = """
+import time
+client = get_global_client()
+deadline = time.monotonic() + 10
+while not client._auth_warning_logged and time.monotonic() < deadline:
+    client.emit({"event_id": f"x{time.monotonic()}"})
+    time.sleep(0.05)
+print("REJECTED", client._auth_warning_logged, flush=True)
+started = time.monotonic()
+client.stop(timeout=5)
+print(f"STOP {time.monotonic() - started:.3f}", flush=True)
+print("BUFFERED", client.queue.qsize() + len(client._unsent), flush=True)
+"""
+
+
+@pytest.fixture(scope="module")
+def auth_server():
+    with _uvicorn({"AGENTSCOPE_API_KEY": RIGHT_KEY}) as port:
+        yield port
+
+
+def _stop_seconds(proc):
+    assert proc.returncode == 0, proc.stderr
+    assert "REJECTED True" in proc.stdout, proc.stdout + proc.stderr
+    line = next(x for x in proc.stdout.splitlines() if x.startswith("STOP "))
+    return float(line.split()[1])
+
+
+def _buffered(proc):
+    line = next(x for x in proc.stdout.splitlines() if x.startswith("BUFFERED "))
+    return int(line.split()[1])
+
+
+def test_wrong_key_stop_returns_fast_after_rest_401(auth_server):
+    """No session yet: the session POST is answered with 401."""
+    session = f"e2e-wrong-key-rest-{uuid.uuid4().hex[:8]}"
+    proc, _ = run_sdk_script(
+        auth_server,
+        session,
+        TRACE_30_CALLS + TIMED_STOP_AFTER_REJECTION,
+        api_key=WRONG_KEY,
+    )
+    stop_seconds = _stop_seconds(proc)
+    assert stop_seconds < 1.0, f"stop(5) took {stop_seconds:.2f}s"
+    # Nothing was delivered; the events are still buffered in the client.
+    assert _buffered(proc) >= 60
+    assert session_ids_named(auth_server, session, RIGHT_KEY) == []
+
+
+def test_wrong_key_stop_returns_fast_after_ws_4401(auth_server):
+    """The session exists (registered before the key was rotated), so the SDK
+    goes straight to the WebSocket, which the server closes with 4401."""
+    session = f"e2e-wrong-key-ws-{uuid.uuid4().hex[:8]}"
+    session_id = str(uuid.uuid4())
+    _api(
+        auth_server,
+        "sessions",
+        RIGHT_KEY,
+        body={"session_id": session_id, "name": session},
+    )
+
+    proc, _ = run_sdk_script(
+        auth_server,
+        session,
+        f"get_global_client().session_id = {session_id!r}\n"
+        + TIMED_STOP_AFTER_REJECTION,
+        api_key=WRONG_KEY,
+    )
+    stop_seconds = _stop_seconds(proc)
+    assert stop_seconds < 1.0, f"stop(5) took {stop_seconds:.2f}s"
+    # At least the batch whose send hit the 4401 close is kept.
+    assert _buffered(proc) >= 1
+    assert stored_event_ids(auth_server, session, RIGHT_KEY) == set()
+
+
+def test_short_script_with_wrong_key_exits_fast(auth_server):
+    """No stop(): the exit hook gives up after the rejection instead of
+    waiting out shutdown_timeout (5 s)."""
+    session = f"e2e-wrong-key-exit-{uuid.uuid4().hex[:8]}"
+    # Registered before the client's exit hook, so it runs after it (LIFO)
+    # and measures how long the exit hook took.
+    body = (
+        "import atexit, time\n"
+        "body_done = []\n"
+        "atexit.register(lambda: print("
+        "f'EXIT_HOOK {time.monotonic() - body_done[0]:.3f}', flush=True))\n"
+        + TRACE_30_CALLS
+        + "body_done.append(time.monotonic())\n"
+    )
+    proc, elapsed = run_sdk_script(auth_server, session, body, api_key=WRONG_KEY)
+    assert proc.returncode == 0, proc.stderr
+    line = next(x for x in proc.stdout.splitlines() if x.startswith("EXIT_HOOK "))
+    exit_hook_seconds = float(line.split()[1])
+    assert exit_hook_seconds < 1.0, f"exit hook took {exit_hook_seconds:.2f}s"
+    assert elapsed < 3, f"exit took {elapsed:.1f}s"
+    assert "rejected the API key" in proc.stderr
+    assert session_ids_named(auth_server, session, RIGHT_KEY) == []
+
+
+def test_right_key_still_delivers_everything(auth_server):
+    session = f"e2e-right-key-{uuid.uuid4().hex[:8]}"
+    proc, elapsed = run_sdk_script(
+        auth_server, session, TRACE_30_CALLS, api_key=RIGHT_KEY
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert elapsed < 15
+    assert "rejected the API key" not in proc.stderr
+    assert wait_for_event_count(auth_server, session, 30, api_key=RIGHT_KEY) == 30
