@@ -22,9 +22,10 @@ SDK_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 class FakeWebSocket:
-    def __init__(self, sink, delay=0.0):
+    def __init__(self, sink, delay=0.0, arrivals=None):
         self.sink = sink
         self.delay = delay
+        self.arrivals = arrivals
 
     async def __aenter__(self):
         return self
@@ -38,7 +39,33 @@ class FakeWebSocket:
 
             await asyncio.sleep(self.delay)
         message = json.loads(raw)
-        self.sink.extend(message.get("events") or [message.get("event")])
+        events = message.get("events") or [message.get("event")]
+        self.sink.extend(events)
+        if self.arrivals is not None:
+            now = time.perf_counter()
+            for event in events:
+                self.arrivals.setdefault(event["event_id"], now)
+
+
+def _fake_network(monkeypatch, create, received, arrivals=None):
+    monkeypatch.setattr(AgentScopeClient, "_create_session_sync", create)
+    monkeypatch.setattr(
+        "agentscope.client.websockets.connect",
+        lambda uri, **kwargs: FakeWebSocket(received, arrivals=arrivals),
+    )
+
+
+def _register_instantly(self):
+    self.session_id = "sess-1"
+
+
+def _wait_until(predicate, timeout):
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.002)
+    return True
 
 
 @pytest.fixture
@@ -209,3 +236,25 @@ def test_process_exits_promptly_when_server_unreachable():
     assert "BODY DONE" in proc.stdout
     assert "DELIVERED 0" in proc.stdout
     assert elapsed < 8
+
+
+def test_short_script_without_stop_or_sleep_delivers_and_exits_fast():
+    """A script that ends right after its last event (no sleep, no stop()).
+
+    CPython shuts down concurrent.futures before atexit hooks run, so the
+    flush at exit cannot rely on the default executor.
+    """
+    proc, elapsed = run_script("""
+        from agentscope.decorators import configure, trace
+        configure(session_name="short-script")
+
+        @trace(name="step")
+        def step(i):
+            return i
+
+        for i in range(30):
+            step(i)
+        """)
+    assert proc.returncode == 0, proc.stderr
+    assert "DELIVERED 60" in proc.stdout, proc.stdout + proc.stderr
+    assert elapsed < 3, f"exit took {elapsed:.1f}s"

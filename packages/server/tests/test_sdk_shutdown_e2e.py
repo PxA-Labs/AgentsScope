@@ -69,10 +69,10 @@ def server():
                 proc.kill()
 
 
-def run_sdk_script(port, session_name, body, timeout=30):
+def run_sdk_script(port, session_name, body, timeout=30, host="127.0.0.1"):
     prelude = (
         "from agentscope.decorators import configure, get_global_client, trace\n"
-        f"configure(host='127.0.0.1', port={port}, session_name={session_name!r})\n"
+        f"configure(host={host!r}, port={port}, session_name={session_name!r})\n"
     )
     started = time.monotonic()
     proc = subprocess.run(
@@ -138,4 +138,17 @@ def test_script_with_immediate_stop_delivers(server):
     )
     assert proc.returncode == 0, proc.stderr
     assert elapsed < 15
+    assert wait_for_event_count(server, session, 30) == 30
+
+
+def test_short_script_without_stop_or_sleep_exits_fast_and_delivers(server):
+    """The script ends right after its last call: no sleep, no stop().
+
+    CPython shuts down the default executor before atexit hooks run, so the
+    session POST and the name lookup for "localhost" must not depend on it.
+    """
+    session = f"e2e-short-{uuid.uuid4().hex[:8]}"
+    proc, elapsed = run_sdk_script(server, session, TRACE_30_CALLS, host="localhost")
+    assert proc.returncode == 0, proc.stderr
+    assert elapsed < 3, f"exit took {elapsed:.1f}s"
     assert wait_for_event_count(server, session, 30) == 30
