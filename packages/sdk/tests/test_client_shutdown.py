@@ -121,6 +121,19 @@ def test_stop_is_bounded_when_server_unreachable():
     assert elapsed < 2.5
 
 
+def test_stop_keeps_retrying_an_unreachable_server_until_the_deadline():
+    """An unreachable server may come back, so stop() keeps retrying until its
+    deadline (unlike a rejected key, #325) and the events stay buffered."""
+    client = AgentScopeClient(host="127.0.0.1", port=_unused_port())
+    for i in range(10):
+        client.emit({"event_id": str(i)})
+    time.sleep(0.1)  # the first connection attempt has failed by now
+    returned, elapsed = _run_stop(client, timeout=1.0)
+    assert returned
+    assert 0.9 <= elapsed < 2.5, f"stop(1) took {elapsed:.2f}s"
+    assert client.queue.qsize() == 10
+
+
 def test_stop_returns_when_buffer_full_and_server_unreachable():
     """Regression for #289: stop() used to block forever on a full buffer."""
     client = AgentScopeClient(host="127.0.0.1", port=_unused_port())

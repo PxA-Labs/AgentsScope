@@ -245,6 +245,75 @@ def test_stop_interrupts_the_4401_backoff(monkeypatch, caplog):
     assert len(warnings) == 1 and "rejected the API key" in warnings[0]
 
 
+# --- retries while running and while stopping ----------------------------------
+
+
+def _wait_for(predicate, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
+
+
+def _timed_stop(client, timeout):
+    started = time.monotonic()
+    client.stop(timeout=timeout)
+    return time.monotonic() - started
+
+
+def patch_session_endpoint(monkeypatch, delay=0.0):
+    """Session POSTs answer 401 until ``state["accept"]`` is set."""
+    state = {"posts": 0, "accept": False}
+
+    def fake_urlopen(req, timeout=None):
+        state["posts"] += 1
+        if delay:
+            time.sleep(delay)
+        if state["accept"]:
+            return io.BytesIO(b'{"session_id": "sess-1"}')
+        raise http_401(req.full_url)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    return state
+
+
+def _warnings(caplog):
+    return [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_401_while_running_keeps_exponential_backoff(
+    monkeypatch, caplog, run_sender_loop
+):
+    patch_session_endpoint(monkeypatch)
+    client = AgentScopeClient(api_key="bad-key")
+    client.queue.put({"event_id": "e1"})
+    with caplog.at_level(logging.WARNING):
+        sleeps = run_sender_loop(client, backoffs=4)
+    assert sleeps == [1.0, 2.0, 4.0, 8.0]
+    assert len(_warnings(caplog)) == 1
+
+
+def test_other_http_errors_still_retry_until_the_stop_deadline(monkeypatch):
+    """Only an auth rejection is permanent: a 503 is retried until stop()'s
+    deadline, as before."""
+    posts = []
+
+    def unavailable(req, timeout=None):
+        posts.append(1)
+        raise urllib.error.HTTPError(req.full_url, 503, "busy", {}, io.BytesIO(b""))
+
+    monkeypatch.setattr(urllib.request, "urlopen", unavailable)
+    client = AgentScopeClient(api_key="k")
+    client.emit({"event_id": "e1"})
+    assert _wait_for(lambda: posts)
+    elapsed = _timed_stop(client, 1.0)
+    assert 0.9 <= elapsed < 2.0, f"stop(1) took {elapsed:.2f}s"
+    assert len(posts) >= 2, "a non-auth failure must be retried while stopping"
+    assert client.queue.qsize() == 1
+
+
 # --- the key must not follow redirects ---------------------------------------
 #
 # urllib forwards ordinary request headers when it follows a 301/302/303. A
