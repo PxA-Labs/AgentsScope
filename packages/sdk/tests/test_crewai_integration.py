@@ -363,7 +363,7 @@ def test_flow_is_a_node_with_its_crews_under_it(recorder):
     # CrewAI's internal AgentExecutor flows stay hidden.
     agents = [n for n in final.values() if n["agent_type"] == "agent"]
     llms = [n for n in final.values() if n["agent_type"] == "llm"]
-    assert {a["event_id"] for a in agents} == {l["parent_event_id"] for l in llms}
+    assert {a["event_id"] for a in agents} == {m["parent_event_id"] for m in llms}
 
 
 def test_flow_whose_second_crew_fails_patches_failed_once(recorder):
