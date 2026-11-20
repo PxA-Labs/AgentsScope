@@ -60,7 +60,7 @@ agent.run(input, callbacks=[cb])
 - **Real-time Event Feed** — Watch your agents work in real-time
 - **Live Agent DAG Graph** — Visualize the full call hierarchy, streamed as it grows
 - **Token & Cost Tracking** — Token usage and estimated USD cost per call and per session
-- **Cost Budgets** — Optional `budget_limit_usd` marks the session failed and stops the run before the next model call once a spend limit is exceeded ([#316](https://github.com/PxA-Labs/AgentsScope/issues/316))
+- **Cost Budgets** — Optional `budget_limit_usd` marks the session failed and stops further model calls once a spend limit is exceeded ([details](packages/sdk/README.md#budgets))
 - **Event Inspector** — Click any event to see full prompt + completion text, with prompt diffs
 - **Stats Dashboard** — Token breakdown, latency heatmap, error log
 - **Session History & Diffing** — Browse past runs and compare two sessions side by side
