@@ -5,13 +5,10 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Fixed
-- **sdk**: Stop the AutoGen team when the traced run is cancelled (#326)
+- **sdk**: Make messages.parse an optional patch target
 
-### Documentation
-- Describe how AutoGen run cancellation is traced (#326)
-
-### Tests
-- **sdk**: Reproduce AutoGen teams running on after cancellation (#326)
+### Maintenance
+- **sdk**: Drop the dead Python 3.11 marker from the gemini extra
 
 ## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 
