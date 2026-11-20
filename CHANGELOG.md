@@ -4,8 +4,14 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Miscellaneous
-- Build(deps): bump actions/setup-python from 7.0.0 to 7.1.0
+### Fixed
+- **server**: Apply SQLite pragmas by the connecting engine's dialect
+
+### Tests
+- **server**: Guard that the suite fixtures match production get_db
+- **server**: Build the live-server test engine like production
+- **server**: Stop sharing db_session with export/import requests
+- **server**: Run the suite on a production-configured SQLite engine
 
 ## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 
