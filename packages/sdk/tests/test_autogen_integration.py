@@ -424,6 +424,7 @@ def test_tracer_run_stream_stops_the_team_on_early_close(close):
     (team_node,) = of(final_nodes(rec), "team")
     assert team_node["event_type"] == "chain_end"
     assert team_node["payload"]["outputs"]["closed_early"] is True
+    assert "cancelled" not in team_node["payload"]["outputs"]  # a close
     assert run_end_is_last(rec)
     assert rec.status == ["completed"]
 
@@ -635,6 +636,80 @@ def test_cancelling_the_consumer_of_trace_without_a_token_is_recorded_as_cancell
 
     asyncio.run(main())
 
+    assert_recorded_as_cancelled(rec)
+
+
+def test_item_arriving_as_the_consumer_is_cancelled_closes_the_stream():
+    # The next item is ready in the same loop iteration as the cancellation:
+    # the stream is then paused at its ``yield`` and must be closed.
+    from autogen_core import CancellationToken
+
+    rec, closed, token = Recorder(), [], CancellationToken()
+
+    async def main():
+        ready = asyncio.get_running_loop().create_future()
+
+        async def stream():
+            try:
+                yield "first"
+                yield await ready
+                yield "never reached"
+            finally:
+                closed.append(True)
+
+        async def consume():
+            tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+            async for _ in tracer.trace(stream(), task="t", cancellation_token=token):
+                pass
+
+        consumer = asyncio.create_task(consume())
+        for _ in range(5):
+            await asyncio.sleep(0)
+        ready.set_result("second")
+        consumer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await consumer
+
+    asyncio.run(main())
+
+    assert token.is_cancelled()
+    assert closed == [True]
+    assert_recorded_as_cancelled(rec)
+
+
+def test_second_cancellation_stops_waiting_for_a_stream_that_ignores_the_token():
+    from autogen_core import CancellationToken
+
+    rec, closed, token = Recorder(), [], CancellationToken()
+
+    async def main():
+        async def stubborn():
+            try:
+                yield "first"
+                await asyncio.sleep(30)  # not linked to the token
+            finally:
+                closed.append(True)
+
+        async def consume():
+            tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+            async for _ in tracer.trace(stubborn(), task="t", cancellation_token=token):
+                pass
+
+        consumer = asyncio.create_task(consume())
+        for _ in range(5):
+            await asyncio.sleep(0)
+        consumer.cancel()
+        await asyncio.sleep(0.05)
+        assert not consumer.done()  # waiting for the stream to stop
+        consumer.cancel()
+        async with asyncio.timeout(5):
+            with pytest.raises(asyncio.CancelledError):
+                await consumer
+
+    asyncio.run(main())
+
+    assert token.is_cancelled()
+    assert closed == [True]
     assert_recorded_as_cancelled(rec)
 
 

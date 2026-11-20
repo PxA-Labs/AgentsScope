@@ -429,7 +429,8 @@ class AgentScopeAutoGenTracer:
         when the consumer stops early.
 
         A ``CancellationToken`` is passed to ``run_stream`` (yours, if given as
-        ``cancellation_token=``) and cancelled on ``break`` / ``aclose()``.
+        ``cancellation_token=``) and cancelled on ``break`` / ``aclose()``, or
+        when the task awaiting the next item is cancelled.
         """
         token = kwargs.get("cancellation_token")
         if token is None:
@@ -448,9 +449,10 @@ class AgentScopeAutoGenTracer:
     ) -> AsyncGenerator[Any, None]:
         """Yield every item of ``stream`` unchanged while recording it.
 
-        If the consumer stops early and ``cancellation_token`` is the token
-        that was passed to ``run_stream``, it is cancelled so the team stops.
-        Without one, closing the stream waits for the team to go idle.
+        If the consumer stops early, or its task is cancelled while awaiting
+        the next item, and ``cancellation_token`` is the token that was passed
+        to ``run_stream``, it is cancelled so the team stops. Without one, the
+        stream waits for the team to go idle. A cancellation still propagates.
         """
         from autogen_agentchat.base import TaskResult
 
@@ -464,9 +466,17 @@ class AgentScopeAutoGenTracer:
             # (finalized later, in another Context) has nothing to reset.
             token = current_parent_run_id.set(state.run_id)
             try:
-                item = await iterator.__anext__()
+                item = await _next_item(iterator, cancellation_token)
             except StopAsyncIteration:
                 break
+            except asyncio.CancelledError:
+                # The run was cancelled: our task (the consumer or
+                # ``tracer.run()`` cancelled, a timeout) or the team's token.
+                # Like stopping early, not a failure. ``_next_item`` has
+                # already stopped the team, so this is recorded last.
+                state.finish(None, closed_early=True, cancelled=True)
+                self._patch("completed")
+                raise
             except BaseException as e:
                 # Only an error from the stream itself fails the run.
                 state.fail(e)
@@ -510,6 +520,41 @@ class AgentScopeAutoGenTracer:
                 client.patch_session_status(status)
         except Exception:
             pass
+
+
+async def _anext(iterator: Any) -> Any:
+    return await iterator.__anext__()
+
+
+async def _next_item(iterator: Any, cancellation_token: Any) -> Any:
+    """Await the next item of the inner stream, stopping the team if we are
+    cancelled meanwhile.
+
+    Cancelling our task throws ``CancelledError`` into the innermost await of
+    AutoGen's ``run_stream``, whose ``finally`` then waits for the team to go
+    idle: it runs on to its termination condition. So, when there is a token,
+    the step runs in its own task behind a shield. If we are cancelled, the
+    token is cancelled first, then the step (which now ends promptly) is
+    awaited, and only then does the ``CancelledError`` propagate, unchanged.
+    """
+    if cancellation_token is None:
+        return await iterator.__anext__()
+    step = asyncio.ensure_future(_anext(iterator))
+    try:
+        return await asyncio.shield(step)
+    except asyncio.CancelledError:
+        cancellation_token.cancel()
+        try:
+            # A second cancellation of our task stops this wait (and the
+            # step); the first one still propagates below.
+            await step
+        except BaseException:
+            pass  # the stream ending because of the token, or its error
+        else:
+            # It produced an item before the token took effect and is paused
+            # at its ``yield``: close it like an early ``break``.
+            await _close_inner(iterator, cancellation_token)
+        raise
 
 
 async def _close_inner(iterator: Any, cancellation_token: Any) -> None:
@@ -567,12 +612,16 @@ class _RunState:
             self.parent_id,
         )
 
-    def finish(self, result: Any, closed_early: bool = False) -> None:
+    def finish(
+        self, result: Any, closed_early: bool = False, cancelled: bool = False
+    ) -> None:
         self._close_turn()
         self._close_tools(error="run finished before the tool returned")
         outputs: Dict[str, Any] = {"message_count": self.message_count}
         if closed_early:
             outputs["closed_early"] = True
+        if cancelled:
+            outputs["cancelled"] = True
         if result is not None:
             outputs["stop_reason"] = getattr(result, "stop_reason", None)
             messages = getattr(result, "messages", None) or []
