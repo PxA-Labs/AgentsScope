@@ -50,18 +50,27 @@ class AgentScopeCallback(AsyncCallbackHandler):
         self._check_budget()
         return False
 
-    def _check_budget(self) -> None:
-        """Raise BudgetExceededError if the cumulative cost is over the limit."""
+    def _budget_exceeded(self) -> bool:
         # getattr: LangChain may read the ignore_* flags before __init__ ran.
         if getattr(self, "budget_limit_usd", None) is None:
-            return
+            return False
         with self._cost_lock:
-            if self.cumulative_cost_usd > self.budget_limit_usd:
-                raise BudgetExceededError(
-                    f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
-                    f"USD exceeded. Cumulative cost: "
-                    f"${self.cumulative_cost_usd:.4f} USD."
-                )
+            return self.cumulative_cost_usd > self.budget_limit_usd
+
+    def _check_budget(self) -> None:
+        """Raise BudgetExceededError if the cumulative cost is over the limit.
+
+        Once the budget has tripped, LangChain also reads the ignore_* flags
+        before on_llm_new_token / on_llm_end / on_llm_error, so a model call
+        that is still in flight (e.g. a parallel branch) is aborted at its next
+        token or at its end. That is intended: the run is being stopped.
+        """
+        if self._budget_exceeded():
+            raise BudgetExceededError(
+                f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
+                f"USD exceeded. Cumulative cost: "
+                f"${self.cumulative_cost_usd:.4f} USD."
+            )
 
     def __init__(
         self,
@@ -192,8 +201,13 @@ class AgentScopeCallback(AsyncCallbackHandler):
             self.client.emit(event)
 
             if not parent_run_id:
-                # Root execution chain completed, mark session finished
-                self.client.patch_session_status("completed")
+                # Root execution chain completed, mark session finished. A sync
+                # run can't be interrupted once its final model call has
+                # crossed the budget, so keep the session failed in that case
+                # instead of overwriting it with completed.
+                self.client.patch_session_status(
+                    "failed" if self._budget_exceeded() else "completed"
+                )
         except Exception as e:
             logging.warning(f"AgentScope callback error in on_chain_end: {e}")
 
