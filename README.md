@@ -47,7 +47,7 @@ Keep track of real-time events, visualize your agent DAG, monitor token usage, a
 **AFTER**: Two lines of code, a beautiful dashboard showing exactly what happened.
 
 ```python
-from agentscope import AgentScopeCallback
+from agentscope_trace import AgentScopeCallback
 
 cb = AgentScopeCallback(session_name="my_pipeline")
 agent.run(input, callbacks=[cb])
@@ -110,7 +110,7 @@ pip install -e "packages/sdk[langchain]"
 
 > **Note:** The SDK is not published to PyPI yet, so install it from source as shown above.
 > Do **not** run `pip install agentscope`: that name belongs to an unrelated project on PyPI.
-> It will be published as `agentscope-trace` ([#298](https://github.com/PxA-Labs/AgentsScope/pull/298)); the import package stays `agentscope` for now (rename tracked in [#297](https://github.com/PxA-Labs/AgentsScope/issues/297)).
+> It will be published as `agentscope-trace` ([#298](https://github.com/PxA-Labs/AgentsScope/pull/298)) and is imported as `agentscope_trace`. `import agentscope` still works through a deprecated shim for now; see [Migrating from `import agentscope`](packages/sdk/README.md#migrating-from-import-agentscope).
 
 ### Storage Backends (SQLite & PostgreSQL)
 
@@ -126,7 +126,7 @@ Now, just drop the callback into your code!
 ```python
 from langchain_openai import ChatOpenAI
 from langchain.chains import LLMChain
-from agentscope import AgentScopeCallback
+from agentscope_trace import AgentScopeCallback
 
 # 1. Initialize the callback
 cb = AgentScopeCallback(session_name="my_first_trace")
@@ -158,7 +158,7 @@ flowchart LR
 ```python
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from agentscope import AgentScopeCallback
+from agentscope_trace import AgentScopeCallback
 
 cb = AgentScopeCallback(session_name="basic_chain")
 prompt = PromptTemplate.from_template("Tell me a joke about {topic}")
@@ -170,7 +170,7 @@ chain.invoke({"topic": "developers"}, config={"callbacks": [cb]})
 ### 2. Multi-Agent Pipeline (AgentExecutor)
 ```python
 from langchain.agents import create_react_agent, AgentExecutor
-from agentscope import AgentScopeCallback
+from agentscope_trace import AgentScopeCallback
 
 cb = AgentScopeCallback(session_name="react_agent")
 agent = create_react_agent(llm, tools, prompt)
@@ -181,7 +181,7 @@ agent_executor.invoke({"input": "Search for the weather in NY"}, config={"callba
 
 ### 3. Custom Function Trace
 ```python
-from agentscope.decorators import trace
+from agentscope_trace.decorators import trace
 
 @trace(name="My Custom Step")
 def process_data(data):
@@ -213,7 +213,7 @@ The server's host and port are set on the `uvicorn` command line (`--host`, `--p
 | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8765` | Base URL of the server's REST API |
 | `NEXT_PUBLIC_WS_URL` | `ws://127.0.0.1:8765` | Base WebSocket URL. The UI appends `/ws` itself, so don't include it |
 
-In the SDK, the server location is passed in code, e.g. `AgentScopeCallback(host="localhost", port=8765)` or `agentscope.decorators.configure(host=..., port=...)`. For a remote or TLS server use `base_url="https://..."` (or `secure=True`); the API key comes from `api_key=` or the `AGENTSCOPE_API_KEY` environment variable.
+In the SDK, the server location is passed in code, e.g. `AgentScopeCallback(host="localhost", port=8765)` or `agentscope_trace.decorators.configure(host=..., port=...)`. For a remote or TLS server use `base_url="https://..."` (or `secure=True`); the API key comes from `api_key=` or the `AGENTSCOPE_API_KEY` environment variable.
 
 ## Project Structure
 

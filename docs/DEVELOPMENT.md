@@ -108,7 +108,7 @@ To verify that your setup intercepts agent executions and streams them to the lo
 ```python
 import time
 import asyncio
-import agentscope.decorators as as_deco
+import agentscope_trace.decorators as as_deco
 
 # 1. Configure telemetry client to send records to the server
 as_deco.configure(

@@ -136,7 +136,7 @@ The following features were explicitly deferred past the MVP. Their current stat
 
 ## 9. Success Metrics
 
-- **Ease of Use:** Instrumentation requires exactly 2 lines of code (`from agentscope import AgentScopeCallback; callbacks=[AgentScopeCallback()]`).
+- **Ease of Use:** Instrumentation requires exactly 2 lines of code (`from agentscope_trace import AgentScopeCallback; callbacks=[AgentScopeCallback()]`).
 - **Responsiveness:** < 1 second latency from event emission to UI rendering under normal load.
 - **Time to Value:** < 5 minutes from `git clone` to viewing the first event in the running dashboard.
 - **Performance Impact:** Zero measurable impact (blocking) on the primary agent pipeline execution time.

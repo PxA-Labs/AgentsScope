@@ -14,7 +14,7 @@ Model SDKs used directly (OpenAI, Anthropic, Gemini) are covered by `patch_all()
 ## CrewAI
 
 ```python
-from agentscope.integrations.crewai import AgentScopeCrewAIListener
+from agentscope_trace.integrations.crewai import AgentScopeCrewAIListener
 
 listener = AgentScopeCrewAIListener(
     host="127.0.0.1", port=8765,       # AgentScope server

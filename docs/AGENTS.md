@@ -23,7 +23,7 @@ graph LR
 agentscope/
 ├── packages/
 │   ├── sdk/           # Python SDK — LangChain callback handler + WebSocket client
-│   │   ├── agentscope/
+│   │   ├── agentscope_trace/
 │   │   │   ├── __init__.py
 │   │   │   ├── callback.py      # Core: AsyncCallbackHandler subclass
 │   │   │   ├── client.py        # WebSocket client with reconnection
@@ -105,9 +105,9 @@ These are hard rules that must NEVER be violated:
 ## 5. Common Tasks for AI Agents
 
 ### Adding a new event type
-1. Add to `EventType` enum in `packages/sdk/agentscope/models.py`
+1. Add to `EventType` enum in `packages/sdk/agentscope_trace/models.py`
 2. Add Pydantic model in same file
-3. Add callback method in `packages/sdk/agentscope/callback.py`
+3. Add callback method in `packages/sdk/agentscope_trace/callback.py`
 4. Add SQLAlchemy handling in `packages/server/models.py`
 5. Add to TypeScript types in `packages/ui/types/index.ts`
 6. Add rendering in `packages/ui/components/EventFeed.tsx`
@@ -149,9 +149,9 @@ docker compose up
 
 ## 7. Key Files to Understand First
 
-1. [`packages/sdk/agentscope/callback.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/sdk/agentscope/callback.py) — The core integration point
-2. [`packages/sdk/agentscope/client.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/sdk/agentscope/client.py) — WebSocket client with buffering
-3. [`packages/sdk/agentscope/models.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/sdk/agentscope/models.py) — Canonical data models
+1. [`packages/sdk/agentscope_trace/callback.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/sdk/agentscope_trace/callback.py) — The core integration point
+2. [`packages/sdk/agentscope_trace/client.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/sdk/agentscope_trace/client.py) — WebSocket client with buffering
+3. [`packages/sdk/agentscope_trace/models.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/sdk/agentscope_trace/models.py) — Canonical data models
 4. [`packages/server/main.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/server/main.py) — Server entry point
 5. [`packages/server/ws_manager.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/server/ws_manager.py) — Dual-pool WebSocket manager
 6. [`packages/server/database.py`](file:///Users/architmittal/Desktop/CODE/AGENTSCOPE/packages/server/database.py) — Database setup

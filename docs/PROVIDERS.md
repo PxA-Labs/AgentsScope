@@ -12,8 +12,8 @@ Besides the LangChain callback and the `@trace` decorators, the SDK can patch of
 Each patch function has a matching `unpatch_*()`. All patching is at the class level, so it affects every client instance in the process.
 
 ```python
-from agentscope import patch_all, trace
-from agentscope.decorators import configure
+from agentscope_trace import patch_all, trace
+from agentscope_trace.decorators import configure
 
 configure(session_name="my-agent")   # optional: server host/port, api_key
 patch_all()                          # {"openai": True, "anthropic": True, "gemini": False}

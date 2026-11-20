@@ -49,8 +49,8 @@ Keys are compared in constant time as fixed-length HMAC-SHA256 digests (keyed pe
 Pass the key explicitly, or set the same `AGENTSCOPE_API_KEY` environment variable in the process running your agents. Whenever the server isn't on the same machine, connect over TLS:
 
 ```python
-from agentscope import AgentScopeCallback
-from agentscope.decorators import configure
+from agentscope_trace import AgentScopeCallback
+from agentscope_trace.decorators import configure
 
 # LangChain
 cb = AgentScopeCallback(base_url="https://agentscope.example.com", api_key="<key>")
