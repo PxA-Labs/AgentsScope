@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { notifyUnauthorized, openWebSocket, WS_CLOSE_UNAUTHORIZED } from "../lib/api";
 import { useSessionStore } from "../store/sessionStore";
 import type { AgentEvent, ReactFlowEdge, ReactFlowNode, Session } from "../types";
@@ -39,6 +39,8 @@ export function useLiveEvents(refreshGraphAndStats: (sessionId: string) => void)
   const applyGraphUpdate = useSessionStore((s) => s.applyGraphUpdate);
   const updateSessionMeta = useSessionStore((s) => s.updateSessionMeta);
   const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
+  // Always calls the latest callback without making the socket depend on it.
+  const onTerminalEvent = useEffectEvent((sessionId: string) => refreshGraphAndStats(sessionId));
 
   useEffect(() => {
     if (!activeSession) return;
@@ -62,7 +64,7 @@ export function useLiveEvents(refreshGraphAndStats: (sessionId: string) => void)
         // Refresh stats when new terminal event lands
         const eventType = message.event.event_type;
         if (eventType.endsWith("_end") || eventType.endsWith("_error")) {
-          refreshGraphAndStats(sessionId);
+          onTerminalEvent(sessionId);
         }
       } else if (message.type === "graph_update") {
         // Live DAG streaming: merge the incremental node/edge. The full
@@ -125,7 +127,7 @@ export function useLiveEvents(refreshGraphAndStats: (sessionId: string) => void)
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws) ws.close();
     };
-  }, [activeSession, addEvent, applyGraphUpdate, updateSessionMeta, refreshGraphAndStats]);
+  }, [activeSession, addEvent, applyGraphUpdate, updateSessionMeta]);
 
   return wsStatus;
 }
