@@ -405,6 +405,131 @@ def test_incompatible_sdk_layout_raises(monkeypatch):
         patch_anthropic()
 
 
+# --- SDKs without messages.parse (#328) ---------------------------------------
+#
+# messages.parse (structured outputs) only exists in newer Anthropic SDKs. On
+# an older one, patch_anthropic() must still patch create and stream.
+
+FAKE_MESSAGE = {
+    "model": MODEL,
+    "content": [{"type": "text", "text": "Paris."}],
+    "stop_reason": "end_turn",
+    "usage": {"input_tokens": 12, "output_tokens": 5},
+}
+
+
+class FakeStream:
+    current_message_snapshot = FAKE_MESSAGE
+
+
+class FakeStreamManager:
+    def __enter__(self):
+        return FakeStream()
+
+    def __exit__(self, *exc):
+        return False
+
+    async def __aenter__(self):
+        return FakeStream()
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def old_sdk_layout(monkeypatch):
+    """A messages module whose classes have create and stream, but no parse."""
+    import types
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            return FAKE_MESSAGE
+
+        def stream(self, **kwargs):
+            return FakeStreamManager()
+
+    class FakeAsyncMessages:
+        async def create(self, **kwargs):
+            return FAKE_MESSAGE
+
+        def stream(self, **kwargs):
+            return FakeStreamManager()
+
+    fake = types.ModuleType("anthropic.resources.messages")
+    fake.Messages = FakeMessages
+    fake.AsyncMessages = FakeAsyncMessages
+    monkeypatch.setitem(sys.modules, "anthropic.resources.messages", fake)
+    return FakeMessages, FakeAsyncMessages
+
+
+def test_sdk_without_parse_patches_create_and_stream(monkeypatch, recorder):
+    FakeMessages, FakeAsyncMessages = old_sdk_layout(monkeypatch)
+    originals = {
+        (cls, name): cls.__dict__[name]
+        for cls in (FakeMessages, FakeAsyncMessages)
+        for name in ("create", "stream")
+    }
+
+    assert patch_anthropic() is True
+    assert all(
+        cls.__dict__[name] is not orig for (cls, name), orig in originals.items()
+    ), "create and stream must be patched"
+    assert not hasattr(FakeMessages, "parse")
+    assert not hasattr(FakeAsyncMessages, "parse")
+
+    FakeMessages().create(**REQUEST)
+    asyncio.run(FakeAsyncMessages().create(**REQUEST))
+    with FakeMessages().stream(**REQUEST):
+        pass
+
+    async def run_async_stream():
+        async with FakeAsyncMessages().stream(**REQUEST):
+            pass
+
+    asyncio.run(run_async_stream())
+
+    events = llm_events(recorder)
+    assert [e["event_type"] for e in events] == ["llm_start", "llm_end"] * 4
+    ends = [e for e in events if e["event_type"] == "llm_end"]
+    assert [e["payload"]["streaming"] for e in ends] == [False, False, True, True]
+    assert all(e["payload"]["completion"] == "Paris." for e in ends)
+    assert all(e["payload"]["total_tokens"] == 17 for e in ends)
+
+    unpatch_anthropic()
+    assert all(cls.__dict__[name] is orig for (cls, name), orig in originals.items())
+    assert not hasattr(FakeMessages, "parse")
+    assert not hasattr(FakeAsyncMessages, "parse")
+    assert provider._original_methods == {}
+    # Patching again after unpatching works the same way.
+    assert patch_anthropic() is True
+    unpatch_anthropic()
+    assert all(cls.__dict__[name] is orig for (cls, name), orig in originals.items())
+
+
+def test_sdk_with_only_sync_parse_patches_what_exists(monkeypatch, recorder):
+    FakeMessages, FakeAsyncMessages = old_sdk_layout(monkeypatch)
+
+    def parse(self, **kwargs):
+        return FAKE_MESSAGE
+
+    FakeMessages.parse = parse
+    assert patch_anthropic() is True
+    assert FakeMessages.parse is not parse
+    assert not hasattr(FakeAsyncMessages, "parse")
+    FakeMessages().parse(**REQUEST)
+    assert [e["event_type"] for e in llm_events(recorder)] == ["llm_start", "llm_end"]
+    unpatch_anthropic()
+    assert FakeMessages.parse is parse
+    assert not hasattr(FakeAsyncMessages, "parse")
+
+
+def test_missing_required_method_still_raises(monkeypatch):
+    FakeMessages, _ = old_sdk_layout(monkeypatch)
+    del FakeMessages.stream
+    with pytest.raises(AgentScopeError, match=r"Messages\.stream not found"):
+        patch_anthropic()
+    assert provider._original_methods == {}
+
+
 @pytest.mark.parametrize(
     "content,expected",
     [
