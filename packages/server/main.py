@@ -211,11 +211,17 @@ async def _persist_event(
 ) -> Optional[Tuple[EventModel, SessionModel]]:
     """Write one SDK event and its session aggregates in one transaction.
 
+    The event and the aggregate update commit or roll back together; the
+    SAVEPOINT around the event insert only absorbs a duplicate insert. On
+    SQLite this relies on SQLAlchemy emitting BEGIN (see
+    ``database.configure_sqlite_engine``, #329).
+
     Runs under ``sqlite_write_lock`` so concurrent SDK clients cannot make
     each other fail with "database is locked" on SQLite (#323). Returns the
-    stored event and session, or None if the event was not stored; a failure
-    is logged with the event and session it dropped.
+    stored event and session, or None on failure, which is logged with the
+    event and session it concerns.
     """
+    committed = False
     async with sqlite_write_lock(async_session_maker), async_session_maker() as db:
         try:
             # 1. Resolve Session
@@ -300,33 +306,37 @@ async def _persist_event(
                         db.add(db_event)
                     await db.flush()
             except IntegrityError:
-                # Concurrent insert collision; retry the lookup-and-merge
+                # Concurrent insert collision: only the SAVEPOINT was rolled
+                # back, so retry the lookup-and-merge in the same transaction.
                 event_stmt = select(EventModel).where(
                     EventModel.session_id == sess_id,
                     EventModel.event_id == event_data["event_id"],
                 )
                 event_res = await db.execute(event_stmt)
                 db_event = event_res.scalars().first()
-                if db_event:
-                    prev_status = db_event.status
-                    if db_event.event_type == "llm_end":
-                        merged_payload = db_event.payload or {}
-                        prompt_tokens = merged_payload.get("prompt_tokens") or 0
-                        completion_tokens = merged_payload.get("completion_tokens") or 0
-                        prev_tokens = merged_payload.get("total_tokens") or (
-                            prompt_tokens + completion_tokens
-                        )
-                        model = merged_payload.get("model") or ""
-                        prev_cost = _calculate_llm_cost(
-                            model, prompt_tokens, completion_tokens
-                        )
+                if db_event is None:
+                    # Not a duplicate of this session's event (e.g. a foreign
+                    # key or another session's event_id): nothing to merge.
+                    raise
+                prev_status = db_event.status
+                if db_event.event_type == "llm_end":
+                    merged_payload = db_event.payload or {}
+                    prompt_tokens = merged_payload.get("prompt_tokens") or 0
+                    completion_tokens = merged_payload.get("completion_tokens") or 0
+                    prev_tokens = merged_payload.get("total_tokens") or (
+                        prompt_tokens + completion_tokens
+                    )
+                    model = merged_payload.get("model") or ""
+                    prev_cost = _calculate_llm_cost(
+                        model, prompt_tokens, completion_tokens
+                    )
 
-                    is_new_event = False
-                    db_event.event_type = event_data["event_type"]
-                    db_event.status = event_data["status"]
-                    if event_data.get("latency_ms") is not None:
-                        db_event.latency_ms = event_data["latency_ms"]
-                    db_event.payload = merge_payloads(db_event.payload or {}, payload)
+                is_new_event = False
+                db_event.event_type = event_data["event_type"]
+                db_event.status = event_data["status"]
+                if event_data.get("latency_ms") is not None:
+                    db_event.latency_ms = event_data["latency_ms"]
+                db_event.payload = merge_payloads(db_event.payload or {}, payload)
 
             # 4. Update session metrics dynamically and idempotently
             if is_new_event:
@@ -392,25 +402,26 @@ async def _persist_event(
                 session.ended_at = ts
 
             await db.commit()
+            committed = True
             await db.refresh(session)
             await db.refresh(db_event)
             return db_event, session
 
-        except IntegrityError as ie:
-            await db.rollback()
-            safe_event_id = _log_safe(event_data.get("event_id"))
-            logging.info(
-                f"Skipping event_id {safe_event_id} as it is an "
-                f"idempotent duplicate or constraint failure: {ie}."
-            )
         except Exception as e:
             await db.rollback()
+            if committed:
+                outcome = "stored it but could not reload it for broadcast"
+            else:
+                outcome = (
+                    "failed to persist event or session aggregates; "
+                    "rolled back, the event was not stored"
+                )
             logging.error(
-                "Dropped SDK event %s (type %s) for session %s: could not store it "
-                "in the database: %s: %s",
+                "SDK event %s (type %s) for session %s: %s: %s: %s",
                 _log_safe(event_data.get("event_id")),
                 _log_safe(event_data.get("event_type")),
                 _log_safe(sess_id),
+                outcome,
                 type(e).__name__,
                 e,
             )
