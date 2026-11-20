@@ -4,7 +4,13 @@ A UI-style WebSocket subscriber (the same /ws?client_type=ui endpoint the
 dashboard uses) timestamps each broadcast. Emitter and subscriber share one
 process and one monotonic clock, so latencies are directly comparable.
 
+Single runs are noisy (a GC pause or SQLite checkpoint can move p95 by an
+order of magnitude), so the whole sweep is repeated --repeat times, each round
+on a fresh server and database. The summary shows the median across rounds
+with the min-max range in brackets; the per-round rows are printed too.
+
 Run: python benchmarks/bench_e2e_latency.py [--rates 10 100 1000] [--duration 3]
+     [--repeat 5]
 """
 
 import argparse
@@ -18,7 +24,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import websockets
-from _harness import count_events, make_event, percentiles, print_table, running_server
+from _harness import (
+    int_range,
+    machine_info,
+    make_event,
+    percentiles,
+    print_table,
+    running_server,
+    settled_count,
+    spread,
+)
 from agentscope.client import AgentScopeClient
 
 
@@ -89,7 +104,7 @@ def run_rate(port: int, rate: int, duration: float) -> dict:
     latencies = [
         (sub.received[e] - t) * 1000 for e, t in emitted.items() if e in sub.received
     ]
-    stored = count_events(port, session_id) - 1  # minus warmup
+    stored = settled_count(port, session_id, n + 1) - 1  # minus warmup
     stats = percentiles(latencies)
     return {
         "rate (ev/s)": rate,
@@ -103,28 +118,60 @@ def run_rate(port: int, rate: int, duration: float) -> dict:
     }
 
 
+COLUMNS = ["rate (ev/s)", "sent", "broadcast", "stored", "p50 ms", "p95 ms", "p99 ms"]
+
+
+def summarize(rate: int, runs: list) -> dict:
+    return {
+        "rate (ev/s)": rate,
+        "runs": len(runs),
+        "sent/run": f"{runs[0]['sent']:,}",
+        "broadcast": int_range([r["broadcast"] for r in runs]),
+        "stored": int_range([r["stored"] for r in runs]),
+        "p50 ms": spread([r["p50 ms"] for r in runs]),
+        "p95 ms": spread([r["p95 ms"] for r in runs]),
+        "p99 ms": spread([r["p99 ms"] for r in runs]),
+        "worst max ms": f"{max(r['max ms'] for r in runs):,.0f}",
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rates", type=int, nargs="+", default=[10, 100, 1000])
+    parser.add_argument(
+        "--rates",
+        type=int,
+        nargs="+",
+        default=[10, 100, 250, 400, 500, 600, 750, 1000],
+    )
     parser.add_argument("--duration", type=float, default=3.0)
+    parser.add_argument("--repeat", type=int, default=5)
     args = parser.parse_args()
 
-    rows = []
-    with running_server() as server:
-        for rate in args.rates:
-            rows.append(run_rate(server.port, rate, args.duration))
+    by_rate = {rate: [] for rate in args.rates}
+    for round_no in range(1, args.repeat + 1):
+        rows = []
+        with running_server() as server:
+            for rate in args.rates:
+                row = run_rate(server.port, rate, args.duration)
+                by_rate[rate].append(row)
+                rows.append(row)
+        print_table(f"Round {round_no}", rows, COLUMNS + ["max ms"])
+
+    print(f"\nMachine: {machine_info()}")
     print_table(
-        "End-to-end latency, emit() -> UI broadcast (SQLite)",
-        rows,
+        "End-to-end latency, emit() -> UI broadcast (SQLite), "
+        f"median (min–max) over {args.repeat} rounds",
+        [summarize(rate, runs) for rate, runs in by_rate.items()],
         [
             "rate (ev/s)",
-            "sent",
+            "runs",
+            "sent/run",
             "broadcast",
             "stored",
             "p50 ms",
             "p95 ms",
             "p99 ms",
-            "max ms",
+            "worst max ms",
         ],
     )
 
