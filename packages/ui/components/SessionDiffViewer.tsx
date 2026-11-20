@@ -252,7 +252,7 @@ export function SessionDiffViewer() {
       </div>
 
       {/* Session Selectors */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] gap-4 items-center">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
         {/* Session A */}
         <div className="p-4 rounded-2xl glass-panel border border-border bg-card/30 flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -269,7 +269,7 @@ export function SessionDiffViewer() {
           <select
             value={sessionAId}
             onChange={(e) => setSessionAId(e.target.value)}
-            className="w-full bg-secondary/50 border border-border text-xs rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500/50"
+            className="w-full bg-secondary/50 border border-border text-xs rounded-xl px-3 py-2 text-white focus:outline-hidden focus:border-rose-500/50"
           >
             <option value="">Select Session A...</option>
             {sessions.map((s) => (
@@ -307,7 +307,7 @@ export function SessionDiffViewer() {
           <select
             value={sessionBId}
             onChange={(e) => setSessionBId(e.target.value)}
-            className="w-full bg-secondary/50 border border-border text-xs rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500/50"
+            className="w-full bg-secondary/50 border border-border text-xs rounded-xl px-3 py-2 text-white focus:outline-hidden focus:border-emerald-500/50"
           >
             <option value="">Select Session B...</option>
             {sessions.map((s) => (

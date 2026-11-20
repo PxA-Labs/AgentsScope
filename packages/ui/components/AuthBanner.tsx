@@ -59,7 +59,7 @@ export function AuthBanner() {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="API key"
-          className="w-56 rounded-md border border-amber-500/40 bg-black/40 px-2.5 py-1.5 text-amber-50 placeholder:text-amber-200/50 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          className="w-56 rounded-md border border-amber-500/40 bg-black/40 px-2.5 py-1.5 text-amber-50 placeholder:text-amber-200/50 focus:outline-hidden focus:ring-2 focus:ring-amber-400"
         />
         <button
           type="submit"

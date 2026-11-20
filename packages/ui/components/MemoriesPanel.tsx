@@ -70,7 +70,7 @@ export function MemoriesPanel({
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-4 pt-0 gap-4">
       {/* Search & Add Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-shrink-0">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
         {/* Search Memories */}
         <form
           onSubmit={handleSearchMemories}
@@ -83,7 +83,7 @@ export function MemoriesPanel({
               placeholder="Semantic search memories..."
               value={memoryQuery}
               onChange={(e) => setMemoryQuery(e.target.value)}
-              className="w-full bg-secondary/40 text-xs pl-9 pr-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
+              className="w-full bg-secondary/40 text-xs pl-9 pr-3 py-2 rounded-xl border border-border focus:outline-hidden focus:border-purple-500/50 text-white"
             />
           </div>
           <button
@@ -114,14 +114,14 @@ export function MemoriesPanel({
             placeholder="Add a new custom memory..."
             value={newMemoryText}
             onChange={(e) => setNewMemoryText(e.target.value)}
-            className="flex-1 w-full bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
+            className="flex-1 w-full bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-hidden focus:border-purple-500/50 text-white"
           />
           <input
             type="text"
             placeholder="Categories (e.g. preferences, facts)..."
             value={newMemoryCategories}
             onChange={(e) => setNewMemoryCategories(e.target.value)}
-            className="w-full sm:w-60 bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-none focus:border-purple-500/50 text-white"
+            className="w-full sm:w-60 bg-secondary/40 text-xs px-3 py-2 rounded-xl border border-border focus:outline-hidden focus:border-purple-500/50 text-white"
           />
           <button
             type="submit"
@@ -147,7 +147,7 @@ export function MemoriesPanel({
         <div className="flex-1 overflow-y-auto p-4">
           {mem0Error && (
             <div className="mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <AlertTriangle className="w-5 h-5 shrink-0" />
               <div>
                 <p className="font-bold mb-1">Configuration Warning</p>
                 <p>{mem0Error}</p>
