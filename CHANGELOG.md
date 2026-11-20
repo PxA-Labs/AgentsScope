@@ -5,7 +5,8 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Miscellaneous
-- Build(deps): bump actions/setup-python from 7.0.0 to 7.1.0
+- Build(deps): bump lucide-react from 1.48.0 to 1.74.0 in /packages/ui
+- Build(deps-dev): bump postcss from 8.5.28 to 8.5.33 in /packages/ui
 
 ## [1.0.0] - 2026-08-10
 
