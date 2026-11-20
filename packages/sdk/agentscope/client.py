@@ -185,6 +185,26 @@ class AgentScopeClient:
             return {}
         return {"Authorization": f"Bearer {self._api_key}"}
 
+    def _json_request(
+        self, url: str, data: bytes, method: str
+    ) -> urllib.request.Request:
+        """Build a JSON REST request carrying the API key, if one is set.
+
+        The key is attached as an *unredirected* header: urllib copies ordinary
+        headers onto the new request when it follows a 301/302/303, so a proxy
+        redirecting an https call to plain http (or to another host) would
+        otherwise receive the key in cleartext.
+        """
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method=method,
+        )
+        for name, value in self._auth_headers().items():
+            req.add_unredirected_header(name, value)
+        return req
+
     def _warn_unauthorized(self) -> None:
         # Log the actionable hint once instead of on every retry.
         if not self._auth_warning_logged:
@@ -257,12 +277,7 @@ class AgentScopeClient:
             }
         ).encode("utf-8")
 
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json", **self._auth_headers()},
-            method="PATCH",
-        )
+        req = self._json_request(url, data, "PATCH")
 
         def _do_patch() -> None:
             try:
@@ -439,12 +454,7 @@ class AgentScopeClient:
             }
         ).encode("utf-8")
 
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json", **self._auth_headers()},
-            method="POST",
-        )
+        req = self._json_request(url, data, "POST")
 
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
