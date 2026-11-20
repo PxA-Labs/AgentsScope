@@ -5,8 +5,12 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Miscellaneous
-- Build(deps): bump actions/upload-artifact from 7.0.1 to 7.0.2
-- Build(deps): bump github/codeql-action/upload-sarif
+- Build(deps): bump next from 16.4.5 to 16.4.6 in /packages/ui
+- Build(deps): bump zustand from 5.0.15 to 5.1.0 in /packages/ui
+- Build(deps-dev): update pytest-asyncio requirement in /packages/sdk
+- Build(deps): update fastapi requirement in /packages/server
+- Build(deps-dev): update ruff requirement in /packages/sdk
+- Build(deps-dev): update pytest-asyncio requirement in /packages/server
 
 ## [1.0.0] - 2026-08-10
 
