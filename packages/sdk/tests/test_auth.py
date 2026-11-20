@@ -252,3 +252,66 @@ def test_4401_close_backs_off_to_max_instead_of_reconnecting_every_second(
     # One actionable hint; the per-retry noise is demoted to DEBUG.
     assert warnings == [warnings[0]] and "rejected the API key" in warnings[0]
     assert all("bad-key" not in r.getMessage() for r in caplog.records)
+
+
+# --- the key must not follow redirects ---------------------------------------
+#
+# urllib forwards ordinary request headers when it follows a 301/302/303. A
+# misconfigured or hostile proxy in front of an https server could redirect the
+# session POST to plain http (or another host) and receive the key in
+# cleartext. The Authorization header must stay on the original request only.
+
+
+def _serve(handler_cls):
+    import http.server
+    import threading
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), handler_cls)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_authorization_header_is_not_forwarded_on_redirect():
+    import http.server
+
+    seen_by_target = []
+
+    class Target(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen_by_target.append(self.headers.get("Authorization"))
+            body = b'{"session_id": "sess-redirected"}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    target = _serve(Target)
+
+    class Redirector(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.send_response(302)
+            self.send_header(
+                "Location", f"http://127.0.0.1:{target.server_port}/stolen"
+            )
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    redirector = _serve(Redirector)
+    try:
+        client = AgentScopeClient(
+            base_url=f"http://127.0.0.1:{redirector.server_port}",
+            api_key="secret-key-should-not-leak-0123",
+        )
+        client._create_session_sync()
+    finally:
+        redirector.shutdown()
+        target.shutdown()
+
+    assert seen_by_target == [None]
