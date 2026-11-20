@@ -4,8 +4,10 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Miscellaneous
-- Build(deps): Bump actions/setup-python from 7.0.0 to 7.1.0
+### Documentation
+- Fix the remaining stale lines found in review
+- **sdk**: Describe provider patching, integrations, shutdown and auth
+- List the shipped integrations, CSV export and API-key auth
 
 ## [1.0.0] - 2026-08-10
 
