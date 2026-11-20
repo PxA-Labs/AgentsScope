@@ -37,7 +37,7 @@ import threading
 import time
 import uuid
 import weakref
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -218,6 +218,31 @@ class _BoundedDict(OrderedDict):
             self.popitem(last=False)
 
 
+class _OwnedLock:
+    """A non-reentrant lock that knows which thread holds it.
+
+    Stream finalizers run from the garbage collector, which can fire on any
+    allocation, including one made while this very thread holds the lock.
+    They check :meth:`held_by_me` and defer their work instead of blocking.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._owner: Optional[int] = None
+
+    def __enter__(self) -> "_OwnedLock":
+        self._lock.acquire()
+        self._owner = threading.get_ident()
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self._owner = None
+        self._lock.release()
+
+    def held_by_me(self) -> bool:
+        return self._owner == threading.get_ident()
+
+
 class LlamaIndexEventMapper:
     """Maps LlamaIndex spans and events to AgentScope events.
 
@@ -227,7 +252,9 @@ class LlamaIndexEventMapper:
 
     def __init__(self, client: Any = None):
         self._client = client
-        self._lock = threading.Lock()
+        self._lock = _OwnedLock()
+        # node ids whose stream was collected while the lock was held
+        self._deferred_closes: deque = deque()
         # span id -> AgentScope node id of its nearest shown ancestor span
         self._anchor: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)
         # span id -> node id of the node opened in that span
@@ -254,6 +281,12 @@ class LlamaIndexEventMapper:
     # -- spans ------------------------------------------------------------
 
     def on_span_enter(self, span_id: str, parent_span_id: Optional[str]) -> None:
+        try:
+            self._enter(span_id, parent_span_id)
+        finally:
+            self._flush_deferred_closes()
+
+    def _enter(self, span_id: str, parent_span_id: Optional[str]) -> None:
         with self._lock:
             if parent_span_id is None:
                 # Root span: attach to the surrounding @trace context, if any.
@@ -265,6 +298,12 @@ class LlamaIndexEventMapper:
             self._anchor[span_id] = anchor
 
     def on_span_exit(self, span_id: str, result: Any = None) -> None:
+        try:
+            self._exit(span_id, result)
+        finally:
+            self._flush_deferred_closes()
+
+    def _exit(self, span_id: str, result: Any) -> None:
         """Close a node whose end event never came, unless it is streaming.
 
         A streamed LLM call's span exits as soon as the stream is returned,
@@ -288,6 +327,11 @@ class LlamaIndexEventMapper:
         self._emit(node, 1, "completed", payload, self._latency(node))
 
     def _close_early(self, node_id: str) -> None:
+        if self._lock.held_by_me():
+            # Called by the garbage collector inside our own critical
+            # section: blocking would deadlock. Finish once it is released.
+            self._deferred_closes.append(node_id)
+            return
         with self._lock:
             node = self._open.pop(node_id, None)
         if node is None:
@@ -295,6 +339,14 @@ class LlamaIndexEventMapper:
         payload = self._describe_end(node["kind"], node, None)
         payload["closed_early"] = True
         self._emit(node, 1, "completed", payload, self._latency(node))
+
+    def _flush_deferred_closes(self) -> None:
+        while self._deferred_closes:
+            try:
+                node_id = self._deferred_closes.popleft()
+            except IndexError:  # emptied by another thread
+                return
+            self._close_early(node_id)
 
     def _on_exception(self, span_id: Optional[str], exc: Any) -> None:
         # LlamaIndex reports exceptions raised while a stream is consumed (the
@@ -313,11 +365,14 @@ class LlamaIndexEventMapper:
             self._emit_error(node, exc)
 
     def on_span_drop(self, span_id: str, err: Optional[BaseException]) -> None:
-        with self._lock:
-            node_id = self._span_node.get(span_id)
-            node = self._open.pop(node_id, None) if node_id else None
-        if node is not None:
-            self._emit_error(node, err)
+        try:
+            with self._lock:
+                node_id = self._span_node.get(span_id)
+                node = self._open.pop(node_id, None) if node_id else None
+            if node is not None:
+                self._emit_error(node, err)
+        finally:
+            self._flush_deferred_closes()
 
     # -- events -----------------------------------------------------------
 
@@ -326,6 +381,8 @@ class LlamaIndexEventMapper:
             self._on_event(event)
         except Exception as e:  # tracing must never break the app
             logger.debug(f"AgentScope LlamaIndex mapper ignored an event: {e}")
+        finally:
+            self._flush_deferred_closes()
 
     def _on_event(self, event: Any) -> None:
         name = type(event).__name__

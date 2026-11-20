@@ -187,3 +187,34 @@ def test_open_nodes_are_bounded(monkeypatch):
         m.on_span_enter(f"Q.query-{i}", None)
         m.on_event(event("QueryStartEvent", f"Q.query-{i}", query="q"))
     assert len(m._open) == 3
+
+
+def test_stream_collected_while_the_lock_is_held_does_not_deadlock(mapper):
+    # The garbage collector can run a stream's finalizer at any allocation,
+    # including one made while this thread holds the mapper's lock.
+    import threading
+
+    m = mapper
+    m.on_span_enter("L.stream_complete-1", None)
+    m.on_event(event("LLMCompletionStartEvent", "L.stream_complete-1", prompt="p"))
+    (node_id,) = m._open
+
+    class CollectsOnWrite(_BoundedDict):
+        fired = False
+
+        def __setitem__(self, key, value):
+            super().__setitem__(key, value)
+            if not self.fired:
+                self.fired = True
+                m._close_early(node_id)  # what the finalizer does
+
+    m._anchor = CollectsOnWrite(100)
+    worker = threading.Thread(target=m.on_span_enter, args=("Q.query-2", None))
+    worker.daemon = True
+    worker.start()
+    worker.join(2)
+
+    assert not worker.is_alive(), "deadlocked"
+    assert m._open == {}
+    end = m.client.events[-1]
+    assert end["event_type"] == "llm_end" and end["payload"]["closed_early"] is True
