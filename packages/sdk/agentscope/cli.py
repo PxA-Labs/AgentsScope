@@ -7,6 +7,8 @@ import sys
 import threading
 import time
 
+from agentscope._version import __version__
+
 
 def log_reader(pipe, prefix):
     """Reads lines from a subprocess pipe and prints them with a prefix."""
@@ -231,9 +233,32 @@ def run_local(server_dir, ui_dir, host, port, ui_port):
         print("[*] Services stopped successfully.")
 
 
+MISSING_CHECKOUT_HELP = """\
+AgentScope's server and dashboard were not found.
+
+`agentscope start` runs them from a clone of the repository:
+
+    git clone https://github.com/PxA-Labs/AgentsScope.git
+    cd AgentsScope
+    agentscope start            # or: agentscope start --docker
+
+The pip package (agentscope-trace) contains only the SDK that sends traces;
+the server and dashboard are not published as Python packages."""
+
+
+def _exit_missing_checkout() -> None:
+    print(MISSING_CHECKOUT_HELP, file=sys.stderr)
+    sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="AgentScope CLI: Observability suite management."
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"agentscope-trace {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
@@ -277,26 +302,12 @@ def main():
                 if os.path.exists(local_dc):
                     run_docker(local_dc)
                 else:
-                    print(
-                        "Error: Could not find docker-compose.yml file.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
+                    _exit_missing_checkout()
         else:
             if server_dir and ui_dir:
                 run_local(server_dir, ui_dir, args.host, args.port, args.ui_port)
             else:
-                print(
-                    "Error: Could not locate 'packages/server' and "
-                    "'packages/ui' directories.",
-                    file=sys.stderr,
-                )
-                print(
-                    "Please ensure you run this command from the "
-                    "repository root or a valid monorepo path.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+                _exit_missing_checkout()
     else:
         parser.print_help()
 

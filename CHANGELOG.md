@@ -4,15 +4,9 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Fixed
-- **sdk**: Never block in AgentScopeClient.stop() on a full buffer
-
-### Documentation
-- **sdk**: State that stop(timeout) can take timeout + 0.5 s
-
-### Tests
-- **sdk**: Name the draining test after what it verifies
-- **sdk**: Regression tests for stop() with a full buffer
+### Miscellaneous
+- Build(deps): bump lucide-react from 1.48.0 to 1.74.0 in /packages/ui
+- Build(deps-dev): bump postcss from 8.5.28 to 8.5.33 in /packages/ui
 
 ## [1.0.0] - 2026-08-10
 
