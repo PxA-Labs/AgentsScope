@@ -15,6 +15,47 @@ import websockets
 import websockets.exceptions
 
 
+class _SenderEventLoop(asyncio.SelectorEventLoop):
+    """Event loop that runs default-executor work on its own daemon threads.
+
+    CPython shuts down concurrent.futures, including every loop's default
+    executor, before it runs atexit hooks. The sender still has blocking work
+    to do when it flushes at exit: the session POST and the name lookup that
+    asyncio performs for ``create_connection``. Through the default executor
+    both fail ("cannot schedule new futures after interpreter shutdown"), so
+    each call gets a short-lived daemon thread instead. Such calls are rare
+    (session registration and reconnects), so no pool is needed.
+    """
+
+    def run_in_executor(self, executor, func, *args):  # type: ignore[override]
+        if executor is not None:
+            return super().run_in_executor(executor, func, *args)
+        if self.is_closed():
+            raise RuntimeError("Event loop is closed")
+        future = self.create_future()
+
+        def settle(result: Any, error: Optional[BaseException]) -> None:
+            if future.done():
+                return
+            if error is None:
+                future.set_result(result)
+            else:
+                future.set_exception(error)
+
+        def work() -> None:
+            try:
+                outcome = (func(*args), None)
+            except BaseException as e:
+                outcome = (None, e)
+            try:
+                self.call_soon_threadsafe(settle, *outcome)
+            except RuntimeError:
+                pass  # the loop was closed while the call ran
+
+        threading.Thread(target=work, name="AgentScopeClientIO", daemon=True).start()
+        return future
+
+
 class AgentScopeClient:
     """Thread-safe WebSocket and REST client for the AgentScope observability server.
 
@@ -191,7 +232,7 @@ class AgentScopeClient:
         ).start()
 
     def _run_loop(self) -> None:
-        self.loop = asyncio.new_event_loop()
+        self.loop = _SenderEventLoop()
         asyncio.set_event_loop(self.loop)
         try:
             self.loop.run_until_complete(self._main_async_loop())
