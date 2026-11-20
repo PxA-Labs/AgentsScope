@@ -4,27 +4,12 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Added
-- **sdk**: Record standalone CrewAI Agent.kickoff() runs
-- **sdk**: Add CrewAI integration via the CrewAI event bus
-
 ### Fixed
-- **sdk**: Let only the top-level CrewAI crew set the session status
-- **sdk**: Keep CrewAI listener memory flat across kickoffs
-- **sdk**: Deliver pending CrewAI events when the listener closes
-
-### Documentation
-- **sdk**: Update CrewAI docs for session status, lite agents and memory
-- **sdk**: Document the CrewAI integration and add an example
+- **server**: Serialise REST session writes and pruning on SQLite
+- **server**: Serialise SQLite SDK event writes
 
 ### Tests
-- **sdk**: Run AgentScopeCrewAIListener against a real CrewAI crew
-- **sdk**: Unit-test CrewAI event mapping without CrewAI
-
-### Miscellaneous
-- Build(sdk): raise the pydantic floor to 2.9
-- Build(sdk): add crewai extra and a CI job for the CrewAI tests
-- Build(sdk): relax pydantic floor to the tested 2.7.4
+- **server**: Cover concurrent SQLite writers losing events
 
 ## [1.0.0] - 2026-08-10
 
