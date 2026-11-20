@@ -138,6 +138,40 @@ async def test_sdk_events_survive_concurrent_rest_writes(file_db, caplog):
 
 
 @pytest.mark.asyncio
+async def test_sdk_events_survive_concurrent_pruning(file_db, caplog):
+    """Retention deletes and VACUUM must not make SDK writes fail."""
+    import retention
+
+    stream_id = f"stream-{uuid.uuid4().hex[:8]}"
+    events_sent = 40
+
+    async def add_old_sessions(batch: int) -> None:
+        async with database.sqlite_write_lock(file_db), file_db() as db:
+            for n in range(10):
+                db.add(
+                    SessionModel(
+                        session_id=f"old-{batch}-{n}",
+                        name="old",
+                        status="completed",
+                        started_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    )
+                )
+            await db.commit()
+
+    async def prune_repeatedly() -> None:
+        for batch in range(10):
+            await add_old_sessions(batch)
+            # Each round deletes the old sessions and then runs VACUUM.
+            await retention.prune_old_sessions(max_sessions=5, session_maker=file_db)
+
+    with caplog.at_level(logging.ERROR):
+        await asyncio.gather(_produce(stream_id, 0, events_sent), prune_repeatedly())
+
+    assert await _count(file_db, EventModel) == events_sent
+    assert _db_errors(caplog) == []
+
+
+@pytest.mark.asyncio
 async def test_write_lock_does_not_serialise_postgresql():
     """Only SQLite needs one writer at a time; PostgreSQL writers stay parallel."""
     pg = create_async_engine("postgresql+asyncpg://user:pw@localhost/db")
