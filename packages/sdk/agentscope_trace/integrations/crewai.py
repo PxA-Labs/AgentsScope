@@ -140,13 +140,19 @@ def _is_user_flow(source: Any) -> bool:
     """Whether a ``flow_started`` event's source is a user's Flow.
 
     CrewAI also runs its own machinery as flows (each agent's executor, memory
-    encode / recall). Those set ``suppress_flow_events``, which CrewAI's own
-    tracing uses to leave them out, so they are tracked only for parentage.
-    Without a source (the mapper used on its own) a flow counts as internal.
+    encode / recall). Those declare the ``is_crewai_internal`` class marker,
+    which CrewAI's own listener uses to tell them apart, so they are tracked
+    only for parentage. ``suppress_flow_events`` is not used for this: it only
+    asks for console quiet and a user's flow may set it. It is the fallback
+    only for releases without the marker. Without a source (the mapper used
+    on its own) a flow counts as internal.
     """
     if source is None:
         return False
-    return getattr(source, "suppress_flow_events", False) is False
+    marker = getattr(type(source), "is_crewai_internal", None)
+    if marker is None:
+        return getattr(source, "suppress_flow_events", False) is False
+    return not marker
 
 
 def _scope_starting_events() -> Optional[frozenset]:
