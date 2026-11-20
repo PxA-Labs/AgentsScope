@@ -26,25 +26,76 @@ same module objects:
   ``agentscope_trace.<name>`` and returning that module object. Submodules are
   aliased lazily, on first import, so optional integrations (crewai, autogen,
   llamaindex) are imported only when asked for, exactly as before.
+* The finder's ``find_spec`` runs under CPython's global import lock, so it
+  only locates files and never imports; the real import happens in the
+  loader's ``create_module``, which holds just that module's own lock.
+  Importing there would deadlock against a thread that is part-way through
+  importing an ``agentscope_trace`` submodule.
+
+Threads
+-------
+Import ``agentscope`` (or ``agentscope_trace``) once at startup, before
+starting threads. While the first ``import agentscope`` is still running,
+CPython does not make other threads wait for the half-initialised package:
+a thread that first-imports ``agentscope.<name>`` at that moment can get
+ModuleNotFoundError. (Concurrent first imports of ``agentscope_trace``
+submodules can also fail with CPython's import-cycle ``_DeadlockError``.)
+Once the package is imported, concurrent imports under either name are safe.
 """
 
+# Kept minimal until the finder is installed (below): until then, another
+# thread importing `agentscope.<name>` finds nothing (see "Threads" above).
+# These importlib modules are normally loaded already at startup.
 import importlib
-import importlib.abc
 import importlib.util
 import sys
-import warnings
+from importlib.machinery import PathFinder
 
 _OLD = __name__  # "agentscope"
 _NEW = "agentscope_trace"
 
 
-class _AliasLoader(importlib.abc.Loader):
-    """Hands back the already-imported ``agentscope_trace`` module object."""
+def _locate(name):
+    """Find the spec of ``name`` without importing (executing) anything.
+
+    Called from ``find_spec``, which CPython runs under the global import
+    lock: importing there deadlocks against a thread that is mid-way through
+    importing an ``agentscope_trace`` submodule and needs that lock for its
+    own imports. So this only walks the filesystem, one package level at a
+    time, using already-imported packages' ``__path__`` where available.
+    """
+    parts = name.split(".")
+    spec = None
+    for depth in range(1, len(parts) + 1):
+        prefix = ".".join(parts[:depth])
+        module = sys.modules.get(prefix)
+        if module is not None and getattr(module, "__spec__", None) is not None:
+            spec = module.__spec__
+            search = getattr(module, "__path__", None)
+        else:
+            if depth == 1:
+                # Top level: a lookup only (meta path finders, e.g. editable
+                # installs), no import of a parent package.
+                spec = importlib.util.find_spec(prefix)
+            else:
+                spec = PathFinder.find_spec(prefix, search)
+            if spec is None:
+                return None
+            search = spec.submodule_search_locations
+        if search is None and depth < len(parts):
+            return None  # a plain module has no submodules
+    return spec
+
+
+class _AliasLoader:
+    """Hands back the ``agentscope_trace`` module object itself."""
 
     def __init__(self, target):
         self._target = target
 
     def create_module(self, spec):
+        # The real import happens here, where only this module's own import
+        # lock is held, not the global one (see _locate).
         module = importlib.import_module(self._target)
         # The import system overwrites __spec__ on the object returned here
         # (it keeps __name__, __loader__, __path__ and __file__); remember the
@@ -59,11 +110,10 @@ class _AliasLoader(importlib.abc.Loader):
 
     def get_code(self, fullname):
         # Lets `python -m agentscope.cli` keep working through runpy.
-        real = importlib.util.find_spec(self._target)
-        return real.loader.get_code(self._target)
+        return _locate(self._target).loader.get_code(self._target)
 
 
-class _AliasFinder(importlib.abc.MetaPathFinder):
+class _AliasFinder:
     """Resolves ``agentscope.<name>`` to the ``agentscope_trace.<name>`` module."""
 
     _agentscope_trace_alias = True  # marker, so the finder is installed once
@@ -72,18 +122,26 @@ class _AliasFinder(importlib.abc.MetaPathFinder):
         if not fullname.startswith(_OLD + "."):
             return None
         new_name = _NEW + fullname[len(_OLD) :]
-        if importlib.util.find_spec(new_name) is None:
+        # No imports here: see _locate.
+        real = _locate(new_name)
+        if real is None:
             return None  # ModuleNotFoundError then names `agentscope.<name>`
-        real = importlib.import_module(new_name)
-        is_package = hasattr(real, "__path__")
         # origin: runpy uses it as sys.argv[0] for `python -m agentscope.cli`.
         return importlib.util.spec_from_loader(
             fullname,
             _AliasLoader(new_name),
-            origin=real.__spec__.origin,
-            is_package=is_package,
+            origin=real.origin,
+            is_package=real.submodule_search_locations is not None,
         )
 
+
+if not any(getattr(f, "_agentscope_trace_alias", False) for f in sys.meta_path):
+    # Ahead of the path-based finder, which would otherwise load a second copy
+    # of each submodule from agentscope_trace/ under the old name. Installed
+    # first thing, so it is in place before anything below can import.
+    sys.meta_path.insert(0, _AliasFinder())
+
+import warnings  # noqa: E402
 
 warnings.warn(
     "The `agentscope` import name is deprecated and will be removed in a "
@@ -93,10 +151,5 @@ warnings.warn(
     DeprecationWarning,
     stacklevel=2,
 )
-
-if not any(getattr(f, "_agentscope_trace_alias", False) for f in sys.meta_path):
-    # Ahead of the path-based finder, which would otherwise load a second copy
-    # of each submodule from agentscope_trace/ under the old name.
-    sys.meta_path.insert(0, _AliasFinder())
 
 sys.modules[_OLD] = importlib.import_module(_NEW)

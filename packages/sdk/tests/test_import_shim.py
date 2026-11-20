@@ -204,3 +204,96 @@ def test_python_dash_m_through_old_name():
         )
         assert out.returncode == 0, out.stderr
         assert out.stdout.strip() == f"agentscope-trace {agentscope_trace.__version__}"
+
+
+def test_concurrent_old_and_new_imports_do_not_deadlock(tmp_path):
+    """Regression: the finder must not import while holding the import lock.
+
+    CPython calls ``find_spec`` under the global import lock. If the finder
+    imported ``agentscope_trace.X`` there, a thread already executing X that
+    needs that lock for its own imports would wait forever (#335 review).
+    """
+    # A probe submodule of agentscope_trace that, mid-import, sleeps and then
+    # imports a module nobody has loaded yet (which needs the global lock).
+    probe_dir = tmp_path / "probe"
+    probe_dir.mkdir()
+    (probe_dir / "_slow_probe.py").write_text(
+        "import time\ntime.sleep(0.5)\nimport _slow_probe_dep  # noqa: F401\n"
+    )
+    (probe_dir / "_slow_probe_dep.py").write_text("VALUE = 1\n")
+    code = f"""
+        import os, sys, threading, time, warnings
+        warnings.simplefilter("ignore", DeprecationWarning)
+        sys.path.insert(0, {str(probe_dir)!r})
+        import agentscope, agentscope_trace
+        agentscope_trace.__path__.append({str(probe_dir)!r})
+
+        results = {{}}
+
+        def new_name():
+            import agentscope_trace._slow_probe as m
+            results["new"] = m
+
+        def old_name():
+            import agentscope._slow_probe as m
+            results["old"] = m
+
+        a = threading.Thread(target=new_name, daemon=True)
+        b = threading.Thread(target=old_name, daemon=True)
+        a.start()
+        time.sleep(0.1)  # A is now inside _slow_probe, holding its module lock
+        b.start()
+        for t in (a, b):
+            t.join(10)
+        if a.is_alive() or b.is_alive():
+            print("DEADLOCK", flush=True)
+            os._exit(3)
+        print(results["old"] is results["new"], flush=True)
+        os._exit(0)
+        """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", textwrap.dedent(code)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:  # pragma: no cover - hard hang
+        pytest.fail("importing agentscope.<x> and agentscope_trace.<x> deadlocked")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "True"
+
+
+def test_concurrent_imports_after_startup_are_safe():
+    # Documented contract: once `agentscope` is imported, threads may
+    # first-import any submodule under either name at the same time.
+    out = run_json("""
+        import importlib, json, sys, threading, warnings
+        warnings.simplefilter("ignore", DeprecationWarning)
+        import agentscope  # noqa: F401  (startup import)
+        subs = ["integrations", "integrations.crewai", "integrations.autogen",
+                "integrations.llamaindex", "cli", "models", "decorators"]
+        names = [p + s for s in subs for p in ("agentscope.", "agentscope_trace.")]
+        errors = []
+        barrier = threading.Barrier(len(names))
+
+        def load(name):
+            barrier.wait()
+            try:
+                importlib.import_module(name)
+            except Exception as exc:
+                errors.append(f"{name}: {exc!r}")
+
+        threads = [threading.Thread(target=load, args=(n,)) for n in names]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(10)
+        print(json.dumps({
+            "errors": errors,
+            "hung": sum(t.is_alive() for t in threads),
+            "same": all(sys.modules["agentscope." + s]
+                        is sys.modules["agentscope_trace." + s] for s in subs),
+        }))
+        """)
+    assert out == {"errors": [], "hung": 0, "same": True}
