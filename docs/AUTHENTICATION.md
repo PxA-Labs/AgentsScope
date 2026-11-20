@@ -42,7 +42,7 @@ Startup errors and warnings name the variable but never print the key. If a weak
 
 The check runs in an ASGI middleware before routing. An unauthenticated request gets a 401 before its body is read or validated, and an unknown `/api/...` path also gets 401 rather than 404, so session IDs and routes can't be probed. CORS preflight requests don't need the key, and 401 responses carry CORS headers so the dashboard can react to them.
 
-Keys are compared in constant time as SHA-256 digests, so the length of the configured key isn't revealed either. Rejected requests are logged with method, path and client address, never with the supplied key. To keep a misconfigured client from flooding the log, there is at most one warning per client address per minute; the next one reports how many rejections were suppressed.
+Keys are compared in constant time as fixed-length HMAC-SHA256 digests (keyed per process), so the length of the configured key isn't revealed either. Rejected requests are logged with method, path and client address, never with the supplied key. To keep a misconfigured client from flooding the log, there is at most one warning per client address per minute; the next one reports how many rejections were suppressed.
 
 ## Python SDK
 
