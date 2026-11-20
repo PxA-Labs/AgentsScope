@@ -27,6 +27,51 @@ except ImportError:
 class AgentScopeCallback(AsyncCallbackHandler):
     """LangChain callback handler that streams telemetry to the AgentScope server."""
 
+    # LangChain logs and swallows exceptions from callback handlers unless this
+    # is set. BudgetExceededError has to propagate so that budget_limit_usd
+    # actually stops the run; every handler method catches and logs its own
+    # telemetry errors, so nothing else escapes.
+    raise_error = True
+
+    # Even with raise_error, LangChain swallows exceptions raised inside an
+    # async handler's coroutine when the run is synchronous (llm.invoke(...)):
+    # those coroutines are run by langchain_core's _run_coros, which only logs.
+    # The ignore_* flags, however, are read synchronously by the callback
+    # manager on both the sync and async paths, inside the block that honours
+    # raise_error. Checking the budget there lets it stop sync and async runs
+    # alike, before the next model call is made.
+    @property
+    def ignore_llm(self) -> bool:
+        self._check_budget()
+        return False
+
+    @property
+    def ignore_chat_model(self) -> bool:
+        self._check_budget()
+        return False
+
+    def _budget_exceeded(self) -> bool:
+        # getattr: LangChain may read the ignore_* flags before __init__ ran.
+        if getattr(self, "budget_limit_usd", None) is None:
+            return False
+        with self._cost_lock:
+            return self.cumulative_cost_usd > self.budget_limit_usd
+
+    def _check_budget(self) -> None:
+        """Raise BudgetExceededError if the cumulative cost is over the limit.
+
+        Once the budget has tripped, LangChain also reads the ignore_* flags
+        before on_llm_new_token / on_llm_end / on_llm_error, so a model call
+        that is still in flight (e.g. a parallel branch) is aborted at its next
+        token or at its end. That is intended: the run is being stopped.
+        """
+        if self._budget_exceeded():
+            raise BudgetExceededError(
+                f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
+                f"USD exceeded. Cumulative cost: "
+                f"${self.cumulative_cost_usd:.4f} USD."
+            )
+
     def __init__(
         self,
         host: str = "localhost",
@@ -34,6 +79,9 @@ class AgentScopeCallback(AsyncCallbackHandler):
         session_name: Optional[str] = None,
         session_metadata: Optional[Dict[str, Any]] = None,
         budget_limit_usd: Optional[float] = None,
+        api_key: Optional[str] = None,
+        secure: bool = False,
+        base_url: Optional[str] = None,
     ):
         """Initialize the callback handler.
 
@@ -43,6 +91,11 @@ class AgentScopeCallback(AsyncCallbackHandler):
             session_name: Custom name for this run session.
             session_metadata: Arbitrary tags or configurations.
             budget_limit_usd: Optional max cumulative cost in USD.
+            api_key: API key for servers with authentication enabled. Defaults
+                to the AGENTSCOPE_API_KEY environment variable.
+            secure: Use TLS (https/wss) for host:port.
+            base_url: Full server URL, e.g. ``https://agentscope.example.com``.
+                Overrides host, port and secure; its scheme selects TLS.
         """
         super().__init__()
         self.client = AgentScopeClient(
@@ -50,6 +103,9 @@ class AgentScopeCallback(AsyncCallbackHandler):
             port=port,
             session_name=session_name,
             session_metadata=session_metadata,
+            api_key=api_key,
+            secure=secure,
+            base_url=base_url,
         )
         self.budget_limit_usd = budget_limit_usd
         self.cumulative_cost_usd: float = 0.0
@@ -156,8 +212,13 @@ class AgentScopeCallback(AsyncCallbackHandler):
             self.client.emit(event)
 
             if not parent_run_id:
-                # Root execution chain completed, mark session finished
-                self.client.patch_session_status("completed")
+                # Root execution chain completed, mark session finished. A sync
+                # run can't be interrupted once its final model call has
+                # crossed the budget, so keep the session failed in that case
+                # instead of overwriting it with completed.
+                self.client.patch_session_status(
+                    "failed" if self._budget_exceeded() else "completed"
+                )
         except Exception as e:
             logging.warning(f"AgentScope callback error in on_chain_end: {e}")
 
@@ -215,15 +276,7 @@ class AgentScopeCallback(AsyncCallbackHandler):
         metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
-        if self.budget_limit_usd is not None:
-            with self._cost_lock:
-                if self.cumulative_cost_usd > self.budget_limit_usd:
-                    msg = (
-                        f"AgentScope budget limit of ${self.budget_limit_usd:.4f} "
-                        f"USD exceeded. Cumulative cost: "
-                        f"${self.cumulative_cost_usd:.4f} USD."
-                    )
-                    raise BudgetExceededError(msg)
+        self._check_budget()
         try:
             agent_name = self._resolve_name(serialized, metadata, default="LLM")
             model = ""
