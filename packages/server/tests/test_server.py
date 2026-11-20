@@ -314,6 +314,32 @@ async def test_sqlite_engine_gets_pragmas_while_global_engine_is_postgresql(
     assert busy_timeout == 5000
 
 
+@pytest.mark.asyncio
+async def test_suite_engine_uses_production_sqlite_settings(db_engine, db_session):
+    import database
+    from database import get_db
+    from sqlalchemy import event
+
+    sync_engine = db_engine.sync_engine
+    assert event.contains(sync_engine, "begin", database._emit_begin)
+    assert event.contains(sync_engine, "connect", database._disable_driver_begin)
+    async with db_engine.connect() as conn:
+        journal_mode = (await conn.exec_driver_sql("PRAGMA journal_mode")).scalar()
+    assert journal_mode == "wal"
+
+    # Each request gets its own session, never the test's db_session.
+    override = app.dependency_overrides[get_db]
+    first, second = override(), override()
+    try:
+        s1, s2 = await anext(first), await anext(second)
+        assert s1 is not s2
+        assert db_session not in (s1, s2)
+        assert s1.get_bind() is db_engine.sync_engine
+    finally:
+        await first.aclose()
+        await second.aclose()
+
+
 def test_implicit_session_status_synchronization():
     import time
     import uuid
