@@ -24,8 +24,10 @@ class ConnectionManager:
         # Pool for global UI subscribers (watching sidebar, stats, etc.)
         self.global_ui_connections: Set[WebSocket] = set()
 
-    async def connect_sdk(self, websocket: WebSocket) -> None:
-        await websocket.accept()
+    async def connect_sdk(
+        self, websocket: WebSocket, subprotocol: str | None = None
+    ) -> None:
+        await websocket.accept(subprotocol=subprotocol)
         self.sdk_connections.add(websocket)
         logging.info(
             "SDK client connected. Active SDK connections: "
@@ -40,9 +42,12 @@ class ConnectionManager:
         )
 
     async def connect_ui(
-        self, websocket: WebSocket, session_id: str | None = None
+        self,
+        websocket: WebSocket,
+        session_id: str | None = None,
+        subprotocol: str | None = None,
     ) -> None:
-        await websocket.accept()
+        await websocket.accept(subprotocol=subprotocol)
         if session_id:
             if session_id not in self.ui_connections:
                 self.ui_connections[session_id] = set()

@@ -94,9 +94,9 @@ interface RetrieverPayload {
 }
 ```
 
-## 3. Database Schema (SQLite / SQLAlchemy)
+## 3. Database Schema (SQLite / PostgreSQL via SQLAlchemy)
 
-The server utilizes SQLite for local persistent storage. 
+The server uses SQLite for local persistent storage by default. The same SQLAlchemy models also run on PostgreSQL (`DATABASE_URL=postgresql+asyncpg://...`). The DDL below shows the SQLite dialect.
 
 > [!TIP]
 > SQLite is configured with `PRAGMA journal_mode=WAL;` and `PRAGMA foreign_keys=ON;` for better concurrency and integrity.
@@ -259,6 +259,33 @@ Broadcasts include the same event shapes as ingestion, but also add `session_upd
      "status": "completed", 
      "ended_at": "2026-07-21T15:10:00Z", 
      "total_tokens": 4821 
+  }
+}
+```
+
+UI clients subscribed to a session also receive incremental DAG updates (`graph_update`) for each ingested event. Nodes carry no computed layout (`position` is `{x: 0, y: 0}`), so clients place them provisionally and re-fetch `GET /api/sessions/{id}/graph` for the full layout when a terminal event arrives. `edge` is `null` for root events.
+```json
+{
+  "type": "graph_update",
+  "session_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "node": {
+    "id": "evt_123",
+    "type": "LLMNode",
+    "position": { "x": 0, "y": 0 },
+    "data": {
+      "label": "ChatOpenAI",
+      "agentName": "ChatOpenAI",
+      "eventType": "llm_end",
+      "durationMs": 820,
+      "tokenCount": 512,
+      "status": "completed"
+    }
+  },
+  "edge": {
+    "id": "e-evt_100-evt_123",
+    "source": "evt_100",
+    "target": "evt_123",
+    "type": "default"
   }
 }
 ```

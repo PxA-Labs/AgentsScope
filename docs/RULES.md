@@ -14,7 +14,7 @@ This document outlines the core principles, coding standards, architectural guid
 
 ### Python (SDK + Server)
 
-- **Version**: Python 3.10+ required.
+- **Version**: Python 3.11+ required.
 - **Formatter**: `black` with default settings (line length 88).
 - **Linter**: `ruff` with pyflakes + pycodestyle + isort enabled.
 - **Type hints**: Required on all public functions, optional (but encouraged) on internal functions.
