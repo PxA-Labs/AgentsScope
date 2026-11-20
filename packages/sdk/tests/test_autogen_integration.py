@@ -5,6 +5,7 @@ so agents, tool execution, termination and streaming are all AutoGen's.
 """
 
 import asyncio
+import time
 
 import pytest
 
@@ -355,22 +356,132 @@ def test_breaking_out_and_returning_at_once_is_still_a_normal_close(kind):
     assert rec.status == ["completed"]
 
 
-def test_explicit_aclose_closes_the_run_and_the_team():
-    rec = Recorder()
-    team = make_team(rec)
+class SlowClient(ReplayChatCompletionClient):
+    """A replay client whose calls take a while, so a team keeps talking."""
+
+    def __init__(self, *args, calls, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._calls = calls
+
+    async def create(self, *args, **kwargs):
+        self._calls.append(time.perf_counter())
+        await asyncio.sleep(0.01)
+        return await super().create(*args, **kwargs)
+
+
+def make_chatty_team(rec, calls, turns=20):
+    def agent(name):
+        client = SlowClient(
+            [f"{name}{i}" for i in range(turns)], model_info=INFO, calls=calls
+        )
+        return AssistantAgent(
+            name,
+            model_client=trace_model_client(
+                client, name="gpt-4o", agentscope_client=rec
+            ),
+        )
+
+    return RoundRobinGroupChat(
+        [agent("a"), agent("b")], termination_condition=MaxMessageTermination(turns)
+    )
+
+
+def run_end_is_last(rec):
+    """True when no event is emitted after the run node closes."""
+    ends = [
+        i
+        for i, e in enumerate(rec.events)
+        if e["agent_type"] == "team" and e["status"] != "running"
+    ]
+    return ends == [len(rec.events) - 1]
+
+
+@pytest.mark.parametrize("close", ["aclose", "break"])
+def test_tracer_run_stream_stops_the_team_on_early_close(close):
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls)
 
     async def main():
-        traced = AgentScopeAutoGenTracer(agentscope_client=rec).trace(
-            team.run_stream(task="t"), task="t"
-        )
-        await traced.__anext__()
-        await traced.aclose()
-        # The team was closed too: reset() raises while a team is still running.
-        await team.reset()
+        tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+        if close == "aclose":
+            stream = tracer.run_stream(team, task="go")
+            await stream.__anext__()
+            await stream.aclose()
+        else:
+            async for _ in tracer.run_stream(team, task="go"):
+                break
+            for _ in range(5):  # let asyncio finalize the abandoned stream
+                await asyncio.sleep(0.01)
+        closed_at = time.perf_counter()
+        await asyncio.sleep(0.3)
+        await team.reset()  # raises if the team is still running
+        return closed_at
 
-    asyncio.run(main())
+    closed_at = asyncio.run(main())
+
+    assert calls and not [c for c in calls if c > closed_at]
+    assert len(calls) < 5  # stopped, not run to its 20-message limit
     (team_node,) = of(final_nodes(rec), "team")
     assert team_node["event_type"] == "chain_end"
+    assert team_node["payload"]["outputs"]["closed_early"] is True
+    assert run_end_is_last(rec)
+    assert rec.status == ["completed"]
+
+
+def test_trace_cancels_the_callers_token_on_early_close():
+    from autogen_core import CancellationToken
+
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls)
+    token = CancellationToken()
+
+    async def main():
+        stream = AgentScopeAutoGenTracer(agentscope_client=rec).trace(
+            team.run_stream(task="go", cancellation_token=token),
+            task="go",
+            cancellation_token=token,
+        )
+        await stream.__anext__()
+        await stream.aclose()
+        closed_at = time.perf_counter()
+        await asyncio.sleep(0.3)
+        return closed_at
+
+    closed_at = asyncio.run(main())
+
+    assert token.is_cancelled()
+    assert not [c for c in calls if c > closed_at]
+    assert len(calls) < 5
+    assert run_end_is_last(rec)
+    assert rec.status == ["completed"]
+
+
+def test_aclose_without_a_token_waits_for_the_team_then_closes_the_run():
+    # Without a token AutoGen's own aclose() lets the team run until it goes
+    # idle. The run node stays open until then, so every LLM call made while
+    # closing is recorded under the run, never after it ended.
+    rec, calls = Recorder(), []
+    team = make_chatty_team(rec, calls)
+
+    async def main():
+        stream = AgentScopeAutoGenTracer(agentscope_client=rec).trace(
+            team.run_stream(task="go"), task="go"
+        )
+        await stream.__anext__()
+        calls_at_close = len(calls)
+        await stream.aclose()
+        await team.reset()  # the team is idle once aclose() returns
+        return calls_at_close
+
+    calls_at_close = asyncio.run(main())
+
+    assert len(calls) > calls_at_close  # the team kept going while closing
+    assert run_end_is_last(rec)
+    (team_node,) = of(final_nodes(rec), "team")
+    run_id = team_node["event_id"]
+    llm_nodes = of(final_nodes(rec), "llm")
+    assert llm_nodes and all(n["parent_event_id"] == run_id for n in llm_nodes)
+    assert team_node["payload"]["outputs"]["closed_early"] is True
     assert rec.status == ["completed"]
 
 

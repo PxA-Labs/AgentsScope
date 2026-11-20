@@ -27,6 +27,7 @@ Usage::
     result = await AgentScopeAutoGenTracer().run(team, task="...")
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -417,14 +418,40 @@ class AgentScopeAutoGenTracer:
     async def run(self, team: Any, task: Any = None, **kwargs: Any) -> Any:
         """Run ``team.run_stream(task=..., **kwargs)`` traced; return its TaskResult."""
         result = None
-        async for item in self.trace(team.run_stream(task=task, **kwargs), task=task):
+        async for item in self.run_stream(team, task=task, **kwargs):
             result = item
         return result
 
-    async def trace(
-        self, stream: AsyncIterator[Any], task: Any = None
+    def run_stream(
+        self, team: Any, task: Any = None, **kwargs: Any
     ) -> AsyncGenerator[Any, None]:
-        """Yield every item of ``stream`` unchanged while recording it."""
+        """Traced ``team.run_stream(task=..., **kwargs)`` that stops the team
+        when the consumer stops early.
+
+        A ``CancellationToken`` is passed to ``run_stream`` (yours, if given as
+        ``cancellation_token=``) and cancelled on ``break`` / ``aclose()``.
+        """
+        token = kwargs.get("cancellation_token")
+        if token is None:
+            from autogen_core import CancellationToken
+
+            token = kwargs["cancellation_token"] = CancellationToken()
+        return self.trace(
+            team.run_stream(task=task, **kwargs), task=task, cancellation_token=token
+        )
+
+    async def trace(
+        self,
+        stream: AsyncIterator[Any],
+        task: Any = None,
+        cancellation_token: Any = None,
+    ) -> AsyncGenerator[Any, None]:
+        """Yield every item of ``stream`` unchanged while recording it.
+
+        If the consumer stops early and ``cancellation_token`` is the token
+        that was passed to ``run_stream``, it is cancelled so the team stops.
+        Without one, closing the stream waits for the team to go idle.
+        """
         from autogen_agentchat.base import TaskResult
 
         state = _RunState(self._emitter, self.name)
@@ -461,12 +488,14 @@ class AgentScopeAutoGenTracer:
                 # ``break`` / ``aclose()`` (GeneratorExit), or asyncio
                 # cancelling the finalizer of an abandoned stream at loop
                 # shutdown (CancelledError). A normal close, not a failure.
-                if not state.finished:
-                    state.finish(None, closed_early=True)
-                self._patch("completed")
-                aclose = getattr(iterator, "aclose", None)
-                if aclose is not None:
-                    await aclose()
+                try:
+                    await _close_inner(iterator, cancellation_token)
+                finally:
+                    # Only now: LLM calls made while the team wound down
+                    # still belong to this run.
+                    if not state.finished:
+                        state.finish(None, closed_early=True)
+                    self._patch("completed")
                 raise
         if not state.finished:
             state.finish(None)
@@ -481,6 +510,29 @@ class AgentScopeAutoGenTracer:
                 client.patch_session_status(status)
         except Exception:
             pass
+
+
+async def _close_inner(iterator: Any, cancellation_token: Any) -> None:
+    """Close the inner ``run_stream`` after the consumer stopped early.
+
+    AutoGen's ``aclose()`` waits for the team to go idle; cancelling the run's
+    token first makes it stop instead (in-flight calls are cancelled).
+    """
+    if cancellation_token is not None:
+        cancellation_token.cancel()
+    aclose = getattr(iterator, "aclose", None)
+    if aclose is None:
+        return
+    task = asyncio.current_task()
+    cancelling = getattr(task, "cancelling", None)
+    before = cancelling() if cancelling else 0
+    try:
+        await aclose()
+    except asyncio.CancelledError:
+        # Raised by AutoGen's runtime because we cancelled the token. Swallow
+        # it unless our own task was cancelled meanwhile.
+        if cancellation_token is None or (cancelling and cancelling() > before):
+            raise
 
 
 class _RunState:
