@@ -122,6 +122,33 @@ def count_events(port: int, session_id: str) -> int:
         page += 1
 
 
+def settled_count(
+    port: int,
+    session_id: str,
+    expected: int,
+    quiet: float = 2.0,
+    timeout: float = 120.0,
+) -> int:
+    """Stored events once the server has caught up.
+
+    The SDK's stop() returns when events are written to the socket, not when
+    the server has committed them, so poll until the count reaches
+    ``expected`` or stops changing for ``quiet`` seconds.
+    """
+    deadline = time.monotonic() + timeout
+    last, last_change = -1, time.monotonic()
+    while time.monotonic() < deadline:
+        count = count_events(port, session_id)
+        if count >= expected:
+            return count
+        if count != last:
+            last, last_change = count, time.monotonic()
+        elif time.monotonic() - last_change >= quiet:
+            return count
+        time.sleep(0.1)
+    return last
+
+
 def make_event(event_id: str) -> Dict:
     from datetime import datetime, timezone
 
@@ -156,6 +183,44 @@ def percentiles(samples: Sequence[float]) -> Dict[str, float]:
         "max": ordered[-1],
         "mean": statistics.fmean(ordered),
     }
+
+
+def spread(values: Sequence[float], digits: int = 1) -> str:
+    """Format repeated measurements as "median (min-max)"."""
+    values = [v for v in values if v == v]  # drop NaN
+    if not values:
+        return "n/a"
+    med = statistics.median(values)
+    lo, hi = min(values), max(values)
+    if len(values) == 1 or lo == hi:
+        return f"{med:,.{digits}f}"
+    return f"{med:,.{digits}f} ({lo:,.{digits}f}–{hi:,.{digits}f})"
+
+
+def int_range(values: Sequence[int]) -> str:
+    """Format repeated counts as "n" or "min–max"."""
+    lo, hi = min(values), max(values)
+    return f"{lo:,}" if lo == hi else f"{lo:,}–{hi:,}"
+
+
+def machine_info() -> str:
+    import platform
+
+    cpu = platform.processor() or platform.machine()
+    if sys.platform == "darwin":
+        try:
+            cpu = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    return (
+        f"{cpu}, {os.cpu_count()} CPUs, {platform.system()} {platform.release()}, "
+        f"Python {platform.python_version()}"
+    )
 
 
 def print_table(title: str, rows: List[Dict], columns: List[str]) -> None:
