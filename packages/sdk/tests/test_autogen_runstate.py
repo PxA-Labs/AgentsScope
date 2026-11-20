@@ -39,7 +39,7 @@ def test_task_message_and_streaming_chunks_create_no_turns():
     assert [e["agent_type"] for e in rec.events] == ["team", "team"]
 
 
-def test_consecutive_messages_from_one_agent_share_a_turn():
+def test_an_agents_events_and_its_message_form_one_turn():
     rec, state = new_state()
     state.observe(msg("ThoughtEvent", "a", "thinking"))
     state.observe(msg("TextMessage", "a", "answer"))
