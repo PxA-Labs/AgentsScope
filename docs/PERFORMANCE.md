@@ -105,7 +105,7 @@ Fresh clone of the repository into a temporary directory, a fresh virtualenv, an
 | npm run build (dashboard) | n/a | 4.1 (4.0–4.6) | n/a | 4.2 (4.0–4.7) |
 | **Total** | **20.5 (20.0–21.9)** | **34.8 (33.7–35.5)** | **14.0 (13.7–16.7)** | **23.3 (22.9–24.1)** |
 
-Downloads dominate a cold run, so a slower connection changes the totals most. Not timed: starting the dashboard (`npm start`) and seeing the event in a browser, the Docker Compose path, and a machine without Python 3.11 or Node already installed.
+Downloads dominate a cold run, so a slower connection changes the totals most. The dashboard columns were measured just before [#320](https://github.com/PxA-Labs/AgentsScope/pull/320) bumped React; they were not re-run after it. Not timed: starting the dashboard (`npm start`) and seeing the event in a browser, the Docker Compose path, and a machine without Python 3.11 or Node already installed.
 
 ## CI regression gate (`packages/sdk/tests/test_performance.py`)
 
