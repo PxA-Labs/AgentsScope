@@ -135,3 +135,42 @@ async def test_sdk_events_survive_concurrent_rest_writes(file_db, caplog):
 
     assert await _count(file_db, EventModel) == events_sent
     assert _db_errors(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_write_lock_does_not_serialise_postgresql():
+    """Only SQLite needs one writer at a time; PostgreSQL writers stay parallel."""
+    pg = create_async_engine("postgresql+asyncpg://user:pw@localhost/db")
+    try:
+        inside = 0
+        peak = 0
+
+        async def writer() -> None:
+            nonlocal inside, peak
+            async with database.sqlite_write_lock(pg):
+                inside += 1
+                peak = max(peak, inside)
+                await asyncio.sleep(0.01)
+                inside -= 1
+
+        await asyncio.gather(*(writer() for _ in range(5)))
+        assert peak == 5
+    finally:
+        await pg.dispose()
+
+
+@pytest.mark.asyncio
+async def test_write_lock_serialises_sqlite(file_db):
+    inside = 0
+    peak = 0
+
+    async def writer() -> None:
+        nonlocal inside, peak
+        async with database.sqlite_write_lock(file_db):
+            inside += 1
+            peak = max(peak, inside)
+            await asyncio.sleep(0.01)
+            inside -= 1
+
+    await asyncio.gather(*(writer() for _ in range(5)))
+    assert peak == 1
