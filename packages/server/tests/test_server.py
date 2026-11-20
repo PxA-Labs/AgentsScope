@@ -378,7 +378,7 @@ def test_implicit_session_status_synchronization():
         assert sess_data["ended_at"] is not None
 
 
-def test_sdk_client_integration(db_engine):
+def test_sdk_client_integration(db_engine, tmp_path):
     import asyncio
     import socket
     import threading
@@ -398,24 +398,19 @@ def test_sdk_client_integration(db_engine):
     # Clear any leftover single-thread dependency overrides for the live server
     app.dependency_overrides.clear()
 
-    import os
-
     import database
     import main
-    from sqlalchemy.ext.asyncio import (
-        AsyncSession,
-        async_sessionmaker,
-        create_async_engine,
-    )
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     orig_db_engine = database.engine
     orig_db_maker = database.async_session_maker
     orig_main_engine = main.engine
     orig_main_maker = main.async_session_maker
 
-    live_db_file = f"./test_live_{port}.db"
-    live_db_url = f"sqlite+aiosqlite:///{live_db_file}"
-    live_engine = create_async_engine(live_db_url)
+    # Configured like production (WAL, pragmas, SQLAlchemy-emitted BEGIN).
+    live_engine = database.create_engine_for_url(
+        f"sqlite+aiosqlite:///{tmp_path / 'live.db'}"
+    )
     live_session_maker = async_sessionmaker(
         bind=live_engine,
         class_=AsyncSession,
@@ -517,13 +512,6 @@ def test_sdk_client_integration(db_engine):
         database.async_session_maker = orig_db_maker
         main.engine = orig_main_engine
         main.async_session_maker = orig_main_maker
-        for suffix in ["", "-journal", "-wal"]:
-            path = f"{live_db_file}{suffix}"
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
 
 
 @pytest.mark.asyncio
