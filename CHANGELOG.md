@@ -5,20 +5,13 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Fixed
-- **ui**: Keep two more Tailwind 3 behaviours found in review
-- **ui**: Keep the Tailwind 3 look after the upgrade
+- **sdk**: Stop the AutoGen team when the traced run is cancelled (#326)
 
 ### Documentation
-- **ui**: Describe the Tailwind 4 setup
+- Describe how AutoGen run cancellation is traced (#326)
 
-### Refactor
-- **ui**: Rename utilities changed in Tailwind 4
-
-### Maintenance
-- **dependabot**: Group Tailwind packages and skip its majors
-
-### Miscellaneous
-- Build(ui): move to Tailwind CSS 4 with @tailwindcss/postcss
+### Tests
+- **sdk**: Reproduce AutoGen teams running on after cancellation (#326)
 
 ## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 
