@@ -384,7 +384,10 @@ class AgentScopeClient:
 
         Returns within ``timeout + 0.5`` seconds whatever the server state:
         the sender gets ``timeout`` to deliver, plus 0.5 s to close the
-        connection. Never blocks on a full buffer.
+        connection. Never blocks on a full buffer. An unreachable server is
+        retried until the deadline, but once the server rejects the API key
+        (401 or WebSocket close 4401) the sender gives up at once: retrying
+        with the same key cannot succeed.
 
         Events that cannot be delivered in time (server unreachable, key
         rejected) are not discarded: they stay buffered, in order, and are
@@ -580,14 +583,28 @@ class AgentScopeClient:
         loop = asyncio.get_running_loop()
         sender.bind(loop)
         backoff = self._initial_backoff
+        # True when the current attempt failed because the server rejected
+        # the API key. Retrying with the same key cannot succeed, so a
+        # rejection seen *after* stop() or the exit hook asked to finish makes
+        # the sender give up instead of retrying until the deadline (the
+        # events stay buffered). A rejection from before shutdown is not
+        # trusted: it can be up to 30 s old, and the key may have been fixed on
+        # the server since, so the woken backoff makes exactly one more
+        # attempt first.
+        key_rejected = False
 
         while not sender.expired():
+            key_rejected = False
             try:
                 # 1. Ensure the session is registered with the server.
                 if not self.session_id:
-                    await loop.run_in_executor(None, self._create_session_sync)
+                    key_rejected = bool(
+                        await loop.run_in_executor(None, self._create_session_sync)
+                    )
                     if not self.session_id:
-                        if sender.shutdown.is_set() and self.queue.empty():
+                        if sender.shutdown.is_set() and (
+                            key_rejected or self.queue.empty()
+                        ):
                             return
                         await sender.backoff(backoff)
                         backoff = min(backoff * 2, self._max_backoff)
@@ -653,8 +670,12 @@ class AgentScopeClient:
                     # The server completes the handshake and then closes with
                     # 4401, so the reset-on-connect above would otherwise
                     # retry every second. Retrying with the same key cannot
-                    # succeed: wait the maximum and log the hint only once.
+                    # succeed: wait the maximum and log the hint only once,
+                    # or give up right away when stopping.
                     self._warn_unauthorized()
+                    key_rejected = True
+                    if sender.shutdown.is_set():
+                        break
                     backoff = self._max_backoff
                     logging.debug(
                         "AgentScope server rejected the API key (4401). "
@@ -680,8 +701,11 @@ class AgentScopeClient:
                     break
         self.ws_connected = False
 
-    def _create_session_sync(self) -> None:
-        """Issue synchronous POST request to initialize a session on the server."""
+    def _create_session_sync(self) -> bool:
+        """Issue synchronous POST request to initialize a session on the server.
+
+        Returns True if the server rejected the API key (401), False otherwise.
+        """
         url = f"{self.http_base_url}/api/sessions"
         session_uuid = str(uuid.uuid4())
         data = json.dumps(
@@ -715,9 +739,8 @@ class AgentScopeClient:
         except urllib.error.HTTPError as e:
             if e.code == 401:
                 self._warn_unauthorized()
-            else:
-                logging.warning(
-                    f"Failed to register session with AgentScope server: {e}"
-                )
+                return True
+            logging.warning(f"Failed to register session with AgentScope server: {e}")
         except Exception as e:
             logging.warning(f"Failed to register session with AgentScope server: {e}")
+        return False

@@ -50,7 +50,7 @@ If you work on this repository with an editable install made before the rename, 
 
 - **Non-blocking telemetry**: events go onto an in-memory queue and are sent in batches by a background thread, so agent execution never waits on the network.
 - **Resilient transport**: WebSocket connection with automatic reconnection. Up to 5,000 events are buffered while the server is unreachable (set `max_queue_size` on `AgentScopeClient` to change it), and the oldest are dropped first.
-- **Graceful shutdown**: buffered events are delivered when the process exits, even if `stop()` is never called, bounded by the client's `shutdown_timeout` (an `AgentScopeClient` argument, 5 s by default).
+- **Graceful shutdown**: buffered events are delivered when the process exits, even if `stop()` is never called, bounded by the client's `shutdown_timeout` (an `AgentScopeClient` argument, 5 s by default). If the server rejects the API key, the client gives up at once instead of waiting.
 - **Authentication and TLS**: pass `api_key=` (or set `AGENTSCOPE_API_KEY`) and `base_url="https://..."` / `secure=True` to reach a protected remote server. See [docs/AUTHENTICATION.md](../../docs/AUTHENTICATION.md).
 - **LangChain callback handler**: trace chains, tools, agents, retrievers and LLMs with two lines of code.
 - **Model SDK auto-instrumentation**: `patch_openai()`, `patch_anthropic()`, `patch_gemini()`, or `patch_all()` for every installed SDK (sync, async and streaming). See [docs/PROVIDERS.md](../../docs/PROVIDERS.md).

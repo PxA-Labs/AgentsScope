@@ -245,6 +245,213 @@ def test_stop_interrupts_the_4401_backoff(monkeypatch, caplog):
     assert len(warnings) == 1 and "rejected the API key" in warnings[0]
 
 
+# --- giving up at shutdown after the key is rejected (#325) -------------------
+#
+# A rejected key cannot start working on a retry, so once stop() (or the exit
+# hook) has asked the sender to finish, it gives up right after a REST 401 or a
+# 4401 close instead of retrying until the stop deadline. The events stay
+# buffered. While running, the backoff is unchanged.
+
+
+def _wait_for(predicate, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
+
+
+def _timed_stop(client, timeout):
+    started = time.monotonic()
+    client.stop(timeout=timeout)
+    return time.monotonic() - started
+
+
+def patch_session_endpoint(monkeypatch, delay=0.0):
+    """Session POSTs answer 401 until ``state["accept"]`` is set."""
+    state = {"posts": 0, "accept": False}
+
+    def fake_urlopen(req, timeout=None):
+        state["posts"] += 1
+        if delay:
+            time.sleep(delay)
+        if state["accept"]:
+            return io.BytesIO(b'{"session_id": "sess-1"}')
+        raise http_401(req.full_url)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    return state
+
+
+class RecordingSocket:
+    def __init__(self, sink):
+        self.sink = sink
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def send(self, raw):
+        import json
+
+        message = json.loads(raw)
+        self.sink.extend(e["event_id"] for e in message.get("events") or [])
+        if "event" in message:
+            self.sink.append(message["event"]["event_id"])
+
+
+def _warnings(caplog):
+    return [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_stop_gives_up_right_after_a_401_on_session_creation(monkeypatch, caplog):
+    state = patch_session_endpoint(monkeypatch)
+    client = AgentScopeClient(api_key="bad-key")
+    with caplog.at_level(logging.WARNING):
+        client.emit({"event_id": "e1"})
+        assert _wait_for(lambda: state["posts"] >= 1)
+        time.sleep(0.1)  # now in the backoff after the first 401
+        elapsed = _timed_stop(client, 5.0)
+    assert elapsed < 0.5, f"stop(5) took {elapsed:.2f}s after a 401"
+    assert client.running is False
+    assert state["posts"] <= 2
+    assert client.queue.qsize() == 1, "the rejected events must stay buffered"
+    assert len(_warnings(caplog)) == 1
+    assert "rejected the API key" in _warnings(caplog)[0]
+
+
+def test_stop_requested_before_the_401_arrives_returns_promptly(monkeypatch):
+    # The session POST is still in flight when stop() is called.
+    state = patch_session_endpoint(monkeypatch, delay=0.2)
+    client = AgentScopeClient(api_key="bad-key")
+    client.emit({"event_id": "e1"})
+    elapsed = _timed_stop(client, 5.0)
+    assert elapsed < 1.0, f"stop(5) took {elapsed:.2f}s"
+    assert state["posts"] == 1
+    assert client.running is False
+    assert client.queue.qsize() == 1
+
+
+def test_key_fixed_during_the_backoff_is_retried_once_on_stop(monkeypatch):
+    """stop() wakes a backoff that followed a rejection that may be up to 30 s
+    old. If the key was fixed on the server meanwhile, one more attempt must
+    deliver the events instead of giving up on the stale rejection."""
+    state = patch_session_endpoint(monkeypatch)
+    received = []
+    monkeypatch.setattr(
+        "agentscope_trace.client.websockets.connect",
+        lambda uri, **kwargs: RecordingSocket(received),
+    )
+    client = AgentScopeClient(api_key="rotated-in-key")
+    client.emit({"event_id": "e1"})
+    assert _wait_for(lambda: state["posts"] >= 1)
+    time.sleep(0.1)  # now in the backoff after the first 401
+    state["accept"] = True  # the server's key list was fixed meanwhile
+    elapsed = _timed_stop(client, 5.0)
+    assert received == ["e1"], "the woken backoff must retry once and deliver"
+    assert elapsed < 1.0, f"stop(5) took {elapsed:.2f}s"
+    assert client.queue.qsize() == 0
+
+
+def test_events_kept_after_a_401_give_up_are_sent_after_restart(monkeypatch):
+    state = patch_session_endpoint(monkeypatch)
+    received = []
+    monkeypatch.setattr(
+        "agentscope_trace.client.websockets.connect",
+        lambda uri, **kwargs: RecordingSocket(received),
+    )
+    client = AgentScopeClient(api_key="bad-key")
+    client.emit({"event_id": "e1"})
+    assert _wait_for(lambda: state["posts"] >= 1)
+    assert _timed_stop(client, 5.0) < 1.0
+
+    state["accept"] = True  # e.g. the server's key list was fixed
+    client.emit({"event_id": "e2"})
+    client.stop(timeout=2.0)
+    assert received == ["e1", "e2"]
+
+
+def test_stop_gives_up_right_after_a_4401_close(monkeypatch, caplog):
+    connects = patch_4401_server(monkeypatch)
+    monkeypatch.setattr(
+        AgentScopeClient,
+        "_create_session_sync",
+        lambda self: setattr(self, "session_id", "sess-1"),
+    )
+    client = AgentScopeClient(api_key="bad-key")
+    with caplog.at_level(logging.WARNING):
+        client.emit({"event_id": "e1"})
+        assert _wait_for(lambda: connects)
+        time.sleep(0.1)  # now inside the 30 s backoff
+        elapsed = _timed_stop(client, 5.0)
+    assert elapsed < 0.5, f"stop(5) took {elapsed:.2f}s after a 4401 close"
+    assert client.running is False
+    assert len(connects) <= 2
+    # The batch whose send was rejected is kept for the next sender.
+    assert client._unsent == [{"event_id": "e1"}]
+    assert len(_warnings(caplog)) == 1
+    assert "rejected the API key" in _warnings(caplog)[0]
+
+
+def test_stop_requested_before_the_4401_close_returns_promptly(monkeypatch):
+    connects = patch_4401_server(monkeypatch)
+
+    def slow_register(self):
+        time.sleep(0.2)  # stop() is called while this runs
+        self.session_id = "sess-1"
+
+    monkeypatch.setattr(AgentScopeClient, "_create_session_sync", slow_register)
+    client = AgentScopeClient(api_key="bad-key")
+    client.emit({"event_id": "e1"})
+    elapsed = _timed_stop(client, 5.0)
+    assert elapsed < 1.0, f"stop(5) took {elapsed:.2f}s"
+    assert len(connects) == 1
+    assert client._unsent == [{"event_id": "e1"}]
+
+    received = []
+    monkeypatch.setattr(
+        "agentscope_trace.client.websockets.connect",
+        lambda uri, **kwargs: RecordingSocket(received),
+    )
+    client.emit({"event_id": "e2"})
+    client.stop(timeout=2.0)
+    assert received == ["e1", "e2"]
+
+
+def test_401_while_running_keeps_exponential_backoff(
+    monkeypatch, caplog, run_sender_loop
+):
+    patch_session_endpoint(monkeypatch)
+    client = AgentScopeClient(api_key="bad-key")
+    client.queue.put({"event_id": "e1"})
+    with caplog.at_level(logging.WARNING):
+        sleeps = run_sender_loop(client, backoffs=4)
+    assert sleeps == [1.0, 2.0, 4.0, 8.0]
+    assert len(_warnings(caplog)) == 1
+
+
+def test_other_http_errors_still_retry_until_the_stop_deadline(monkeypatch):
+    """Only an auth rejection is permanent: a 503 is retried until stop()'s
+    deadline, as before."""
+    posts = []
+
+    def unavailable(req, timeout=None):
+        posts.append(1)
+        raise urllib.error.HTTPError(req.full_url, 503, "busy", {}, io.BytesIO(b""))
+
+    monkeypatch.setattr(urllib.request, "urlopen", unavailable)
+    client = AgentScopeClient(api_key="k")
+    client.emit({"event_id": "e1"})
+    assert _wait_for(lambda: posts)
+    elapsed = _timed_stop(client, 1.0)
+    assert 0.9 <= elapsed < 2.0, f"stop(1) took {elapsed:.2f}s"
+    assert len(posts) >= 2, "a non-auth failure must be retried while stopping"
+    assert client.queue.qsize() == 1
+
+
 # --- the key must not follow redirects ---------------------------------------
 #
 # urllib forwards ordinary request headers when it follows a 301/302/303. A
