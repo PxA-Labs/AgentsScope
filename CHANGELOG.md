@@ -2,10 +2,31 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-11-14
+## [Unreleased] - 2026-11-20
+
+### Added
+- **sdk**: Add AutoGen integration (model client wrapper + run tracer)
+
+### Fixed
+- **sdk**: Stop the AutoGen team on early close and close the run last
+- **sdk**: Treat a cancelled AutoGen stream finalizer as an early close
+- **sdk**: Make the traced AutoGen model client serializable
+- **sdk**: Start a new AutoGen turn for each agent response
+- **sdk**: Resolve the global client per event in the AutoGen integration
+- **sdk**: Close AutoGen runs cleanly when the consumer stops early
+
+### Documentation
+- **sdk**: Describe what early close does to an AutoGen team
+- **sdk**: Describe AutoGen early close, turns and reconfiguration
+- **sdk**: Document the AutoGen integration and add an example
+
+### Tests
+- **sdk**: Rename AutoGen turn-grouping test to match its behaviour
+- **sdk**: Unit-test AutoGen run tracer edge cases without AutoGen
+- **sdk**: Exercise the AutoGen integration with real teams
 
 ### Miscellaneous
-- Build(deps-dev): update pytest-asyncio requirement in /packages/server
+- Build(sdk): add autogen extra and run AutoGen tests in CI
 
 ## [1.0.0] - 2026-08-10
 

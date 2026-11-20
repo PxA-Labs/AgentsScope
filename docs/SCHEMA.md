@@ -94,9 +94,9 @@ interface RetrieverPayload {
 }
 ```
 
-## 3. Database Schema (SQLite / SQLAlchemy)
+## 3. Database Schema (SQLite / PostgreSQL via SQLAlchemy)
 
-The server utilizes SQLite for local persistent storage. 
+The server uses SQLite for local persistent storage by default. The same SQLAlchemy models also run on PostgreSQL (`DATABASE_URL=postgresql+asyncpg://...`). The DDL below shows the SQLite dialect.
 
 > [!TIP]
 > SQLite is configured with `PRAGMA journal_mode=WAL;` and `PRAGMA foreign_keys=ON;` for better concurrency and integrity.
@@ -201,6 +201,30 @@ interface StatsResponse {
 }
 ```
 
+### Session Export Formats
+
+`GET /api/sessions/{session_id}/export?format=json|csv` (default `json`).
+
+- **JSON** (`application/json`): `{ version, exported_at, session, events[] }`. This is the format `POST /api/sessions/import` accepts.
+- **CSV** (`text/csv; charset=utf-8`): one row per event, ordered by timestamp, streamed from the database. Downloaded as `attachment; filename="<session-name>_<id8>.csv"`. The file starts with a UTF-8 BOM, follows RFC 4180 quoting (CRLF line endings, embedded commas, quotes and newlines are quoted), and is **not** re-importable.
+  Because rows are streamed straight from the database, the request holds a database connection and an open read transaction until the download finishes, so a slow client downloading a large session keeps that connection busy for the whole download.
+
+| Column | Source | Notes |
+|---|---|---|
+| `event_id`, `parent_event_id`, `session_id` | event | `parent_event_id` is empty for root events |
+| `event_type`, `agent_name`, `agent_type`, `status` | event | |
+| `timestamp` | event | ISO 8601 |
+| `latency_ms` | event | empty when not measured |
+| `model` | `payload.model` | LLM events only |
+| `prompt_tokens`, `completion_tokens` | payload | |
+| `total_tokens` | `payload.total_tokens` | derived from prompt + completion when missing |
+| `cost_usd` | computed | from `pricing.json`; `0.0` for unknown models, empty when there is no usage |
+| `tool_name` | `payload.tool_name` | tool events only |
+| `error` | `payload.error` | |
+| `payload_json` | payload | full payload serialised as JSON, so no data is lost |
+
+Text cells that start with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` to prevent formula injection in spreadsheet applications. Numeric columns are never altered.
+
 ## 5. WebSocket Message Formats
 
 WebSockets are utilized for fast streaming of events from the SDK to the Server, and then broadcasting those to the UI.
@@ -235,6 +259,33 @@ Broadcasts include the same event shapes as ingestion, but also add `session_upd
      "status": "completed", 
      "ended_at": "2026-07-21T15:10:00Z", 
      "total_tokens": 4821 
+  }
+}
+```
+
+UI clients subscribed to a session also receive incremental DAG updates (`graph_update`) for each ingested event. Nodes carry no computed layout (`position` is `{x: 0, y: 0}`), so clients place them provisionally and re-fetch `GET /api/sessions/{id}/graph` for the full layout when a terminal event arrives. `edge` is `null` for root events.
+```json
+{
+  "type": "graph_update",
+  "session_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "node": {
+    "id": "evt_123",
+    "type": "LLMNode",
+    "position": { "x": 0, "y": 0 },
+    "data": {
+      "label": "ChatOpenAI",
+      "agentName": "ChatOpenAI",
+      "eventType": "llm_end",
+      "durationMs": 820,
+      "tokenCount": 512,
+      "status": "completed"
+    }
+  },
+  "edge": {
+    "id": "e-evt_100-evt_123",
+    "source": "evt_100",
+    "target": "evt_123",
+    "type": "default"
   }
 }
 ```

@@ -25,7 +25,7 @@ If applicable, add screenshots, error logs, or stack traces to help explain your
 
 **Environment Info (please complete the following information):**
  - OS: [e.g. macOS, Ubuntu]
- - Python Version: [e.g. 3.10.12]
+ - Python Version: [e.g. 3.11.9]
  - Node.js Version: [e.g. 18.16.0]
  - AgentScope version / commit hash: [e.g. v0.1.0]
 

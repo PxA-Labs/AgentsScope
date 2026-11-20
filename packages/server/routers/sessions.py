@@ -1,9 +1,11 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, AsyncIterator, Dict, List, Literal
 
+import csv_export
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from graph_layout import compute_graph_layout
 from models import EventModel, SessionModel
 from pricing import calculate_cost as _calculate_llm_cost
@@ -320,9 +322,41 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
     )
 
 
-@router.get("/{session_id}/export", response_model=SessionExport)
-async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Export an entire session and all telemetry events as JSON."""
+# Rows fetched per database round-trip, and sent per response chunk, while
+# streaming a CSV export.
+CSV_EXPORT_BATCH_SIZE = 500
+
+
+@router.get(
+    "/{session_id}/export",
+    response_model=SessionExport,
+    responses={
+        200: {
+            "description": (
+                "The session and its events. JSON by default; with "
+                "`format=csv`, one CSV row per event (see docs/SCHEMA.md)."
+            ),
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def export_session(
+    session_id: str,
+    export_format: Literal["json", "csv"] = Query(
+        "json",
+        alias="format",
+        description="`json` (re-importable) or `csv` (one row per event).",
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export an entire session and all telemetry events as JSON or CSV.
+
+    The CSV export is streamed from the database in batches, so memory stays
+    flat for large sessions. The trade-off: the request's database session,
+    and with it a pooled connection and an open read transaction, is held
+    until the last row has been sent. A slow client downloading a large
+    session keeps that connection busy for the whole download.
+    """
     sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
     sess_res = await db.execute(sess_stmt)
     db_session = sess_res.scalars().first()
@@ -336,6 +370,9 @@ async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
         .where(EventModel.session_id == session_id)
         .order_by(EventModel.timestamp.asc())
     )
+
+    if export_format == "csv":
+        return _csv_export_response(db, db_session, event_stmt)
     event_res = await db.execute(event_stmt)
     events = event_res.scalars().all()
 
@@ -344,6 +381,29 @@ async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
         exported_at=datetime.now(timezone.utc),
         session=SessionResponse.model_validate(db_session),
         events=[EventResponse.model_validate(ev) for ev in events],
+    )
+
+
+def _csv_export_response(
+    db: AsyncSession, db_session: SessionModel, event_stmt
+) -> StreamingResponse:
+    """Stream events as CSV without materialising the whole session in memory."""
+
+    async def rows() -> AsyncIterator[str]:
+        yield csv_export.header_line_with_bom()
+        result = await db.stream_scalars(
+            event_stmt.execution_options(yield_per=CSV_EXPORT_BATCH_SIZE)
+        )
+        # One chunk per batch: a chunk per row means one ASGI message (and HTTP
+        # chunk) per event, which is roughly twice as slow as the JSON export.
+        async for batch in result.partitions(CSV_EXPORT_BATCH_SIZE):
+            yield "".join(csv_export.row_line(event) for event in batch)
+
+    filename = csv_export.export_filename(db_session.name, db_session.session_id)
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
