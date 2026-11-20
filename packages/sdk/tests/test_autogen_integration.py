@@ -343,3 +343,41 @@ def test_explicit_aclose_closes_the_run_and_the_team():
     assert team_node["event_type"] == "chain_end"
     assert rec.status == ["completed"]
 
+
+def test_events_follow_reconfigured_global_client(monkeypatch):
+    import agentscope.decorators as decorators
+
+    clients = []
+
+    class FakeClient(Recorder):
+        def __init__(self, session_name=None, **kwargs):
+            super().__init__()
+            self.session_name = session_name
+            clients.append(self)
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(decorators, "AgentScopeClient", FakeClient)
+    monkeypatch.setattr(decorators, "_global_client", None)
+
+    decorators.configure(session_name="job-1")
+    tracer = AgentScopeAutoGenTracer()
+    model = trace_model_client(
+        ReplayChatCompletionClient(["one", "two"], model_info=INFO), name="gpt-4o"
+    )
+    msgs = [UserMessage(content="hi", source="u")]
+    asyncio.run(model.create(msgs))
+    decorators.configure(session_name="job-2")
+    asyncio.run(model.create(msgs))
+    asyncio.run(tracer.run(make_team(Recorder()), task="t"))
+
+    job1, job2 = clients
+    assert [
+        e["payload"]["completion"]
+        for e in job1.events
+        if e["payload"].get("completion")
+    ] == ["one"]
+    assert any(e["payload"].get("completion") == "two" for e in job2.events)
+    assert any(e["agent_type"] == "team" for e in job2.events)
+    assert job2.status == ["completed"] and job1.status == []

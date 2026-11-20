@@ -130,12 +130,14 @@ class _Emitter:
 
     @property
     def client(self) -> Any:
-        if self._client is None:
-            try:
-                self._client = get_global_client()
-            except Exception:
-                return None
-        return self._client
+        if self._client is not None:
+            return self._client
+        # Resolved on every use (not cached) so a later ``configure(...)``
+        # takes effect for clients and tracers created before it.
+        try:
+            return get_global_client()
+        except Exception:
+            return None
 
     def emit(
         self,
