@@ -202,6 +202,12 @@ def _documents(nodes: Any) -> List[Dict[str, Any]]:
 
 
 class _BoundedDict(OrderedDict):
+    """Dict capped at ``maxsize`` entries, evicting in insertion order (FIFO).
+
+    Not an LRU: reads do not refresh an entry. Spans are short-lived, so the
+    oldest span is the one least likely to still be needed.
+    """
+
     def __init__(self, maxsize: int):
         super().__init__()
         self.maxsize = maxsize
@@ -226,8 +232,10 @@ class LlamaIndexEventMapper:
         self._anchor: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)
         # span id -> node id of the node opened in that span
         self._span_node: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)
-        # node id -> open node state
-        self._open: Dict[str, Dict[str, Any]] = {}
+        # node id -> open node state. Nodes are closed by their end event, a
+        # dropped span, their span exiting or their stream being collected;
+        # the cap is a last-resort guard against unbounded growth.
+        self._open: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)
         # span id -> outer LLM node id, for LLM calls implemented on top of
         # another LLM call (e.g. chat() via complete()); shown as one node.
         self._absorbed: _BoundedDict = _BoundedDict(_MAX_TRACKED_SPANS)

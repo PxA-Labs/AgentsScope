@@ -178,3 +178,12 @@ def test_node_without_end_event_closes_when_its_span_exits(mapper):
     mapper.on_span_exit("R.retrieve-1", result=[])
     assert [e["status"] for e in mapper.client.events] == ["running", "completed"]
     assert mapper._open == {}
+
+
+def test_open_nodes_are_bounded(monkeypatch):
+    monkeypatch.setattr(li, "_MAX_TRACKED_SPANS", 3)
+    m = LlamaIndexEventMapper(Recorder())
+    for i in range(10):
+        m.on_span_enter(f"Q.query-{i}", None)
+        m.on_event(event("QueryStartEvent", f"Q.query-{i}", query="q"))
+    assert len(m._open) == 3
