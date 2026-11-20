@@ -4,20 +4,27 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Added
-- **cli**: Explain how to get the server when run from a pip install
+### Fixed
+- **sdk**: Don't mark an over-budget session completed
+- **sdk**: Make budget_limit_usd actually stop the LangChain run
 
 ### Documentation
-- Add RELEASING.md for the agentscope-trace release process
+- Spell out the budget behaviour for each kind of run
+- The server reads environment variables, not a .env file
+- Describe what budget_limit_usd actually does
+- **design**: Mark implemented future-architecture items
+- **schema**: Document PostgreSQL support and graph_update WS messages
+- **server**: Document API routes, storage backends and configuration
+- **sdk**: Document install extras, OpenAI patching, decorators and budgets
+- **prd**: Record shipped post-MVP work and current constraints
+- **readme**: Update structure, tech stack and FAQ
+- **readme**: Document the environment variables the server reads
+- **readme**: List shipped features and link roadmap to issues
+- **readme**: Fix SDK install command
 
-### CI/CD
-- **release**: Only publish tags on main, mark pre-releases, serialise runs
-- **release**: Let a re-tag of the same version get past TestPyPI
-- **release**: Publish agentscope-trace to PyPI on version tags
-- **release**: Add tag/version consistency check
-
-### Miscellaneous
-- Build(sdk): publish as agentscope-trace and single-source the version
+### Tests
+- **sdk**: A sync run whose last call crosses the budget ends failed
+- **sdk**: Drive budget enforcement through real LangChain runs
 
 ## [1.0.0] - 2026-08-10
 
