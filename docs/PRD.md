@@ -69,7 +69,7 @@ Debugging multi-agent AI pipelines is notoriously difficult. Developers currentl
   - `GET /api/sessions`: List all historical sessions.
   - `GET /api/sessions/{id}`: Retrieve full details and events for a specific session.
   - `DELETE /api/sessions/{id}`: Delete a session.
-  - `GET /api/stats`: Retrieve aggregate statistics (total tokens, total runs, etc.).
+  - `GET /api/stats`: Retrieve aggregate statistics (total tokens, total runs, etc.). *(Not implemented as a global endpoint; per-session stats are served by `GET /api/sessions/{id}/stats`.)*
 - **WebSocket Route:**
   - `WS /ws/events`: Receive events from the Python SDK, persist them to SQLite, and immediately broadcast them to connected UI clients. *(Implemented as a single `WS /ws` route; clients identify themselves with `?client_type=sdk|ui`.)*
 
