@@ -168,3 +168,13 @@ def test_events_follow_reconfigured_global_client(monkeypatch):
     job1, job2 = clients
     assert [e["payload"]["inputs"]["query"] for e in job1.events] == ["one"]
     assert [e["payload"]["inputs"]["query"] for e in job2.events] == ["two"]
+
+
+def test_node_without_end_event_closes_when_its_span_exits(mapper):
+    mapper.on_span_enter("R.retrieve-1", None)
+    mapper.on_event(
+        event("RetrievalStartEvent", "R.retrieve-1", str_or_query_bundle="q")
+    )
+    mapper.on_span_exit("R.retrieve-1", result=[])
+    assert [e["status"] for e in mapper.client.events] == ["running", "completed"]
+    assert mapper._open == {}

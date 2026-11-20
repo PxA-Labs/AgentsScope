@@ -249,3 +249,59 @@ def test_instrument_is_idempotent_and_uninstrument_stops_events(index, rec):
     uninstrument_llamaindex()
     index.as_query_engine(similarity_top_k=1).query("anything")
     assert rec.events == []
+
+
+class BrokenStreamLLM(UsageLLM):
+    @llm_completion_callback()
+    def stream_complete(
+        self, prompt: str, formatted: bool = False, **kwargs: Any
+    ) -> CompletionResponseGen:
+        yield CompletionResponse(text="Par", delta="Par")
+        raise RuntimeError("stream cut")
+
+
+def streaming_query(index):
+    return index.as_query_engine(similarity_top_k=1, streaming=True).query(
+        "What is the capital of France?"
+    )
+
+
+def test_abandoned_stream_is_closed_not_left_running(rec):
+    import gc
+
+    mapper = instrument_llamaindex()
+    stream = UsageLLM().stream_complete("hi")  # started, never consumed
+    assert one(nodes(rec), "llm")["status"] == "running"
+    del stream
+    gc.collect()
+
+    llm = one(nodes(rec), "llm")
+    assert llm["event_type"] == "llm_end" and llm["status"] == "completed"
+    assert llm["payload"]["closed_early"] is True
+    assert mapper._open == {}
+
+
+def test_partially_consumed_stream_is_closed_with_what_was_received(index, rec):
+    import gc
+
+    mapper = instrument_llamaindex()
+    response = streaming_query(index)
+    first = next(response.response_gen)
+    del response
+    gc.collect()
+
+    llm = one(nodes(rec), "llm")
+    assert llm["event_type"] == "llm_end" and llm["status"] == "completed"
+    assert llm["payload"]["closed_early"] is True
+    assert llm["payload"]["completion"].startswith(first)
+    assert mapper._open == {}
+
+
+def test_stream_failing_midway_marks_llm_error(index, rec):
+    Settings.llm = BrokenStreamLLM()
+    response = streaming_query(index)
+    with pytest.raises(RuntimeError, match="stream cut"):
+        "".join(response.response_gen)
+    llm = one(nodes(rec), "llm")
+    assert llm["event_type"] == "llm_error"
+    assert llm["payload"]["error"] == "stream cut"

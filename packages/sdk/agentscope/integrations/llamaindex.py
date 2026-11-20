@@ -26,13 +26,17 @@ LLMChat* / LLMCompletion*           llm_start / llm_end (+ usage when reported)
 Start and end events of one operation share a span; LlamaIndex's span tree
 is used to attach every node to its nearest shown ancestor. When an
 operation raises, LlamaIndex drops its spans (no end events); any node open
-in a dropped span is emitted as an error.
+in a dropped span is emitted as an error. A streamed LLM call ends when its
+stream does: when the stream fails it is an error, and when it is closed or
+garbage-collected before the end it is closed with ``closed_early``.
 """
 
+import inspect
 import logging
 import threading
 import time
 import uuid
+import weakref
 from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -102,6 +106,10 @@ def _response_output(response: Any) -> str:
     if isinstance(text, str):
         return _truncate(text)
     return _truncate(str(response))
+
+
+def _is_stream(value: Any) -> bool:
+    return inspect.isgenerator(value) or inspect.isasyncgen(value)
 
 
 def _span_owner(span_id: Optional[str]) -> str:
@@ -248,6 +256,54 @@ class LlamaIndexEventMapper:
                 )
             self._anchor[span_id] = anchor
 
+    def on_span_exit(self, span_id: str, result: Any = None) -> None:
+        """Close a node whose end event never came, unless it is streaming.
+
+        A streamed LLM call's span exits as soon as the stream is returned,
+        before any end event. Such a node is closed by the stream's own
+        events, or here once the stream object is garbage-collected (e.g.
+        never iterated), so it is never left running forever.
+        """
+        with self._lock:
+            node_id = self._span_node.get(span_id)
+            node = self._open.get(node_id) if node_id else None
+            if node is None:
+                return
+            if _is_stream(result):
+                try:
+                    weakref.finalize(result, self._close_early, node_id).atexit = False
+                except TypeError:
+                    pass
+                return
+            self._open.pop(node_id, None)
+        payload = self._describe_end(node["kind"], node, None)
+        self._emit(node, 1, "completed", payload, self._latency(node))
+
+    def _close_early(self, node_id: str) -> None:
+        with self._lock:
+            node = self._open.pop(node_id, None)
+        if node is None:
+            return
+        payload = self._describe_end(node["kind"], node, None)
+        payload["closed_early"] = True
+        self._emit(node, 1, "completed", payload, self._latency(node))
+
+    def _on_exception(self, span_id: Optional[str], exc: Any) -> None:
+        # LlamaIndex reports exceptions raised while a stream is consumed (the
+        # span has already exited) as ExceptionEvent; closing a started stream
+        # early shows up as GeneratorExit.
+        with self._lock:
+            node_id = self._span_node.get(span_id) if span_id else None
+            node = self._open.get(node_id) if node_id else None
+            if node is None:
+                return
+            if not isinstance(exc, GeneratorExit):
+                self._open.pop(node_id, None)
+        if isinstance(exc, GeneratorExit):
+            self._close_early(node_id)
+        else:
+            self._emit_error(node, exc)
+
     def on_span_drop(self, span_id: str, err: Optional[BaseException]) -> None:
         with self._lock:
             node_id = self._span_node.get(span_id)
@@ -271,6 +327,11 @@ class LlamaIndexEventMapper:
             pass
         if name in ("LLMChatInProgressEvent", "LLMCompletionInProgressEvent"):
             self._stream_delta(getattr(event, "span_id", None), event)
+            return
+        if name == "ExceptionEvent":
+            self._on_exception(
+                getattr(event, "span_id", None), getattr(event, "exception", None)
+            )
             return
         mapping = _EVENTS.get(name)
         if mapping is None:
@@ -541,6 +602,7 @@ def instrument_llamaindex(agentscope_client: Any = None) -> LlamaIndexEventMappe
                 result: Any = None,
                 **kwargs: Any,
             ) -> Optional[SimpleSpan]:
+                self._mapper.on_span_exit(id_, result)
                 with self.lock:
                     return self.open_spans.get(id_)
 
