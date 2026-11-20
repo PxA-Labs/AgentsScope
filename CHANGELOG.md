@@ -4,10 +4,8 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Documentation
-- Fix the remaining stale lines found in review
-- **sdk**: Describe provider patching, integrations, shutdown and auth
-- List the shipped integrations, CSV export and API-key auth
+### Miscellaneous
+- Build(deps): bump react and @types/react in /packages/ui
 
 ## [1.0.0] - 2026-08-10
 
