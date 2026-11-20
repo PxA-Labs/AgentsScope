@@ -14,9 +14,9 @@ help:
 	@echo "  make format        - Auto-format Python codebase with Ruff and Black"
 	@echo "  make test-sdk      - Run Python SDK tests"
 	@echo "  make test-server   - Run Python Server tests"
-	@echo "  make test-ui       - Run Next.js UI lint, type-check, unit tests, build and E2E smoke test"
+	@echo "  make test-ui       - Run Next.js UI lint, type-check, unit tests and build"
 	@echo "  make test-ui-unit  - Run Next.js UI unit tests with coverage (Vitest)"
-	@echo "  make test-ui-e2e   - Run the UI E2E smoke test (Playwright; needs server deps + chromium)"
+	@echo "  make test-ui-e2e   - Run the UI E2E smoke test (opt-in; needs server deps, chromium, free ports)"
 	@echo "  make test          - Run all test suites"
 	@echo "  make pre-pr        - Run comprehensive pre-PR quality, linting & test suite"
 	@echo "  make run-server    - Run FastAPI server with hot-reload"
@@ -49,9 +49,10 @@ test-sdk:
 test-server:
 	pytest packages/server/tests
 
+# The E2E smoke test is opt-in (make test-ui-e2e): it also needs the Python
+# server dependencies, Playwright's chromium and free ports. CI runs both.
 test-ui:
 	cd packages/ui && npm run lint && npx tsc --noEmit && npm run test:coverage && npm run build
-	$(MAKE) test-ui-e2e
 
 test-ui-unit:
 	cd packages/ui && npx tsc --noEmit && npm run test:coverage
