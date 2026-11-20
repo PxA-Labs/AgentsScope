@@ -26,7 +26,7 @@ Migration notes for the next `agentscope-trace` release. The distribution name (
 
 - **Migrate**: `s/from agentscope/from agentscope_trace/` and `s/import agentscope/import agentscope_trace/`, plus `agentscope.<name>` attribute uses and module-name strings (`monkeypatch.setattr("agentscope....")` targets):
   ```bash
-  perl -pi -e 's/\b(from|import) agentscope\b/$1 agentscope_trace/g; s/^(\s*import\s[^#]*,\s*)agentscope\b/$1agentscope_trace/; s/(?<![\w.\/@-])agentscope(?=\.\w)/agentscope_trace/g' *.py
+  perl -pi -e 's/\b(from|import) agentscope\b/$1 agentscope_trace/g; 1 while s/^(\s*import\s[^#]*,\s*)agentscope\b/$1agentscope_trace/; s/(?<![\w.\/@-])agentscope(?=\.\w)/agentscope_trace/g' *.py
   ```
   Review the diff: it can also rewrite a bare `agentscope.<host>` string or imports of agentscope-ai's unrelated `agentscope`. Alternatively, `import agentscope_trace as agentscope` keeps `agentscope.<name>` uses working. Logging config must be updated by hand: loggers are now `agentscope_trace.*`. See [packages/sdk/README.md](packages/sdk/README.md#migrating-from-import-agentscope).
 - **Compatibility**: `import agentscope` and `agentscope.<submodule>` imports keep working through a deprecated shim that emits one `DeprecationWarning`. It aliases the same module objects, so old and new imports can be mixed during migration. Import the package once at startup, before starting threads (a thread's first import of `agentscope.<name>` can fail while another thread's first `import agentscope` is still running).

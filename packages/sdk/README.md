@@ -29,13 +29,14 @@ The import package is `agentscope_trace`; the `agentscope` command-line tool kee
 Until [#297](https://github.com/PxA-Labs/AgentsScope/issues/297) the import package was called `agentscope`. Replace it with `agentscope_trace`, i.e. `s/from agentscope/from agentscope_trace/` and `s/import agentscope/import agentscope_trace/`, plus attribute uses such as `agentscope.decorators.configure(...)`:
 
 ```bash
-perl -pi -e 's/\b(from|import) agentscope\b/$1 agentscope_trace/g; s/^(\s*import\s[^#]*,\s*)agentscope\b/$1agentscope_trace/; s/(?<![\w.\/@-])agentscope(?=\.\w)/agentscope_trace/g' your_module.py
+perl -pi -e 's/\b(from|import) agentscope\b/$1 agentscope_trace/g; 1 while s/^(\s*import\s[^#]*,\s*)agentscope\b/$1agentscope_trace/; s/(?<![\w.\/@-])agentscope(?=\.\w)/agentscope_trace/g' your_module.py
 ```
 
 It rewrites `from agentscope...` / `import agentscope...` lines (including `import agentscope as x` and `import os, agentscope`), and `agentscope.<name>` attribute uses and strings such as `monkeypatch.setattr("agentscope.client....")` targets. Review the diff afterwards (`git diff`, then `grep -rnw agentscope --include='*.py' .`):
 
 - It also rewrites `agentscope.<name>` text that isn't this SDK, e.g. a bare `agentscope.example.com` host (URLs with `//` and e-mail addresses are skipped), and imports of agentscope-ai's unrelated `agentscope` package if your code also refers to that.
 - Logging configuration needs updating by hand: loggers are now named `agentscope_trace.*` (for example `agentscope_trace.integrations.crewai`).
+- Bare uses of the module object itself, such as `getattr(agentscope, ...)` or `print(agentscope)`, are not rewritten and become a `NameError` once the import line says `agentscope_trace`; the `grep` above lists them so you can fix them by hand.
 
 The smallest possible change is `import agentscope_trace as agentscope`, which keeps every `agentscope.<name>` use working; `from agentscope... import` lines still need the new name.
 
