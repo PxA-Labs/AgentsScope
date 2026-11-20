@@ -583,15 +583,17 @@ class AgentScopeClient:
         loop = asyncio.get_running_loop()
         sender.bind(loop)
         backoff = self._initial_backoff
-        # True when the last attempt failed because the server rejected the
-        # API key. Retrying with the same key cannot succeed, so once stop()
-        # or the exit hook asks to finish, the sender gives up instead of
-        # retrying until the deadline. The events stay buffered.
+        # True when the current attempt failed because the server rejected
+        # the API key. Retrying with the same key cannot succeed, so a
+        # rejection seen *after* stop() or the exit hook asked to finish makes
+        # the sender give up instead of retrying until the deadline (the
+        # events stay buffered). A rejection from before shutdown is not
+        # trusted: it can be up to 30 s old, and the key may have been fixed on
+        # the server since, so the woken backoff makes exactly one more
+        # attempt first.
         key_rejected = False
 
         while not sender.expired():
-            if key_rejected and sender.shutdown.is_set():
-                break  # stop() cut short the backoff after a rejection
             key_rejected = False
             try:
                 # 1. Ensure the session is registered with the server.
