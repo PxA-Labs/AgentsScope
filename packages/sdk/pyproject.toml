@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # Published as "agentscope-trace": "agentscope" and "agentscope-sdk" on PyPI
 # belong to unrelated projects (#274). The import package is `agentscope_trace`
-# (#297).
+# (#297); see [tool.setuptools] for the deprecated `agentscope` shim.
 name = "agentscope-trace"
 dynamic = ["version"]
 description = "Lightweight tracing SDK for the AgentScope observability dashboard"
@@ -85,6 +85,10 @@ packages = [
     "agentscope_trace",
     "agentscope_trace.integrations",
     "agentscope_trace.providers",
+    # Deprecated alias for `agentscope_trace` (agentscope/__init__.py only).
+    # It is the one path that still clashes with agentscope-ai's `agentscope`
+    # package on PyPI; remove it after at least one minor release (#297).
+    "agentscope",
 ]
 
 [tool.setuptools.dynamic]
