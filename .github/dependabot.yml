@@ -12,6 +12,12 @@ updates:
     labels:
       - "dependencies"
       - "ci/cd"
+    groups:
+      # All github/codeql-action/* steps must run the same release, so they
+      # are bumped together in a single PR instead of one PR per sub-action.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # Python SDK (pyproject.toml)
   - package-ecosystem: "pip"
@@ -19,6 +25,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # The SDK is a library: only raise a dependency's lower bound when the
+    # current range no longer allows the new release. Bumping floors to the
+    # latest version (e.g. pydantic>=2.14.3) makes the SDK uninstallable next
+    # to frameworks that pin older versions, such as CrewAI (pydantic<2.13).
+    versioning-strategy: increase-if-necessary
     labels:
       - "dependencies"
       - "pkg: sdk"
@@ -42,6 +53,27 @@ updates:
     labels:
       - "dependencies"
       - "pkg: ui"
+    groups:
+      # eslint and eslint-config-next must move together (#260 and #263 each
+      # bumped one side and failed with ERESOLVE).
+      eslint:
+        patterns:
+          - "eslint"
+          - "eslint-config-next"
+          - "@typescript-eslint/*"
+          - "typescript-eslint"
+    ignore:
+      # eslint-config-next 16 pulls in eslint-plugin-react, eslint-plugin-import
+      # and eslint-plugin-jsx-a11y, which only declare peer support up to
+      # ESLint 9. Drop this once they support ESLint 10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      # The group above only helps when both sides get a minor/patch bump. A
+      # major of eslint-config-next can require a new ESLint major (16 needed
+      # ESLint 9), so it would arrive alone and fail the same way. Bump majors
+      # of this pair together by hand.
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
 
   # Server Docker image
   - package-ecosystem: "docker"

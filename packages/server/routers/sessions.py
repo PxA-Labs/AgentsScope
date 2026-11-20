@@ -1,9 +1,11 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, AsyncIterator, Dict, List, Literal
 
-from database import get_db
+import csv_export
+from database import get_db, sqlite_write_lock
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from graph_layout import compute_graph_layout
 from models import EventModel, SessionModel
 from pricing import calculate_cost as _calculate_llm_cost
@@ -58,27 +60,29 @@ def _compute_session_aggregates(events: List[EventModel]) -> Dict[str, Any]:
 @router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_session(session_in: SessionCreate, db: AsyncSession = Depends(get_db)):
     """Initialize a new observability session."""
-    session_id = session_in.session_id or str(uuid.uuid4())
+    async with sqlite_write_lock(db):
+        session_id = session_in.session_id or str(uuid.uuid4())
 
-    # Check if session already exists
-    existing = await db.execute(
-        select(SessionModel).where(SessionModel.session_id == session_id)
-    )
-    if existing.scalars().first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Session ID already exists"
+        # Check if session already exists
+        existing = await db.execute(
+            select(SessionModel).where(SessionModel.session_id == session_id)
         )
+        if existing.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session ID already exists",
+            )
 
-    db_session = SessionModel(
-        session_id=session_id,
-        name=session_in.name,
-        status="running",
-        started_at=datetime.now(timezone.utc),
-        metadata_=session_in.metadata or {},
-    )
-    db.add(db_session)
-    await db.commit()
-    await db.refresh(db_session)
+        db_session = SessionModel(
+            session_id=session_id,
+            name=session_in.name,
+            status="running",
+            started_at=datetime.now(timezone.utc),
+            metadata_=session_in.metadata or {},
+        )
+        db.add(db_session)
+        await db.commit()
+        await db.refresh(db_session)
 
     # Broadcast session creation to global UI connections
     session_data = {
@@ -149,33 +153,34 @@ async def update_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Modify details or state of a session (e.g. mark as completed or failed)."""
-    stmt = select(SessionModel).where(SessionModel.session_id == session_id)
-    res = await db.execute(stmt)
-    db_session = res.scalars().first()
-    if not db_session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
-        )
+    async with sqlite_write_lock(db):
+        stmt = select(SessionModel).where(SessionModel.session_id == session_id)
+        res = await db.execute(stmt)
+        db_session = res.scalars().first()
+        if not db_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+            )
 
-    db_session.status = session_update.status.value
-    if session_update.ended_at is not None:
-        db_session.ended_at = session_update.ended_at
-    elif session_update.status.value in ["completed", "failed"]:
-        db_session.ended_at = datetime.now(timezone.utc)
+        db_session.status = session_update.status.value
+        if session_update.ended_at is not None:
+            db_session.ended_at = session_update.ended_at
+        elif session_update.status.value in ["completed", "failed"]:
+            db_session.ended_at = datetime.now(timezone.utc)
 
-    # Recalculate session aggregates from events before finishing
-    event_stmt = select(EventModel).where(EventModel.session_id == session_id)
-    event_res = await db.execute(event_stmt)
-    events = event_res.scalars().all()
+        # Recalculate session aggregates from events before finishing
+        event_stmt = select(EventModel).where(EventModel.session_id == session_id)
+        event_res = await db.execute(event_stmt)
+        events = event_res.scalars().all()
 
-    aggregates = _compute_session_aggregates(events)
-    db_session.total_tokens = aggregates["total_tokens"]
-    db_session.total_cost_usd = aggregates["total_cost"]
-    db_session.error_count = aggregates["error_count"]
-    db_session.agent_count = aggregates["agent_count"]
+        aggregates = _compute_session_aggregates(events)
+        db_session.total_tokens = aggregates["total_tokens"]
+        db_session.total_cost_usd = aggregates["total_cost"]
+        db_session.error_count = aggregates["error_count"]
+        db_session.agent_count = aggregates["agent_count"]
 
-    await db.commit()
-    await db.refresh(db_session)
+        await db.commit()
+        await db.refresh(db_session)
 
     # Broadcast status change to connected UIs
     session_data = {
@@ -194,16 +199,19 @@ async def update_session(
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
     """Delete a session and all its associated events."""
-    stmt = select(SessionModel).where(SessionModel.session_id == session_id)
-    res = await db.execute(stmt)
-    db_session = res.scalars().first()
-    if not db_session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
-        )
+    async with sqlite_write_lock(db):
+        stmt = select(SessionModel).where(SessionModel.session_id == session_id)
+        res = await db.execute(stmt)
+        db_session = res.scalars().first()
+        if not db_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+            )
 
-    await db.execute(delete(SessionModel).where(SessionModel.session_id == session_id))
-    await db.commit()
+        await db.execute(
+            delete(SessionModel).where(SessionModel.session_id == session_id)
+        )
+        await db.commit()
     return
 
 
@@ -320,9 +328,41 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
     )
 
 
-@router.get("/{session_id}/export", response_model=SessionExport)
-async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Export an entire session and all telemetry events as JSON."""
+# Rows fetched per database round-trip, and sent per response chunk, while
+# streaming a CSV export.
+CSV_EXPORT_BATCH_SIZE = 500
+
+
+@router.get(
+    "/{session_id}/export",
+    response_model=SessionExport,
+    responses={
+        200: {
+            "description": (
+                "The session and its events. JSON by default; with "
+                "`format=csv`, one CSV row per event (see docs/SCHEMA.md)."
+            ),
+            "content": {"text/csv": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def export_session(
+    session_id: str,
+    export_format: Literal["json", "csv"] = Query(
+        "json",
+        alias="format",
+        description="`json` (re-importable) or `csv` (one row per event).",
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export an entire session and all telemetry events as JSON or CSV.
+
+    The CSV export is streamed from the database in batches, so memory stays
+    flat for large sessions. The trade-off: the request's database session,
+    and with it a pooled connection and an open read transaction, is held
+    until the last row has been sent. A slow client downloading a large
+    session keeps that connection busy for the whole download.
+    """
     sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
     sess_res = await db.execute(sess_stmt)
     db_session = sess_res.scalars().first()
@@ -336,6 +376,9 @@ async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
         .where(EventModel.session_id == session_id)
         .order_by(EventModel.timestamp.asc())
     )
+
+    if export_format == "csv":
+        return _csv_export_response(db, db_session, event_stmt)
     event_res = await db.execute(event_stmt)
     events = event_res.scalars().all()
 
@@ -347,6 +390,29 @@ async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
     )
 
 
+def _csv_export_response(
+    db: AsyncSession, db_session: SessionModel, event_stmt
+) -> StreamingResponse:
+    """Stream events as CSV without materialising the whole session in memory."""
+
+    async def rows() -> AsyncIterator[str]:
+        yield csv_export.header_line_with_bom()
+        result = await db.stream_scalars(
+            event_stmt.execution_options(yield_per=CSV_EXPORT_BATCH_SIZE)
+        )
+        # One chunk per batch: a chunk per row means one ASGI message (and HTTP
+        # chunk) per event, which is roughly twice as slow as the JSON export.
+        async for batch in result.partitions(CSV_EXPORT_BATCH_SIZE):
+            yield "".join(csv_export.row_line(event) for event in batch)
+
+    filename = csv_export.export_filename(db_session.name, db_session.session_id)
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post(
     "/import", response_model=SessionResponse, status_code=status.HTTP_201_CREATED
 )
@@ -354,77 +420,80 @@ async def import_session(
     payload: SessionImportPayload, db: AsyncSession = Depends(get_db)
 ):
     """Import a session and its associated events from a JSON export."""
-    imported_sess = payload.session
-    session_id = imported_sess.session_id
+    async with sqlite_write_lock(db):
+        imported_sess = payload.session
+        session_id = imported_sess.session_id
 
-    # Check if session exists; if so, create with a unique disambiguated ID
-    existing_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
-    existing_res = await db.execute(existing_stmt)
-    existing_session = existing_res.scalars().first()
-
-    target_session_id = session_id
-    if existing_session:
-        target_session_id = f"{session_id}_imported_{uuid.uuid4().hex[:6]}"
-
-    # Check for any conflicting event_ids in the database
-    incoming_event_ids = [ev.event_id for ev in payload.events]
-    existing_event_ids = set()
-    if incoming_event_ids:
-        chk_stmt = select(EventModel.event_id).where(
-            EventModel.event_id.in_(incoming_event_ids)
+        # Check if session exists; if so, create with a unique disambiguated ID
+        existing_stmt = select(SessionModel).where(
+            SessionModel.session_id == session_id
         )
-        chk_res = await db.execute(chk_stmt)
-        existing_event_ids = set(chk_res.scalars().all())
+        existing_res = await db.execute(existing_stmt)
+        existing_session = existing_res.scalars().first()
 
-    # Map original event IDs to new unique event IDs if conflict exists
-    event_id_map: Dict[str, str] = {}
-    for ev in payload.events:
-        if ev.event_id in existing_event_ids or existing_session:
-            event_id_map[ev.event_id] = f"{ev.event_id}_{uuid.uuid4().hex[:6]}"
+        target_session_id = session_id
+        if existing_session:
+            target_session_id = f"{session_id}_imported_{uuid.uuid4().hex[:6]}"
 
-    db_session = SessionModel(
-        session_id=target_session_id,
-        name=(
-            imported_sess.name
-            if not existing_session
-            else f"{imported_sess.name} (Imported)"
-        ),
-        status=imported_sess.status,
-        started_at=imported_sess.started_at,
-        ended_at=imported_sess.ended_at,
-        total_tokens=imported_sess.total_tokens,
-        total_cost_usd=imported_sess.total_cost_usd,
-        error_count=imported_sess.error_count,
-        agent_count=imported_sess.agent_count,
-        metadata_=imported_sess.metadata or {},
-    )
-    db.add(db_session)
-    await db.flush()
+        # Check for any conflicting event_ids in the database
+        incoming_event_ids = [ev.event_id for ev in payload.events]
+        existing_event_ids = set()
+        if incoming_event_ids:
+            chk_stmt = select(EventModel.event_id).where(
+                EventModel.event_id.in_(incoming_event_ids)
+            )
+            chk_res = await db.execute(chk_stmt)
+            existing_event_ids = set(chk_res.scalars().all())
 
-    for ev in payload.events:
-        new_event_id = event_id_map.get(ev.event_id, ev.event_id)
-        new_parent_id = (
-            event_id_map.get(ev.parent_event_id, ev.parent_event_id)
-            if ev.parent_event_id
-            else None
-        )
+        # Map original event IDs to new unique event IDs if conflict exists
+        event_id_map: Dict[str, str] = {}
+        for ev in payload.events:
+            if ev.event_id in existing_event_ids or existing_session:
+                event_id_map[ev.event_id] = f"{ev.event_id}_{uuid.uuid4().hex[:6]}"
 
-        db_event = EventModel(
-            event_id=new_event_id,
+        db_session = SessionModel(
             session_id=target_session_id,
-            parent_event_id=new_parent_id,
-            event_type=ev.event_type,
-            agent_name=ev.agent_name,
-            agent_type=ev.agent_type,
-            timestamp=ev.timestamp,
-            latency_ms=ev.latency_ms,
-            status=ev.status,
-            payload=ev.payload,
+            name=(
+                imported_sess.name
+                if not existing_session
+                else f"{imported_sess.name} (Imported)"
+            ),
+            status=imported_sess.status,
+            started_at=imported_sess.started_at,
+            ended_at=imported_sess.ended_at,
+            total_tokens=imported_sess.total_tokens,
+            total_cost_usd=imported_sess.total_cost_usd,
+            error_count=imported_sess.error_count,
+            agent_count=imported_sess.agent_count,
+            metadata_=imported_sess.metadata or {},
         )
-        db.add(db_event)
+        db.add(db_session)
+        await db.flush()
 
-    await db.commit()
-    await db.refresh(db_session)
+        for ev in payload.events:
+            new_event_id = event_id_map.get(ev.event_id, ev.event_id)
+            new_parent_id = (
+                event_id_map.get(ev.parent_event_id, ev.parent_event_id)
+                if ev.parent_event_id
+                else None
+            )
+
+            db_event = EventModel(
+                event_id=new_event_id,
+                session_id=target_session_id,
+                parent_event_id=new_parent_id,
+                event_type=ev.event_type,
+                agent_name=ev.agent_name,
+                agent_type=ev.agent_type,
+                timestamp=ev.timestamp,
+                latency_ms=ev.latency_ms,
+                status=ev.status,
+                payload=ev.payload,
+            )
+            db.add(db_event)
+
+        await db.commit()
+        await db.refresh(db_session)
 
     # Broadcast imported session to UI clients
     session_data = {

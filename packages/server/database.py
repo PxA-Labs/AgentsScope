@@ -1,5 +1,7 @@
+import asyncio
 import os
-from typing import AsyncGenerator, Optional
+from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator, AsyncIterator, Optional
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
@@ -56,6 +58,65 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA busy_timeout=5000;")
     finally:
         cursor.close()
+
+
+class _LoopLocalLock:
+    """An asyncio.Lock that is recreated when used from a different event loop.
+
+    asyncio.Lock binds to the first loop that waits on it, which would break
+    a module-level lock across separate loops (e.g. one per test).
+    """
+
+    def __init__(self) -> None:
+        self._lock: Optional[asyncio.Lock] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def get(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._loop is not loop:
+            self._lock = asyncio.Lock()
+            self._loop = loop
+        return self._lock
+
+
+_sqlite_writer = _LoopLocalLock()
+
+
+def _dialect_name(target: Any) -> str:
+    if isinstance(target, async_sessionmaker):
+        target = target.kw.get("bind")
+    elif isinstance(target, AsyncSession):
+        target = target.get_bind()
+    dialect = getattr(target, "dialect", None)
+    return dialect.name if dialect is not None else ""
+
+
+@asynccontextmanager
+async def sqlite_write_lock(target: Any) -> AsyncIterator[None]:
+    """Serialise database writes when ``target`` is backed by SQLite.
+
+    SQLite allows one writer at a time, and a transaction that has already
+    read (e.g. after SAVEPOINT + SELECT) and then needs the write lock gets
+    SQLITE_BUSY / SQLITE_BUSY_SNAPSHOT immediately: busy_timeout does not
+    apply, so concurrent writers drop data with "database is locked" (#323).
+    Holding this lock around every write transaction in the process removes
+    that contention. Other dialects (PostgreSQL) are not serialised.
+
+    ``target`` is an AsyncSession, async_sessionmaker or AsyncEngine. When it
+    is a session, it is rolled back before the lock is released if the block
+    raises, so a failed transaction never keeps SQLite's write lock while the
+    next writer starts.
+    """
+    if _dialect_name(target) != "sqlite":
+        yield
+        return
+    async with _sqlite_writer.get():
+        try:
+            yield
+        except BaseException:
+            if isinstance(target, AsyncSession):
+                await target.rollback()
+            raise
 
 
 async def vacuum_database(bind: Optional[AsyncEngine] = None) -> None:

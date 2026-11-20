@@ -1,0 +1,149 @@
+name: Release SDK
+
+# Publishes packages/sdk to PyPI as "agentscope-trace" when a version tag is
+# pushed (e.g. v0.2.0). Uses PyPI Trusted Publishing (OIDC): no API tokens are
+# stored in the repository. See RELEASING.md for the one-time PyPI setup.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# Re-pushing a tag while a run waits for approval must not start a second,
+# parallel publish of the same version.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check the tagged commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not on main. Only tag commits that have been merged to main."
+            exit 1
+          fi
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Check tag matches the SDK version
+        run: python .github/scripts/check_release_version.py "${GITHUB_REF_NAME}"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build packages/sdk --outdir dist
+          twine check --strict dist/*
+
+      - name: Smoke-test the wheel in a clean virtualenv
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/python - <<'PY'
+          import importlib.metadata as metadata
+          import agentscope
+          assert agentscope.__version__ == metadata.version("agentscope-trace")
+          from agentscope import AgentScopeCallback, trace  # noqa: F401
+          print("agentscope-trace", agentscope.__version__)
+          PY
+          /tmp/smoke/bin/agentscope --help
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/agentscope-trace
+    permissions:
+      id-token: write # OIDC token for Trusted Publishing
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # Re-tagging the same version after a failed or rejected PyPI step
+          # (see RELEASING.md) must not fail here because TestPyPI already
+          # has the files. PyPI itself never skips: a duplicate there is an error.
+          skip-existing: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/agentscope-trace
+    permissions:
+      id-token: write # OIDC token for Trusted Publishing and attestations
+      attestations: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "dist/*"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  github-release:
+    name: Create GitHub Release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          if [[ "${GITHUB_REF_NAME}" =~ (a|b|rc)[0-9]+ ]]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "agentscope-trace ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag \
+            "${prerelease[@]}"
