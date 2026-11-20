@@ -5,10 +5,11 @@ import os
 import queue
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import websockets
 import websockets.exceptions
@@ -21,6 +22,57 @@ _UNAUTHORIZED_HINT = (
     "AgentScope server rejected the API key (401). Pass api_key=... or set the "
     "AGENTSCOPE_API_KEY environment variable to a key configured on the server."
 )
+
+_CLEARTEXT_KEY_WARNING = (
+    "AgentScope is configured with an API key but connects to a non-local "
+    "server over plain http/ws, so the key travels unencrypted. Use "
+    "base_url='https://...' or secure=True."
+)
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+_SECURE_SCHEMES = {"https", "wss"}
+_PLAIN_SCHEMES = {"http", "ws"}
+
+
+def server_urls(
+    host: str = "localhost",
+    port: int = 8765,
+    secure: bool = False,
+    base_url: Optional[str] = None,
+) -> Tuple[str, str]:
+    """Return the ``(http_base, ws_base)`` URLs of the AgentScope server.
+
+    With ``base_url`` (``http``, ``https``, ``ws`` or ``wss``; an optional path
+    prefix is kept for reverse proxies) ``host`` and ``port`` are ignored and
+    the scheme decides between plain and TLS. Otherwise ``secure`` selects
+    ``https``/``wss`` instead of ``http``/``ws`` for ``host:port``.
+
+    Raises:
+        ValueError: if ``base_url`` is malformed, or ``secure=True`` is
+            combined with a plain ``http``/``ws`` base URL.
+    """
+    if base_url is None:
+        http_scheme, ws_scheme = ("https", "wss") if secure else ("http", "ws")
+        netloc = f"{host}:{port}"
+        return f"{http_scheme}://{netloc}", f"{ws_scheme}://{netloc}"
+
+    parsed = urllib.parse.urlsplit(base_url.strip())
+    scheme = parsed.scheme.lower()
+    if scheme not in _SECURE_SCHEMES | _PLAIN_SCHEMES:
+        raise ValueError("base_url must start with http://, https://, ws:// or wss://")
+    if not parsed.hostname:
+        raise ValueError("base_url must include a host name")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError(
+            "base_url must not contain credentials, a query string or a fragment"
+        )
+    parsed.port  # raises ValueError for a malformed port
+    is_secure = scheme in _SECURE_SCHEMES
+    if secure and not is_secure:
+        raise ValueError(f"secure=True conflicts with the {scheme}:// base_url")
+    prefix = f"{parsed.netloc}{parsed.path.rstrip('/')}"
+    if is_secure:
+        return f"https://{prefix}", f"wss://{prefix}"
+    return f"http://{prefix}", f"ws://{prefix}"
 
 
 class AgentScopeClient:
@@ -39,12 +91,39 @@ class AgentScopeClient:
         batch_size: int = 50,
         flush_interval_seconds: float = 0.1,
         api_key: Optional[str] = None,
+        secure: bool = False,
+        base_url: Optional[str] = None,
     ):
-        self.host = host
-        self.port = port
+        """Create a client.
+
+        Args:
+            host: Server host name (ignored when ``base_url`` is given).
+            port: Server port (ignored when ``base_url`` is given).
+            api_key: API key for servers with authentication enabled. Defaults
+                to the AGENTSCOPE_API_KEY environment variable.
+            secure: Use TLS (``https``/``wss``) for ``host:port``.
+            base_url: Full server URL such as ``https://agentscope.example.com``
+                (``http``/``https``/``ws``/``wss``); its scheme decides between
+                plain and TLS connections.
+        """
+        self.http_base_url, self.ws_base_url = server_urls(host, port, secure, base_url)
+        if base_url is None:
+            self.host = host
+            self.port = port
+        else:
+            parsed = urllib.parse.urlsplit(self.http_base_url)
+            self.host = parsed.hostname or host
+            self.port = parsed.port or (443 if parsed.scheme == "https" else 80)
         # Explicit argument wins; otherwise fall back to the environment.
         # Never logged or included in repr.
         self._api_key: Optional[str] = api_key or os.getenv(API_KEY_ENV) or None
+        if (
+            self._api_key
+            and self.http_base_url.startswith("http://")
+            and self.host.lower() not in _LOOPBACK_HOSTS
+            and not self.host.startswith("127.")
+        ):
+            logging.warning(_CLEARTEXT_KEY_WARNING)
         self._auth_warning_logged = False
         self.session_name = (
             session_name or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -130,7 +209,7 @@ class AgentScopeClient:
         self._send_status_patch(session_id, status)
 
     def _send_status_patch(self, session_id: str, status: str) -> None:
-        url = f"http://{self.host}:{self.port}/api/sessions/{session_id}"
+        url = f"{self.http_base_url}/api/sessions/{session_id}"
         data = json.dumps(
             {
                 "status": status,
@@ -210,7 +289,7 @@ class AgentScopeClient:
                         continue
 
                 # 2. Connect to the WebSocket ingestion endpoint
-                ws_uri = f"ws://{self.host}:{self.port}/ws?client_type=sdk"
+                ws_uri = f"{self.ws_base_url}/ws?client_type=sdk"
                 async with websockets.connect(
                     ws_uri, additional_headers=self._auth_headers() or None
                 ) as websocket:
@@ -303,7 +382,7 @@ class AgentScopeClient:
 
     def _create_session_sync(self) -> None:
         """Issue synchronous POST request to initialize a session on the server."""
-        url = f"http://{self.host}:{self.port}/api/sessions"
+        url = f"{self.http_base_url}/api/sessions"
         session_uuid = str(uuid.uuid4())
         data = json.dumps(
             {
