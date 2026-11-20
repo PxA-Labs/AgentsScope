@@ -129,6 +129,15 @@ def test_rotated_keys_are_all_accepted(monkeypatch):
         assert client.get("/api/sessions", headers=bearer(KEY)).status_code == 401
 
 
+def test_single_key_with_comma_is_not_split(monkeypatch):
+    monkeypatch.setenv(API_KEY_ENV, "secretkey-0123456789,ab")
+    monkeypatch.delenv(API_KEYS_ENV, raising=False)
+    with TestClient(app) as client:
+        assert client.get("/api/sessions", headers=bearer("ab")).status_code == 401
+        ok = client.get("/api/sessions", headers=bearer("secretkey-0123456789,ab"))
+        assert ok.status_code == 200
+
+
 def test_rejection_is_logged_without_the_key(with_auth, caplog):
     with caplog.at_level(logging.WARNING, logger="auth"):
         with TestClient(app) as client:

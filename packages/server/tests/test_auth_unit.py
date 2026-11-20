@@ -1,5 +1,6 @@
 """Unit tests for auth.py helpers (no HTTP)."""
 
+import auth
 import pytest
 from auth import (
     API_KEY_ENV,
@@ -26,13 +27,28 @@ def test_auth_disabled_by_default():
     assert is_valid_api_key("anything") is False
 
 
+PRIMARY = "primary-key-0123456789"
+OLD = "rotating-old-key-0123"
+NEW = "rotating-new-key-4567"
+
+
 def test_single_and_rotated_keys_are_combined(monkeypatch):
-    monkeypatch.setenv(API_KEY_ENV, "primary")
-    monkeypatch.setenv(API_KEYS_ENV, " old-key , new-key ,, ")
-    assert configured_api_keys() == ["primary", "old-key", "new-key"]
+    monkeypatch.setenv(API_KEY_ENV, PRIMARY)
+    monkeypatch.setenv(API_KEYS_ENV, f" {OLD} , {NEW} ,, ")
+    assert configured_api_keys() == [PRIMARY, OLD, NEW]
     assert auth_enabled() is True
-    for key in ("primary", "old-key", "new-key"):
+    for key in (PRIMARY, OLD, NEW):
         assert is_valid_api_key(key)
+
+
+def test_single_key_variable_is_not_split_on_commas(monkeypatch):
+    # AGENTSCOPE_API_KEY holds exactly one key. Splitting it would turn a key
+    # containing a comma into several much weaker keys.
+    monkeypatch.setenv(API_KEY_ENV, " secretkey-0123456789,ab ")
+    assert configured_api_keys() == ["secretkey-0123456789,ab"]
+    assert is_valid_api_key("secretkey-0123456789,ab")
+    assert not is_valid_api_key("ab")
+    assert not is_valid_api_key("secretkey-0123456789")
 
 
 def test_blank_env_values_do_not_enable_auth(monkeypatch):
@@ -41,10 +57,30 @@ def test_blank_env_values_do_not_enable_auth(monkeypatch):
     assert auth_enabled() is False
 
 
-@pytest.mark.parametrize("candidate", [None, "", "primar", "primary2", "PRIMARY"])
+@pytest.mark.parametrize(
+    "candidate", [None, "", PRIMARY[:-1], PRIMARY + "2", PRIMARY.upper()]
+)
 def test_invalid_candidates_rejected(monkeypatch, candidate):
-    monkeypatch.setenv(API_KEY_ENV, "primary")
+    monkeypatch.setenv(API_KEY_ENV, PRIMARY)
     assert is_valid_api_key(candidate) is False
+
+
+def test_comparison_uses_fixed_length_digests(monkeypatch):
+    """Compare SHA-256 digests so the key length is not leaked via timing."""
+    calls = []
+    real = auth.hmac.compare_digest
+
+    def spy(a, b):
+        calls.append((len(a), len(b)))
+        return real(a, b)
+
+    monkeypatch.setattr(auth.hmac, "compare_digest", spy)
+    monkeypatch.setenv(API_KEY_ENV, PRIMARY)
+    monkeypatch.setenv(API_KEYS_ENV, f"{OLD},{NEW}x")
+    assert is_valid_api_key("short") is False
+    assert is_valid_api_key(NEW + "x") is True
+    # Every configured key is compared (no early exit), always 32 vs 32 bytes.
+    assert calls == [(32, 32)] * 6
 
 
 @pytest.mark.parametrize(

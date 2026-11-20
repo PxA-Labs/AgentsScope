@@ -1,8 +1,8 @@
 """Optional single-tenant API-key authentication.
 
-Authentication is **disabled** unless ``AGENTSCOPE_API_KEY`` (one key) or
-``AGENTSCOPE_API_KEYS`` (comma-separated, for rotation) is set, which keeps the
-local, zero-configuration experience unchanged.
+Authentication is **disabled** unless ``AGENTSCOPE_API_KEY`` (exactly one key,
+never split) or ``AGENTSCOPE_API_KEYS`` (comma-separated, for rotation) is
+set, which keeps the local, zero-configuration experience unchanged.
 
 When enabled:
 
@@ -18,9 +18,10 @@ When enabled:
 
 import base64
 import binascii
+import hashlib
+import hmac
 import logging
 import os
-import secrets
 from typing import List, Optional
 
 from fastapi import HTTPException, Request, WebSocket, status
@@ -42,9 +43,13 @@ def configured_api_keys() -> List[str]:
     environment take effect without re-importing the module.
     """
     keys: List[str] = []
-    for env_name in (API_KEY_ENV, API_KEYS_ENV):
-        raw = os.getenv(env_name, "")
-        keys.extend(k.strip() for k in raw.split(",") if k.strip())
+    # AGENTSCOPE_API_KEY is exactly one key and is never split: a key that
+    # happens to contain a comma must not turn into several shorter keys.
+    single = os.getenv(API_KEY_ENV, "").strip()
+    if single:
+        keys.append(single)
+    raw_list = os.getenv(API_KEYS_ENV, "")
+    keys.extend(k.strip() for k in raw_list.split(",") if k.strip())
     return keys
 
 
@@ -52,16 +57,24 @@ def auth_enabled() -> bool:
     return bool(configured_api_keys())
 
 
+def _digest(value: str) -> bytes:
+    return hashlib.sha256(value.encode("utf-8")).digest()
+
+
 def is_valid_api_key(candidate: Optional[str]) -> bool:
-    """Constant-time comparison against every configured key."""
+    """Constant-time comparison against every configured key.
+
+    SHA-256 digests are compared rather than the raw strings, so both sides
+    always have the same length and timing does not reveal the key length.
+    """
     if not candidate:
         return False
-    candidate_bytes = candidate.encode("utf-8")
+    candidate_digest = _digest(candidate)
     matched = False
     for key in configured_api_keys():
         # Compare against all keys (no early exit) so timing does not reveal
         # which key, if any, partially matched.
-        matched |= secrets.compare_digest(candidate_bytes, key.encode("utf-8"))
+        matched |= hmac.compare_digest(candidate_digest, _digest(key))
     return matched
 
 
