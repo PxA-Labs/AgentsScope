@@ -1,5 +1,9 @@
 # Product Requirements Document (PRD) - AgentScope
 
+> **Status (last updated 2026-11-15):** All 10 MVP features (§7) have shipped, along with most of the original Post-MVP list (§8.1).
+> Sections 1–7, 9 and 12 describe the original MVP requirements and are kept as written for reference. §5 notes where the
+> implementation has since moved on. Open work is tracked in [#280](https://github.com/PxA-Labs/AgentsScope/issues/280).
+
 ## 1. Executive Summary
 
 **AgentScope** is a lightweight, open-source, self-hosted observability dashboard for multi-agent AI pipelines. 
@@ -60,17 +64,17 @@ Debugging multi-agent AI pipelines is notoriously difficult. Developers currentl
 
 ### 5.2 Server (`packages/server/`)
 - **Framework:** FastAPI application.
-- **Database:** SQLite for persistent storage of sessions and events.
+- **Database:** SQLite for persistent storage of sessions and events. *(Now SQLite by default, with optional PostgreSQL; see §10.)*
 - **Endpoints:**
   - `GET /api/sessions`: List all historical sessions.
   - `GET /api/sessions/{id}`: Retrieve full details and events for a specific session.
   - `DELETE /api/sessions/{id}`: Delete a session.
-  - `GET /api/stats`: Retrieve aggregate statistics (total tokens, total runs, etc.).
+  - `GET /api/stats`: Retrieve aggregate statistics (total tokens, total runs, etc.). *(Not implemented as a global endpoint; per-session stats are served by `GET /api/sessions/{id}/stats`.)*
 - **WebSocket Route:**
-  - `WS /ws/events`: Receive events from the Python SDK, persist them to SQLite, and immediately broadcast them to connected UI clients.
+  - `WS /ws/events`: Receive events from the Python SDK, persist them to SQLite, and immediately broadcast them to connected UI clients. *(Implemented as a single `WS /ws` route; clients identify themselves with `?client_type=sdk|ui`.)*
 
 ### 5.3 UI Dashboard (`packages/ui/`)
-- **Framework:** Next.js 14 (App Router) + React.
+- **Framework:** Next.js 14 (App Router) + React. *(Now on Next.js 16.)*
 - **Components:**
   - **Session List Sidebar:** Displays past and current sessions, sortable by date.
   - **Real-time Event Feed:** A scrolling list of events, auto-updating via WebSocket. Highlights errors in red.
@@ -104,15 +108,31 @@ The Minimum Viable Product (MVP) consists of the following 10 features:
 
 ## 8. Post-MVP / Out of Scope
 
-The following features are explicitly deferred to post-MVP updates:
-- Integrations for CrewAI, AutoGen, or LlamaIndex.
-- Live, dynamic DAG updates (DAG will initially render statically per session state).
-- PostgreSQL or other external database support.
-- Authentication, RBAC, or team collaboration modes.
-- Cloud deployment configurations.
-- Cost budget alerts or rate-limiting.
-- Prompt diff view across iterations.
-- Exporting session data to JSON/CSV.
+The following features were explicitly deferred past the MVP. Their current status:
+
+### 8.1 Shipped after the MVP
+| Feature | Delivered in |
+|---|---|
+| Live, dynamic DAG updates over WebSockets | [#156](https://github.com/PxA-Labs/AgentsScope/pull/156) |
+| PostgreSQL storage backend | [#153](https://github.com/PxA-Labs/AgentsScope/pull/153) |
+| Cost budget enforcement (`budget_limit_usd`) | [#125](https://github.com/PxA-Labs/AgentsScope/pull/125) |
+| Prompt diff view across iterations | [#124](https://github.com/PxA-Labs/AgentsScope/pull/124) |
+| Export / import of session data as JSON | [#125](https://github.com/PxA-Labs/AgentsScope/pull/125) |
+| Session diffing / comparative timeline *(not in original list)* | [#155](https://github.com/PxA-Labs/AgentsScope/pull/155) |
+| Retention policies and auto-vacuum *(not in original list)* | [#152](https://github.com/PxA-Labs/AgentsScope/pull/152) |
+| Raw OpenAI SDK instrumentation and specialized trace decorators *(not in original list)* | [#150](https://github.com/PxA-Labs/AgentsScope/pull/150), [#149](https://github.com/PxA-Labs/AgentsScope/pull/149) |
+
+### 8.2 Still planned
+| Feature | Tracking issue |
+|---|---|
+| CrewAI integration | [#264](https://github.com/PxA-Labs/AgentsScope/issues/264) |
+| AutoGen integration | [#265](https://github.com/PxA-Labs/AgentsScope/issues/265) |
+| LlamaIndex integration | [#266](https://github.com/PxA-Labs/AgentsScope/issues/266) |
+| Export session data to CSV | [#267](https://github.com/PxA-Labs/AgentsScope/issues/267) |
+| Authentication (API keys) | [#268](https://github.com/PxA-Labs/AgentsScope/issues/268) |
+| RBAC and team collaboration | [#277](https://github.com/PxA-Labs/AgentsScope/issues/277) |
+| Cloud deployment configurations | [#269](https://github.com/PxA-Labs/AgentsScope/issues/269) |
+| Rate-limiting / budget *alerts* (beyond hard budget limits) | not yet scheduled |
 
 ## 9. Success Metrics
 
@@ -124,8 +144,8 @@ The following features are explicitly deferred to post-MVP updates:
 ## 10. Technical Constraints
 
 - **Language:** Python 3.10+ required for the SDK and Server.
-- **Frontend UI:** Next.js 14 utilizing the App Router and strict TypeScript configuration.
-- **Database:** SQLite (WAL mode) as the default and only supported storage engine.
+- **Frontend UI:** Next.js 16 utilizing the App Router and strict TypeScript configuration.
+- **Database:** SQLite (WAL mode) is the default, zero-configuration storage engine. PostgreSQL (via `asyncpg`) is supported for shared or larger deployments through `DATABASE_URL`.
 - **Transport:** WebSocket protocol for all real-time communication.
 - **Dependencies:** Minimal third-party dependencies to ensure easy installation and reduced conflict surface.
 
