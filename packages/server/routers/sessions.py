@@ -349,7 +349,14 @@ async def export_session(
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export an entire session and all telemetry events as JSON or CSV."""
+    """Export an entire session and all telemetry events as JSON or CSV.
+
+    The CSV export is streamed from the database in batches, so memory stays
+    flat for large sessions. The trade-off: the request's database session,
+    and with it a pooled connection and an open read transaction, is held
+    until the last row has been sent. A slow client downloading a large
+    session keeps that connection busy for the whole download.
+    """
     sess_stmt = select(SessionModel).where(SessionModel.session_id == session_id)
     sess_res = await db.execute(sess_stmt)
     db_session = sess_res.scalars().first()

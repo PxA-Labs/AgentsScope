@@ -207,6 +207,7 @@ interface StatsResponse {
 
 - **JSON** (`application/json`): `{ version, exported_at, session, events[] }`. This is the format `POST /api/sessions/import` accepts.
 - **CSV** (`text/csv; charset=utf-8`): one row per event, ordered by timestamp, streamed from the database. Downloaded as `attachment; filename="<session-name>_<id8>.csv"`. The file starts with a UTF-8 BOM, follows RFC 4180 quoting (CRLF line endings, embedded commas, quotes and newlines are quoted), and is **not** re-importable.
+  Because rows are streamed straight from the database, the request holds a database connection and an open read transaction until the download finishes, so a slow client downloading a large session keeps that connection busy for the whole download.
 
 | Column | Source | Notes |
 |---|---|---|
