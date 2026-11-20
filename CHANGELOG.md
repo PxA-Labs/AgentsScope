@@ -4,27 +4,37 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
+### Added
+- **ui**: Prompt for an API key when the server requires one
+- **ui**: Attach API key to REST calls and WebSockets
+- **sdk**: Send API key to servers with auth enabled
+- **server**: Enforce optional API-key auth on /api and /ws
+- **server**: Add optional API-key auth helpers
+
 ### Fixed
-- **sdk**: Don't mark an over-budget session completed
-- **sdk**: Make budget_limit_usd actually stop the LangChain run
+- **sdk**: Don't forward the API key when a REST call is redirected
+- **server**: Avoid CodeQL weak-password-hashing false positive
+- **server**: Clear CodeQL false positives in auth logging and comparison
+- **sdk**: Back off to the maximum after a 4401 close
+- **sdk**: Support https/wss so the API key need not travel in cleartext
+- **ui**: Stop polling sessions once the server rejects the API key
+- **server**: Rate-limit rejected-credential log lines per client
+- **server**: Enforce API-key auth in ASGI middleware before routing
+- **server**: Validate API-key configuration at startup
+- **server**: Stop splitting AGENTSCOPE_API_KEY and compare key digests
+- **sdk**: Make the 401 hint a literal to clear CodeQL false positive
 
 ### Documentation
-- Spell out the budget behaviour for each kind of run
-- The server reads environment variables, not a .env file
-- Describe what budget_limit_usd actually does
-- **design**: Mark implemented future-architecture items
-- **schema**: Document PostgreSQL support and graph_update WS messages
-- **server**: Document API routes, storage backends and configuration
-- **sdk**: Document install extras, OpenAI patching, decorators and budgets
-- **prd**: Record shipped post-MVP work and current constraints
-- **readme**: Update structure, tech stack and FAQ
-- **readme**: Document the environment variables the server reads
-- **readme**: List shipped features and link roadmap to issues
-- **readme**: Fix SDK install command
+- **auth**: Describe the SDK's retry backoff accurately
+- Describe the HMAC comparison digest
+- Document TLS in the SDK, the key policy and middleware enforcement
+- Document optional API-key authentication
 
 ### Tests
-- **sdk**: A sync run whose last call crosses the budget ends failed
-- **sdk**: Drive budget enforcement through real LangChain runs
+- **sdk**: The API key must not follow a redirected REST call
+- **server**: Check auth on every registered route, not a fixed list
+- **sdk**: Cover API-key headers and 401 handling
+- **server**: Cover API-key auth over REST and WebSocket
 
 ## [1.0.0] - 2026-08-10
 
