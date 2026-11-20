@@ -4,31 +4,12 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Added
-- **sdk**: Make the offline event buffer size configurable
-
-### Documentation
-- **perf**: Don't overstate the latency tail
-- Note that dashboard timings predate the React bump
-- **sdk**: Mention the max_queue_size option in the SDK README
-- Re-measure performance against PRD targets after #296
-- Record measured performance against PRD targets
+### Fixed
+- **server**: Log event persist failures accurately (#329)
+- **server**: Let SQLAlchemy emit BEGIN on SQLite so SAVEPOINTs nest (#329)
 
 ### Tests
-- **sdk**: Drop the #289 workaround from the perf gate, fix headroom
-- **bench**: Add a cold-cache mode to the time-to-value script
-- **bench**: Time outage recovery from server health, repeat runs
-- **bench**: Repeat the end-to-end latency sweep and report spread
-- **bench**: Pace the server-up emit() benchmark and report drops
-- **sdk**: Add CI regression gate for emit() and @trace overhead
-- **bench**: Add time-to-value script (clone to first stored event)
-- **bench**: Measure delivery and recovery across a server outage
-- **bench**: Measure end-to-end emit-to-dashboard latency
-- **bench**: Add benchmark harness and SDK overhead benchmark
-
-### CI/CD
-- Fail the benchmark job when a benchmark fails
-- Add make bench / make ttv and a weekly benchmark workflow
+- **server**: Reproduce non-atomic event persist on SQLite (#329)
 
 ## [1.0.0] - 2026-08-10
 
