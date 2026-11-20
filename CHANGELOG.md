@@ -4,29 +4,23 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Added
-- **sdk**: Add LlamaIndex integration via the instrumentation API
-
 ### Fixed
-- **sdk**: Fold LlamaIndex LLM calls made inside an async stream into one node
-- **sdk**: Never block on the LlamaIndex mapper lock from a stream finalizer
-- **sdk**: Stop doubling streamed text when LlamaIndex folds a nested call
-- **sdk**: Switch LlamaIndex client when instrumenting again with one
-- **sdk**: Cap open LlamaIndex nodes and document FIFO eviction
-- **sdk**: Close LlamaIndex nodes that never get an end event
-- **sdk**: Resolve the global client per event in the LlamaIndex integration
-
-### Documentation
-- **sdk**: Note that LlamaIndex async streams on CustomLLM are one node
-- **sdk**: Describe LlamaIndex stream closing and client switching
-- **sdk**: Document the LlamaIndex integration and add an offline example
+- **sdk**: Keep events stop() could not deliver; document what happens
+- **sdk**: Run executor calls inline when threads are refused at exit
+- **sdk**: Clear running even if the sender thread fails before its loop
+- **sdk**: One exit hook for all clients, stopping them in parallel
+- **sdk**: Don't report stopped while the old sender thread still runs
+- **sdk**: Wake the idle sender on emit and stop instead of polling
+- **sdk**: Flush at exit without the default executor
+- **sdk**: Exit cleanly and deliver buffered events on shutdown
 
 ### Tests
-- **sdk**: Unit-test LlamaIndex event mapping without LlamaIndex
-- **sdk**: Exercise the LlamaIndex integration with real query engines
-
-### Miscellaneous
-- Build(sdk): add llamaindex extra and a Python 3.11 CI job
+- **sdk**: Stopped clients are collectable and exit stops clients in parallel
+- **sdk**: Restart after a timed-out stop() never runs two senders
+- **sdk**: Idle-sender latency and stop() waking a reconnect backoff
+- **sdk**: Short script with no sleep and no stop() delivers and exits fast
+- **server**: End-to-end SDK shutdown against a real uvicorn server
+- **sdk**: Cover graceful shutdown in-process and in real interpreters
 
 ## [1.0.0] - 2026-08-10
 
