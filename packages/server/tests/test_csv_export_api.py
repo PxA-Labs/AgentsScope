@@ -4,6 +4,7 @@ import asyncio
 import csv
 import io
 import json
+import math
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -13,6 +14,7 @@ from httpx import ASGITransport, AsyncClient
 from main import app
 from models import EventModel, SessionModel
 from pricing import calculate_cost
+from routers.sessions import CSV_EXPORT_BATCH_SIZE
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -278,8 +280,11 @@ async def test_large_csv_export_streams_with_real_db_dependency(
     assert start["type"] == "http.response.start"
     assert start["status"] == 200
     body_chunks = [m["body"] for m in bodies if m["body"]]
-    # One message per CSV line: the body is streamed, not built in memory.
-    assert len(body_chunks) == n_bulk + 3 + 1  # rows + header
+    # Streamed in several chunks rather than built in memory, but batched: one
+    # chunk per CSV_EXPORT_BATCH_SIZE rows, not one per row.
+    n_rows = n_bulk + 3
+    max_chunks = 1 + math.ceil(n_rows / CSV_EXPORT_BATCH_SIZE)  # header + batches
+    assert 1 < len(body_chunks) <= max_chunks
     assert all(m.get("more_body") for m in bodies[:-1])
     assert bodies[-1].get("more_body", False) is False
 

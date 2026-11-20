@@ -322,7 +322,8 @@ async def get_session_stats(session_id: str, db: AsyncSession = Depends(get_db))
     )
 
 
-# Rows fetched per database round-trip while streaming a CSV export.
+# Rows fetched per database round-trip, and sent per response chunk, while
+# streaming a CSV export.
 CSV_EXPORT_BATCH_SIZE = 500
 
 
@@ -386,8 +387,10 @@ def _csv_export_response(
         result = await db.stream_scalars(
             event_stmt.execution_options(yield_per=CSV_EXPORT_BATCH_SIZE)
         )
-        async for event in result:
-            yield csv_export.row_line(event)
+        # One chunk per batch: a chunk per row means one ASGI message (and HTTP
+        # chunk) per event, which is roughly twice as slow as the JSON export.
+        async for batch in result.partitions(CSV_EXPORT_BATCH_SIZE):
+            yield "".join(csv_export.row_line(event) for event in batch)
 
     filename = csv_export.export_filename(db_session.name, db_session.session_id)
     return StreamingResponse(
