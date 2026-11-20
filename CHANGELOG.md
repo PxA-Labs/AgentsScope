@@ -4,12 +4,11 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Fixed
-- **server**: Serialise REST session writes and pruning on SQLite
-- **server**: Serialise SQLite SDK event writes
-
-### Tests
-- **server**: Cover concurrent SQLite writers losing events
+### Miscellaneous
+- Build(deps): update sqlalchemy requirement in /packages/server
+- Build(deps): update fastapi requirement in /packages/server
+- Build(deps-dev): bump autoprefixer from 10.6.1 to 10.6.2 in /packages/ui
+- Build(deps): bump actions/upload-artifact from 7.0.1 to 7.0.2
 
 ## [1.0.0] - 2026-08-10
 
