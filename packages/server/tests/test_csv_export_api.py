@@ -8,6 +8,7 @@ import math
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import main
 import pytest
 from database import get_db
 from httpx import ASGITransport, AsyncClient
@@ -148,6 +149,22 @@ async def test_csv_export_returns_one_row_per_event(db_session: AsyncSession):
     assert tool["latency_ms"] == ""
     # Formula injection is neutralised.
     assert tool["agent_name"] == '\'=HYPERLINK("http://evil")'
+
+
+@pytest.mark.asyncio
+async def test_csv_filename_header_is_readable_cross_origin(db_session: AsyncSession):
+    # The dashboard runs on another origin; browsers hide Content-Disposition
+    # from fetch() unless CORS exposes it, and the UI uses it as the filename.
+    sess_id = await seed_session(db_session)
+    origin = main.cors_origins[0]
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get(
+            f"/api/sessions/{sess_id}/export?format=csv", headers={"Origin": origin}
+        )
+    assert res.headers["access-control-allow-origin"] == origin
+    exposed = res.headers.get("access-control-expose-headers", "").lower()
+    assert "content-disposition" in [h.strip() for h in exposed.split(",")]
 
 
 @pytest.mark.asyncio

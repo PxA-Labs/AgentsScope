@@ -80,6 +80,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Lets the dashboard read the export filename chosen by the server.
+    expose_headers=["Content-Disposition"],
 )
 
 # Mount REST routers

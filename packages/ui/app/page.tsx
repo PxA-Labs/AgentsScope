@@ -411,8 +411,13 @@ export default function Dashboard() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
+      // Prefer the server's filename (CSV sends Content-Disposition); fall back
+      // to building one locally, e.g. for JSON.
+      const serverName = res.headers
+        .get("Content-Disposition")
+        ?.match(/filename="([^"]+)"/)?.[1];
       const safeName = (activeSession.name || "session").replace(/[^a-zA-Z0-9_-]/g, "_");
-      link.download = `${safeName}_${activeSession.session_id.slice(0, 8)}.${format}`;
+      link.download = serverName || `${safeName}_${activeSession.session_id.slice(0, 8)}.${format}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
