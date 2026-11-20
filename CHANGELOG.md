@@ -5,27 +5,28 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Added
-- **ui**: Name CSV downloads with the server's Content-Disposition filename
-- **ui**: Add CSV option to session export
-- **server**: Stream CSV from the session export endpoint
-- **server**: Add CSV serializer for session events
+- **sdk**: Add AutoGen integration (model client wrapper + run tracer)
+
+### Fixed
+- **sdk**: Stop the AutoGen team on early close and close the run last
+- **sdk**: Treat a cancelled AutoGen stream finalizer as an early close
+- **sdk**: Make the traced AutoGen model client serializable
+- **sdk**: Start a new AutoGen turn for each agent response
+- **sdk**: Resolve the global client per event in the AutoGen integration
+- **sdk**: Close AutoGen runs cleanly when the consumer stops early
 
 ### Documentation
-- **server**: Note that a CSV export holds a DB connection while streaming
-- **schema**: Document JSON and CSV session export formats
-
-### Performance
-- **server**: Send the CSV export one chunk per batch, not per row
+- **sdk**: Describe what early close does to an AutoGen team
+- **sdk**: Describe AutoGen early close, turns and reconfiguration
+- **sdk**: Document the AutoGen integration and add an example
 
 ### Tests
-- **server**: Catch an early db.close() during CSV streaming
-- **server**: Seed CSV export test sessions relative to now
-- **server**: Cover CSV export over HTTP, including streaming
+- **sdk**: Rename AutoGen turn-grouping test to match its behaviour
+- **sdk**: Unit-test AutoGen run tracer edge cases without AutoGen
+- **sdk**: Exercise the AutoGen integration with real teams
 
-### Style
-- **server**: Bind the wrapped close() in the CSV lifetime test
-- **server**: Spell the remaining CSV BOM in the API tests as an escape
-- **server**: Spell the CSV BOM as an escape in tests
+### Miscellaneous
+- Build(sdk): add autogen extra and run AutoGen tests in CI
 
 ## [1.0.0] - 2026-08-10
 
