@@ -5,10 +5,16 @@ All notable changes to the **AgentScope** project will be documented in this fil
 ## [Unreleased] - 2026-11-20
 
 ### Fixed
-- **sdk**: Make messages.parse an optional patch target
+- **sdk**: Tell CrewAI's internal flows apart by is_crewai_internal
+- **sdk**: Patch CrewAI session status once per Flow, not per crew
 
-### Maintenance
-- **sdk**: Drop the dead Python 3.11 marker from the gemini extra
+### Documentation
+- Note how CrewAI internal flows and resumed flows appear
+- Document CrewAI Flow support in the integrations guide
+
+### Tests
+- **sdk**: A user Flow with suppress_flow_events must still be shown
+- **sdk**: Cover CrewAI Flow session status and flow nodes
 
 ## Upcoming: SDK import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 
