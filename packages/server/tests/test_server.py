@@ -269,27 +269,49 @@ def test_websocket_event_upsert_and_merge():
         assert abs(sess_data["total_cost_usd"] - 0.000225) < 1e-6
 
 
-def test_set_sqlite_pragma_bypasses_non_sqlite():
-    from unittest.mock import MagicMock
-
+@pytest.mark.asyncio
+async def test_set_sqlite_pragma_bypasses_non_sqlite():
     import database
-    from database import set_sqlite_pragma
+    from sqlalchemy import event
 
-    # Mock engine.dialect.name to "postgresql"
-    original_engine = database.engine
-    mock_engine = MagicMock()
-    mock_engine.dialect.name = "postgresql"
-    database.engine = mock_engine
-
+    # A PostgreSQL engine never gets the SQLite listeners, whatever the global
+    # engine is, even if configure_sqlite_engine is called on it directly.
+    pg = database.create_engine_for_url("postgresql+asyncpg://user:pw@localhost/db")
     try:
-        mock_conn = MagicMock()
-        # Call set_sqlite_pragma hook
-        set_sqlite_pragma(mock_conn, None)
-        # Verify that cursor was never called on the connection
-        mock_conn.cursor.assert_not_called()
+        database.configure_sqlite_engine(pg)
+        sync_engine = pg.sync_engine
+        assert not event.contains(sync_engine, "connect", database.set_sqlite_pragma)
+        assert not event.contains(
+            sync_engine, "connect", database._disable_driver_begin
+        )
+        assert not event.contains(sync_engine, "begin", database._emit_begin)
     finally:
-        # Restore original engine
-        database.engine = original_engine
+        await pg.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_engine_gets_pragmas_while_global_engine_is_postgresql(
+    tmp_path, monkeypatch
+):
+    import database
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    # The pragmas depend on the connecting engine, not the global one.
+    pg = create_async_engine("postgresql+asyncpg://user:pw@localhost/db")
+    monkeypatch.setattr(database, "engine", pg)
+    lite = database.create_engine_for_url(f"sqlite+aiosqlite:///{tmp_path / 'p.db'}")
+    try:
+        async with lite.connect() as conn:
+            journal_mode = (await conn.exec_driver_sql("PRAGMA journal_mode")).scalar()
+            foreign_keys = (await conn.exec_driver_sql("PRAGMA foreign_keys")).scalar()
+            busy_timeout = (await conn.exec_driver_sql("PRAGMA busy_timeout")).scalar()
+    finally:
+        await lite.dispose()
+        await pg.dispose()
+
+    assert journal_mode == "wal"
+    assert foreign_keys == 1
+    assert busy_timeout == 5000
 
 
 def test_implicit_session_status_synchronization():
