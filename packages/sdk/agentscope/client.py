@@ -220,9 +220,15 @@ class AgentScopeClient:
     def stop(self, timeout: float = 2.0) -> None:
         """Deliver buffered events, then stop the background client.
 
-        Returns within roughly ``timeout`` seconds whatever the server state:
-        events that cannot be delivered in time (server unreachable) are
-        dropped. Never blocks on a full buffer.
+        Returns within ``timeout + 0.5`` seconds whatever the server state:
+        the sender gets ``timeout`` to deliver, plus 0.5 s to close the
+        connection. Events that cannot be delivered in time (server
+        unreachable) are dropped. Never blocks on a full buffer.
+
+        ``running`` becomes False once the background thread has exited. If
+        the thread is still busy when stop() returns (for example stuck in a
+        slow session request), ``running`` stays True until it finishes, and
+        no second sender thread is started in the meantime.
         """
         with self._lock:
             if not self.running:
@@ -233,8 +239,7 @@ class AgentScopeClient:
             thread = sender.thread
         if thread and thread is not threading.current_thread():
             thread.join(timeout=max(0.0, timeout) + 0.5)
-        with self._lock:
-            self.running = False
+        # The thread clears `running` itself when it exits (see _run_loop).
 
     def _stop_at_exit(self) -> None:
         try:
@@ -346,6 +351,10 @@ class AgentScopeClient:
                 pass
             finally:
                 loop.close()
+                with self._lock:
+                    if self._sender is sender:
+                        self.running = False
+                        self.ws_connected = False
 
     async def _main_async_loop(self, sender: _Sender) -> None:
         """Deliver buffered events until stop() asks to finish.
