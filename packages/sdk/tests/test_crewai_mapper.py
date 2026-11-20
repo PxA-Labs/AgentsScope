@@ -293,9 +293,23 @@ def test_only_the_root_crew_sets_session_status(mapper, rec):
 
 
 # A user Flow vs. one of CrewAI's internal flows (AgentExecutor, memory), which
-# set ``suppress_flow_events``. The bus passes the flow as the event's source.
-USER_FLOW = SimpleNamespace(suppress_flow_events=False)
-INTERNAL_FLOW = SimpleNamespace(suppress_flow_events=True)
+# declare the ``is_crewai_internal`` class marker. The bus passes the flow as
+# the event's source.
+class _UserFlow:
+    is_crewai_internal = False
+
+    def __init__(self, suppress_flow_events=False):
+        self.suppress_flow_events = suppress_flow_events
+
+
+class _InternalFlow(_UserFlow):
+    is_crewai_internal = True
+
+
+USER_FLOW = _UserFlow()
+# ``suppress_flow_events`` only asks for console quiet; a user's flow may set it.
+QUIET_USER_FLOW = _UserFlow(suppress_flow_events=True)
+INTERNAL_FLOW = _InternalFlow(suppress_flow_events=True)
 
 
 def flow_run(mapper, i, second_fails=False):
@@ -428,3 +442,33 @@ def test_bookkeeping_stays_flat_across_many_flows(mapper, rec):
             0,
         )
     assert rec.status == ["completed", "failed"] * 25
+
+
+def test_user_flow_that_suppresses_flow_events_is_still_shown(mapper, rec):
+    mapper.handle(ev("flow_started", "f", flow_name="Quiet"), QUIET_USER_FLOW)
+    mapper.handle(ev("crew_kickoff_started", "c", parent="f"))
+    mapper.handle(ev("crew_kickoff_completed", "c-e", parent="f", started="c"))
+    assert rec.status == []
+    mapper.handle(ev("flow_finished", "f-e", started="f"), QUIET_USER_FLOW)
+    assert rec.status == ["completed"]
+    crew = [e for e in rec.events if e["event_id"] == "c"]
+    assert {e["parent_event_id"] for e in crew} == {"f"}
+
+
+def test_internal_marker_wins_over_suppress_flow_events(mapper, rec):
+    loud_internal = _InternalFlow(suppress_flow_events=False)
+    mapper.handle(ev("flow_started", "x", flow_name="AgentExecutor"), loud_internal)
+    assert rec.events == []
+
+
+def test_flow_source_without_the_marker_falls_back_to_suppress_flow_events(mapper, rec):
+    """For CrewAI releases that predate ``is_crewai_internal``."""
+    mapper.handle(
+        ev("flow_started", "x", flow_name="AgentExecutor"),
+        SimpleNamespace(suppress_flow_events=True),
+    )
+    mapper.handle(
+        ev("flow_started", "f", flow_name="Mine"),
+        SimpleNamespace(suppress_flow_events=False),
+    )
+    assert [e["event_id"] for e in rec.events] == ["f"]

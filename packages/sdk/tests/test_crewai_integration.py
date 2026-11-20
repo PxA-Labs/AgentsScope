@@ -317,7 +317,7 @@ def one_agent_crew(name, fail=False):
     )
 
 
-def two_crew_flow(second_fails=False):
+def two_crew_flow(second_fails=False, **flow_kwargs):
     class TwoCrewFlow(Flow):
         @start()
         def first(self):
@@ -327,7 +327,7 @@ def two_crew_flow(second_fails=False):
         def second(self, previous):
             return one_agent_crew("second-crew", fail=second_fails).kickoff().raw
 
-    return TwoCrewFlow()
+    return TwoCrewFlow(**flow_kwargs)
 
 
 def run_flow(flow):
@@ -394,3 +394,16 @@ def test_bookkeeping_stays_flat_across_many_flows():
         listener.close()
     assert sizes == [(0, 0, 0)] * 5, sizes
     assert rec.status == ["completed"] * 5
+
+
+def test_user_flow_with_suppressed_flow_events_still_patches_once(recorder):
+    """``suppress_flow_events`` only quiets CrewAI's console output; CrewAI
+    marks its own flows with ``is_crewai_internal`` instead."""
+    run_flow(two_crew_flow(suppress_flow_events=True))
+
+    assert recorder.status == ["completed"]
+    final = nodes(recorder)
+    (flow,) = [n for n in final.values() if n["agent_type"] == "flow"]
+    crews = [n for n in final.values() if n["agent_type"] == "crew"]
+    assert len(crews) == 2
+    assert all(c["parent_event_id"] == flow["event_id"] for c in crews)
