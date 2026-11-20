@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID
 
-from agentscope._pricing import calculate_cost, estimate_tokens
-from agentscope.client import AgentScopeClient
-from agentscope.exceptions import BudgetExceededError
+from agentscope_trace._pricing import calculate_cost, estimate_tokens
+from agentscope_trace.client import AgentScopeClient
+from agentscope_trace.exceptions import BudgetExceededError
 
 # Gracefully handle missing langchain-core dependencies
 try:

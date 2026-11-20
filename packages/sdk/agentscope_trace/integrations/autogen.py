@@ -1,7 +1,7 @@
 """AutoGen (``autogen-agentchat`` / ``autogen-core`` 0.4+) integration.
 
 Two complementary pieces, both reporting to the global AgentScope client
-(configure it with ``agentscope.decorators.configure(...)``):
+(configure it with ``agentscope_trace.decorators.configure(...)``):
 
 * :func:`trace_model_client` wraps any ``ChatCompletionClient`` and emits
   ``llm_start`` / ``llm_end`` / ``llm_error`` with prompts, completion, token
@@ -16,8 +16,8 @@ Two complementary pieces, both reporting to the global AgentScope client
 
 Usage::
 
-    from agentscope.decorators import configure
-    from agentscope.integrations.autogen import (
+    from agentscope_trace.decorators import configure
+    from agentscope_trace.integrations.autogen import (
         AgentScopeAutoGenTracer, trace_model_client,
     )
 
@@ -35,8 +35,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, Sequence
 
-from agentscope._pricing import calculate_cost
-from agentscope.decorators import current_parent_run_id, get_global_client
+from agentscope_trace._pricing import calculate_cost
+from agentscope_trace.decorators import current_parent_run_id, get_global_client
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ def trace_model_client(
         client: Any ``autogen_core.models.ChatCompletionClient``.
         name: Model name to report (defaults to the client's model).
         agentscope_client: Override the AgentScope client (defaults to the
-            global client from ``agentscope.decorators.configure``).
+            global client from ``agentscope_trace.decorators.configure``).
     """
     from autogen_core.models import ChatCompletionClient
 
@@ -400,7 +400,7 @@ class AgentScopeAutoGenTracer:
     Args:
         name: Label for run nodes (defaults to ``"team"``).
         agentscope_client: Override the AgentScope client (defaults to the
-            global client from ``agentscope.decorators.configure``).
+            global client from ``agentscope_trace.decorators.configure``).
         mark_session_status: Patch the session to ``completed`` / ``failed``
             when a run finishes.
     """

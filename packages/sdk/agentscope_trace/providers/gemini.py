@@ -13,9 +13,9 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from agentscope.decorators import get_global_client
-from agentscope.exceptions import AgentScopeError
-from agentscope.providers._base import (
+from agentscope_trace.decorators import get_global_client
+from agentscope_trace.exceptions import AgentScopeError
+from agentscope_trace.providers._base import (
     EMPTY_USAGE,
     ProviderAdapter,
     Usage,
@@ -211,7 +211,8 @@ def patch_gemini() -> bool:
         genai = importlib.import_module("google.genai")
     except ImportError:
         logger.warning(
-            "google-genai package not installed. Skipping agentscope.patch_gemini()."
+            "google-genai package not installed. "
+            "Skipping agentscope_trace.patch_gemini()."
         )
         return False
 

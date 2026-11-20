@@ -2,8 +2,8 @@
 
 Usage::
 
-    from agentscope.decorators import configure
-    from agentscope.integrations.llamaindex import instrument_llamaindex
+    from agentscope_trace.decorators import configure
+    from agentscope_trace.integrations.llamaindex import instrument_llamaindex
 
     configure(session_name="rag-app")
     instrument_llamaindex()
@@ -42,8 +42,8 @@ from collections import OrderedDict, deque
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from agentscope._pricing import calculate_cost
-from agentscope.decorators import current_parent_run_id, get_global_client
+from agentscope_trace._pricing import calculate_cost
+from agentscope_trace.decorators import current_parent_run_id, get_global_client
 
 logger = logging.getLogger(__name__)
 
@@ -694,7 +694,7 @@ def instrument_llamaindex(agentscope_client: Any = None) -> LlamaIndexEventMappe
 
     Args:
         agentscope_client: Override the AgentScope client (defaults to the
-            global client from ``agentscope.decorators.configure``).
+            global client from ``agentscope_trace.decorators.configure``).
     """
     global _installed
     with _install_lock:

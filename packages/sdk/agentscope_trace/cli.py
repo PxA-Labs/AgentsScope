@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 
-from agentscope._version import __version__
+from agentscope_trace._version import __version__
 
 
 def log_reader(pipe, prefix):

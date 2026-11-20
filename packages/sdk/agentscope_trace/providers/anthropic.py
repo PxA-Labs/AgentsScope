@@ -15,9 +15,9 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from agentscope.decorators import current_parent_run_id, get_global_client
-from agentscope.exceptions import AgentScopeError
-from agentscope.providers._base import (
+from agentscope_trace.decorators import current_parent_run_id, get_global_client
+from agentscope_trace.exceptions import AgentScopeError
+from agentscope_trace.providers._base import (
     LLMCallTrace,
     ProviderAdapter,
     Usage,
@@ -282,7 +282,8 @@ def patch_anthropic() -> bool:
         anthropic = importlib.import_module("anthropic")
     except ImportError:
         logger.warning(
-            "Anthropic package not installed. Skipping agentscope.patch_anthropic()."
+            "Anthropic package not installed. "
+            "Skipping agentscope_trace.patch_anthropic()."
         )
         return False
 

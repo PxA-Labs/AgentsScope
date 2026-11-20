@@ -2,7 +2,7 @@
 
 Usage::
 
-    from agentscope.integrations.crewai import AgentScopeCrewAIListener
+    from agentscope_trace.integrations.crewai import AgentScopeCrewAIListener
 
     listener = AgentScopeCrewAIListener(session_name="research-crew")
     crew.kickoff()
@@ -35,8 +35,8 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from agentscope._pricing import calculate_cost
-from agentscope.client import AgentScopeClient
+from agentscope_trace._pricing import calculate_cost
+from agentscope_trace.client import AgentScopeClient
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +414,7 @@ class AgentScopeCrewAIListener:
         except ImportError as e:  # pragma: no cover - exercised without crewai
             raise ImportError(
                 "AgentScopeCrewAIListener requires CrewAI. Install it with "
-                "`pip install crewai` (or the agentscope-sdk[crewai] extra)."
+                "`pip install crewai` (or the agentscope-trace[crewai] extra)."
             ) from e
 
         self.client = client or AgentScopeClient(
