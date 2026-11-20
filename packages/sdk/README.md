@@ -21,8 +21,11 @@ pip install -e "packages/sdk[tiktoken]"    # exact token counts when a provider 
 
 - **Non-blocking telemetry**: events go onto an in-memory queue and are sent in batches by a background thread, so agent execution never waits on the network.
 - **Resilient transport**: WebSocket connection with automatic reconnection. Up to 5,000 events are buffered while the server is unreachable, and the oldest are dropped first.
+- **Graceful shutdown**: buffered events are delivered when the process exits, even if `stop()` is never called, bounded by `shutdown_timeout` (5 s by default).
+- **Authentication and TLS**: pass `api_key=` (or set `AGENTSCOPE_API_KEY`) and `base_url="https://..."` / `secure=True` to reach a protected remote server. See [docs/AUTHENTICATION.md](../../docs/AUTHENTICATION.md).
 - **LangChain callback handler**: trace chains, tools, agents, retrievers and LLMs with two lines of code.
-- **OpenAI SDK auto-instrumentation**: `patch_openai()` traces `chat.completions.create` (sync, async and streaming).
+- **Model SDK auto-instrumentation**: `patch_openai()`, `patch_anthropic()`, `patch_gemini()`, or `patch_all()` for every installed SDK (sync, async and streaming). See [docs/PROVIDERS.md](../../docs/PROVIDERS.md).
+- **Framework integrations**: CrewAI, AutoGen and LlamaIndex via the `crewai`, `autogen` and `llamaindex` extras. See [docs/INTEGRATIONS.md](../../docs/INTEGRATIONS.md).
 - **Decorators**: `@trace`, `@trace_llm`, `@trace_tool`, `@trace_retriever` for any Python code.
 - **Cost tracking and budgets**: per-call USD cost from the bundled pricing table, plus an optional hard budget limit.
 - **CLI**: `agentscope start` launches the server and dashboard from a repository checkout.
