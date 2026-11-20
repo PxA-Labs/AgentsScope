@@ -293,7 +293,7 @@ A: Not natively yet. Today AgentScope instruments LangChain (`AgentScopeCallback
 A: Your data never leaves your infrastructure. By default it goes to a local SQLite file (`agentscope.db` in the server's working directory, or the `sqlite_data` volume under Docker Compose). Set `DATABASE_URL` to use PostgreSQL instead. Old sessions can be pruned automatically with `AGENTSCOPE_RETENTION_DAYS` / `AGENTSCOPE_MAX_SESSIONS`.
 
 **Q: Does the SDK slow down my agents?**  
-A: It shouldn't. Events go onto an in-memory queue and are sent in batches by a background thread, so instrumented calls never wait on the network. If the server is unreachable, events are buffered (up to 5,000; the oldest are dropped first). Formal benchmarks are tracked in [#276](https://github.com/PxA-Labs/AgentsScope/issues/276).
+A: It shouldn't. Events go onto an in-memory queue and are sent in batches by a background thread, so instrumented calls never wait on the network. If the server is unreachable, events are buffered (up to 5,000 by default, set with `AgentScopeClient(max_queue_size=...)`; the oldest are dropped first). Measured overhead and latency are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## License
 
