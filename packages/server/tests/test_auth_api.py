@@ -165,6 +165,55 @@ def test_every_websocket_route_requires_the_key(with_auth):
             assert exc.value.code == WS_CLOSE_UNAUTHORIZED, route.path
 
 
+def test_auth_is_checked_before_the_body_is_parsed(with_auth):
+    """An unauthenticated client must get 401, not validation details (422)."""
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/sessions",
+            content=b"{not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert res.status_code == 401
+        res = client.post("/api/sessions", json={"name": 123, "metadata": "x"})
+        assert res.status_code == 401
+
+
+def test_unknown_api_paths_are_protected_too(with_auth):
+    # Covers routes added later and avoids leaking which paths exist.
+    with TestClient(app) as client:
+        assert client.get("/api/not-a-route").status_code == 401
+        assert client.get("/api").status_code == 401
+        assert client.get("/api/not-a-route", headers=bearer()).status_code == 404
+
+
+def test_auth_applies_behind_a_root_path(with_auth):
+    with TestClient(app, root_path="/agentscope") as client:
+        assert client.get("/agentscope/api/sessions").status_code == 401
+        res = client.get("/agentscope/api/sessions", headers=bearer())
+        assert res.status_code == 200
+        assert client.get("/agentscope/health").status_code == 200
+
+
+def test_cors_preflight_and_401_carry_cors_headers(with_auth):
+    origin = "http://localhost:3000"
+    with TestClient(app) as client:
+        preflight = client.options(
+            "/api/sessions",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        assert preflight.status_code == 200
+        assert "authorization" in preflight.headers["access-control-allow-headers"]
+        # The browser can only read the 401 (and show the key prompt) if the
+        # rejection carries CORS headers.
+        res = client.get("/api/sessions", headers={"Origin": origin})
+        assert res.status_code == 401
+        assert res.headers["access-control-allow-origin"] == origin
+
+
 def test_rest_accepts_valid_key(with_auth):
     with TestClient(app) as client:
         res = client.get("/api/sessions", headers=bearer())

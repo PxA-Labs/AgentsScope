@@ -6,7 +6,9 @@ set, which keeps the local, zero-configuration experience unchanged.
 
 When enabled:
 
-* REST routes under ``/api`` require ``Authorization: Bearer <key>``.
+* Everything under ``/api`` requires ``Authorization: Bearer <key>``. This is
+  enforced by :class:`APIKeyAuthMiddleware` before routing, so requests are
+  rejected before any body is read and routes added later are covered too.
 * The ``/ws`` endpoint accepts the key either as an ``Authorization: Bearer``
   header (used by the Python SDK) or, because browsers cannot set headers on
   WebSocket connections, as a ``Sec-WebSocket-Protocol`` entry of the form
@@ -24,7 +26,25 @@ import logging
 import os
 from typing import List, Optional
 
-from fastapi import HTTPException, Request, WebSocket, status
+from fastapi import Request, WebSocket, status
+from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+try:  # Use the exact function Starlette's router matches routes with.
+    from starlette._utils import get_route_path
+except ImportError:  # pragma: no cover - older/newer Starlette layouts
+
+    def get_route_path(scope: Scope) -> str:
+        path: str = scope["path"]
+        root_path = scope.get("root_path", "")
+        if not root_path or not path.startswith(root_path):
+            return path
+        if path == root_path:
+            return ""
+        if path[len(root_path)] == "/":
+            return path[len(root_path) :]
+        return path
+
 
 API_KEY_ENV = "AGENTSCOPE_API_KEY"
 API_KEYS_ENV = "AGENTSCOPE_API_KEYS"
@@ -221,12 +241,8 @@ def _client_for_log(client) -> str:
     return host.replace("\r", "").replace("\n", "")
 
 
-async def require_api_key(request: Request) -> None:
-    """FastAPI dependency guarding REST routes."""
-    if not auth_enabled():
-        return
-    if is_valid_api_key(_bearer_token(request.headers.get("authorization"))):
-        return
+async def _reject_http(scope: Scope, receive: Receive, send: Send) -> None:
+    request = Request(scope)
     safe_path = request.url.path.replace("\r", "").replace("\n", "")
     logger.warning(
         "Rejected unauthenticated %s %s from %s",
@@ -234,11 +250,12 @@ async def require_api_key(request: Request) -> None:
         safe_path,
         _client_for_log(request.client),
     )
-    raise HTTPException(
+    response = JSONResponse(
+        {"detail": "Missing or invalid API key"},
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing or invalid API key",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    await response(scope, receive, send)
 
 
 async def authorize_websocket(websocket: WebSocket) -> bool:
@@ -259,3 +276,48 @@ async def authorize_websocket(websocket: WebSocket) -> bool:
     await websocket.accept(subprotocol=negotiated_subprotocol(websocket))
     await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
     return False
+
+
+PROTECTED_PATH_PREFIXES = ("/api", "/ws")
+
+
+def is_protected_path(path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in PROTECTED_PATH_PREFIXES)
+
+
+class APIKeyAuthMiddleware:
+    """Pure ASGI middleware enforcing the API key on ``/api`` and ``/ws``.
+
+    Runs before routing, so FastAPI never reads or validates the body of an
+    unauthenticated request (401, not 422) and new routes under these
+    prefixes are protected automatically. Other paths (``/health``, docs)
+    pass through untouched. Add it *before* ``CORSMiddleware`` so CORS stays
+    the outer layer: preflights are answered without a key and 401 responses
+    still carry CORS headers the dashboard can read.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket") or not auth_enabled():
+            await self.app(scope, receive, send)
+            return
+        # Check the route path (root_path stripped, as the router sees it)
+        # and the raw path, so a mismatch can only ever fail closed.
+        if not (
+            is_protected_path(get_route_path(scope)) or is_protected_path(scope["path"])
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        if scope["type"] == "http":
+            headers = Request(scope).headers
+            if is_valid_api_key(_bearer_token(headers.get("authorization"))):
+                await self.app(scope, receive, send)
+            else:
+                await _reject_http(scope, receive, send)
+            return
+
+        if await authorize_websocket(WebSocket(scope, receive, send)):
+            await self.app(scope, receive, send)

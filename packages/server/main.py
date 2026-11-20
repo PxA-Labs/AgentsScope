@@ -6,14 +6,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from auth import (
-    authorize_websocket,
-    negotiated_subprotocol,
-    require_api_key,
-    validate_auth_config,
-)
+from auth import APIKeyAuthMiddleware, negotiated_subprotocol, validate_auth_config
 from database import Base, async_session_maker, engine
-from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from graph_layout import build_incremental_graph_update
 from models import EventModel, SessionModel
@@ -82,6 +77,11 @@ app = FastAPI(
 cors_origins_raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000")
 cors_origins = [o.strip() for o in cors_origins_raw.split(",") if o.strip()]
 
+# API-key auth for /api and /ws (a no-op unless AGENTSCOPE_API_KEY(S) is set).
+# Added before CORSMiddleware so CORS wraps it: preflights need no key and
+# 401 responses still carry CORS headers. /health and the docs stay public.
+app.add_middleware(APIKeyAuthMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -90,12 +90,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount REST routers. require_api_key is a no-op unless an API key is
-# configured (AGENTSCOPE_API_KEY / AGENTSCOPE_API_KEYS); /health stays public.
-_api_auth = [Depends(require_api_key)]
-app.include_router(sessions.router, prefix="/api", dependencies=_api_auth)
-app.include_router(events.router, prefix="/api", dependencies=_api_auth)
-app.include_router(memories.router, prefix="/api", dependencies=_api_auth)
+# Mount REST routers (protected by APIKeyAuthMiddleware when auth is enabled)
+app.include_router(sessions.router, prefix="/api")
+app.include_router(events.router, prefix="/api")
+app.include_router(memories.router, prefix="/api")
 
 
 @app.get("/health")
@@ -397,9 +395,10 @@ async def websocket_route(
     client_type: str = Query(...),
     session_id: Optional[str] = Query(None),
 ):
-    """WebSocket router distinguishing SDK telemetry feeds from browser views."""
-    if not await authorize_websocket(websocket):
-        return
+    """WebSocket router distinguishing SDK telemetry feeds from browser views.
+
+    Credentials were already checked by APIKeyAuthMiddleware.
+    """
     subprotocol = negotiated_subprotocol(websocket)
 
     if client_type == "sdk":
