@@ -26,16 +26,24 @@ The import package is `agentscope_trace`; the `agentscope` command-line tool kee
 
 ### Migrating from `import agentscope`
 
-Until [#297](https://github.com/PxA-Labs/AgentsScope/issues/297) the import package was called `agentscope`. Replace it with `agentscope_trace`:
+Until [#297](https://github.com/PxA-Labs/AgentsScope/issues/297) the import package was called `agentscope`. Replace it with `agentscope_trace`, i.e. `s/from agentscope/from agentscope_trace/` and `s/import agentscope/import agentscope_trace/`, plus attribute uses such as `agentscope.decorators.configure(...)`:
 
 ```bash
-# s/from agentscope/from agentscope_trace/ and s/import agentscope/import agentscope_trace/
-perl -pi -e 's/\b(from|import) agentscope\b/$1 agentscope_trace/' your_module.py
+perl -pi -e 's/\b(from|import) agentscope\b/$1 agentscope_trace/g; s/^(\s*import\s[^#]*,\s*)agentscope\b/$1agentscope_trace/; s/(?<![\w.\/@-])agentscope(?=\.\w)/agentscope_trace/g' your_module.py
 ```
 
-Also update strings that name modules, such as `monkeypatch.setattr("agentscope.client....")` targets and logging configuration: loggers are now named `agentscope_trace.*` (for example `agentscope_trace.integrations.crewai`).
+It rewrites `from agentscope...` / `import agentscope...` lines (including `import agentscope as x` and `import os, agentscope`), and `agentscope.<name>` attribute uses and strings such as `monkeypatch.setattr("agentscope.client....")` targets. Review the diff afterwards (`git diff`, then `grep -rnw agentscope --include='*.py' .`):
 
-Old imports still work for now: a deprecated `agentscope` shim aliases `agentscope_trace` and emits one `DeprecationWarning`. Both names give the same module objects, so the global client, patches and monkeypatches are shared and the two can be mixed while you migrate. The shim will be removed after at least one minor release. It is also the one file that still clashes with the unrelated `agentscope` package on PyPI, so the two can't be installed together until it's gone.
+- It also rewrites `agentscope.<name>` text that isn't this SDK, e.g. a bare `agentscope.example.com` host (URLs with `//` and e-mail addresses are skipped), and imports of agentscope-ai's unrelated `agentscope` package if your code also refers to that.
+- Logging configuration needs updating by hand: loggers are now named `agentscope_trace.*` (for example `agentscope_trace.integrations.crewai`).
+
+The smallest possible change is `import agentscope_trace as agentscope`, which keeps every `agentscope.<name>` use working; `from agentscope... import` lines still need the new name.
+
+Old imports still work for now: a deprecated `agentscope` shim aliases `agentscope_trace` and emits one `DeprecationWarning`. Both names give the same module objects, so the global client, patches and monkeypatches are shared and the two can be mixed while you migrate. Import `agentscope` (or `agentscope_trace`) once at startup, before starting threads: while that first import is still running, another thread's first import of an `agentscope.<name>` submodule can fail with ModuleNotFoundError.
+
+The shim will be removed after at least one minor release. It is also the one file that still clashes with the unrelated `agentscope` package on PyPI, so the two can't be installed together until it's gone.
+
+If you work on this repository with an editable install made before the rename, re-run `make setup-sdk` (or `pip install -e packages/sdk`): the old install only maps `agentscope`, so both import names fail until you do.
 
 ## Features
 

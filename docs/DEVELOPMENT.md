@@ -33,6 +33,7 @@ AgentScope is structured as a monorepo containing three core packages:
     pip install -e .
     cd ../..
     ```
+    The SDK's import package is `agentscope_trace` (#297). If your editable install predates that rename, re-run this step (or `make setup-sdk`): the old install only maps `agentscope`, so both `import agentscope_trace` and `import agentscope` fail until you do.
 3.  Install dependencies for the Server:
     ```bash
     cd packages/server
