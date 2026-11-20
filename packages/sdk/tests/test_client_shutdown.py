@@ -141,6 +141,55 @@ def test_stop_is_idempotent_and_client_can_restart(fake_server):
     assert [e["event_id"] for e in fake_server] == ["a", "b"]
 
 
+def test_idle_sender_delivers_new_events_promptly(monkeypatch):
+    """The sender must not poll: an event emitted while idle goes out at once."""
+    received, arrivals = [], {}
+    _fake_network(monkeypatch, _register_instantly, received, arrivals)
+    client = AgentScopeClient()  # default flush_interval_seconds=0.1
+    client.emit({"event_id": "warm"})
+    assert _wait_until(lambda: "warm" in arrivals, 3.0)
+
+    delays = []
+    for i in range(10):
+        # Idle for longer than the 0.1 s flush interval, at varying phases, so
+        # a polling sender would add 0-100 ms to these events.
+        time.sleep(0.12 + 0.017 * i)
+        event_id = f"e{i}"
+        emitted = time.perf_counter()
+        client.emit({"event_id": event_id})
+        assert _wait_until(lambda: event_id in arrivals, 2.0)
+        delays.append(arrivals[event_id] - emitted)
+    client.stop()
+
+    shown = [round(d * 1000, 1) for d in delays]
+    assert sorted(delays)[len(delays) // 2] < 0.015, shown
+    assert max(delays) < 0.05, shown
+
+
+def test_stop_wakes_a_reconnect_backoff(monkeypatch):
+    """stop() must not wait out a long backoff (it can reach 30 s)."""
+    received = []
+    attempts = []
+
+    def flaky_create(self):
+        attempts.append(time.monotonic())
+        if len(attempts) > 1:  # the server is back after the first failure
+            self.session_id = "sess-1"
+
+    _fake_network(monkeypatch, flaky_create, received)
+    client = AgentScopeClient()
+    client._initial_backoff = 30.0
+    client.emit({"event_id": "a"})
+    assert _wait_until(lambda: attempts, 2.0)
+    time.sleep(0.1)  # now sleeping in the 30 s backoff
+
+    returned, elapsed = _run_stop(client, timeout=3.0)
+
+    assert returned
+    assert elapsed < 0.5
+    assert [e["event_id"] for e in received] == ["a"]
+
+
 # --- real interpreters -----------------------------------------------------
 
 SCRIPT_PRELUDE = """
