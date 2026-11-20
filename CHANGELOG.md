@@ -4,23 +4,27 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
+### Added
+- **sdk**: Record standalone CrewAI Agent.kickoff() runs
+- **sdk**: Add CrewAI integration via the CrewAI event bus
+
 ### Fixed
-- **sdk**: Keep events stop() could not deliver; document what happens
-- **sdk**: Run executor calls inline when threads are refused at exit
-- **sdk**: Clear running even if the sender thread fails before its loop
-- **sdk**: One exit hook for all clients, stopping them in parallel
-- **sdk**: Don't report stopped while the old sender thread still runs
-- **sdk**: Wake the idle sender on emit and stop instead of polling
-- **sdk**: Flush at exit without the default executor
-- **sdk**: Exit cleanly and deliver buffered events on shutdown
+- **sdk**: Let only the top-level CrewAI crew set the session status
+- **sdk**: Keep CrewAI listener memory flat across kickoffs
+- **sdk**: Deliver pending CrewAI events when the listener closes
+
+### Documentation
+- **sdk**: Update CrewAI docs for session status, lite agents and memory
+- **sdk**: Document the CrewAI integration and add an example
 
 ### Tests
-- **sdk**: Stopped clients are collectable and exit stops clients in parallel
-- **sdk**: Restart after a timed-out stop() never runs two senders
-- **sdk**: Idle-sender latency and stop() waking a reconnect backoff
-- **sdk**: Short script with no sleep and no stop() delivers and exits fast
-- **server**: End-to-end SDK shutdown against a real uvicorn server
-- **sdk**: Cover graceful shutdown in-process and in real interpreters
+- **sdk**: Run AgentScopeCrewAIListener against a real CrewAI crew
+- **sdk**: Unit-test CrewAI event mapping without CrewAI
+
+### Miscellaneous
+- Build(sdk): raise the pydantic floor to 2.9
+- Build(sdk): add crewai extra and a CI job for the CrewAI tests
+- Build(sdk): relax pydantic floor to the tested 2.7.4
 
 ## [1.0.0] - 2026-08-10
 
