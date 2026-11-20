@@ -4,6 +4,8 @@ The Python SDK in `packages/sdk` is published to PyPI as **`agentscope-trace`** 
 
 ## One-time setup (maintainers)
 
+Status for `PxA-Labs/AgentsScope` (2026-11-20): steps 2 and 3 are done. The `testpypi` and `pypi` environments only accept `v*` tags, `pypi` requires a maintainer's approval, and the `Release tags (v*)` ruleset limits tag creation, update and deletion to admins and maintainers. Step 1 (the pending Trusted Publishers on PyPI and TestPyPI) still has to be done by a PyPI account owner before the first tag. The `pypi` environment currently has a single required reviewer with self-review allowed, so the person who pushes a tag can approve its publish; add a second maintainer as reviewer and enable *Prevent self-review* when one is available.
+
 1. **Reserve the name.** Create the project on PyPI and TestPyPI by configuring a *pending* Trusted Publisher. No upload or API token is needed:
    - PyPI → *Your account → Publishing → Add a new pending publisher*
      - PyPI project name: `agentscope-trace`
@@ -47,4 +49,4 @@ The import package is `agentscope_trace` ([#297](https://github.com/PxA-Labs/Age
 That shim is the only file that still clashes with the unrelated `agentscope` project on PyPI: installing both overwrites `agentscope/__init__.py` (`packages/sdk/tests/test_wheel_install.py` documents this). So:
 
 - The GitHub release notes of the first release that contains the rename must include the migration notes from [CHANGELOG.md](CHANGELOG.md) (`--generate-notes` only lists PR titles; edit the release after it is created).
-- Keep the shim for at least one full minor release after that first release, then remove it in a minor release: delete `packages/sdk/agentscope/`, drop `"agentscope"` from `packages` in `packages/sdk/pyproject.toml`, delete `packages/sdk/tests/test_import_shim.py`, invert the clash test in `test_wheel_install.py`, and drop the shim check from the release smoke test.
+- Keep the shim for at least one full minor release after that first release, then remove it in a minor release (0.3.0 at the earliest, since the shim first ships in 0.1.0): delete `packages/sdk/agentscope/`, drop `"agentscope"` from `packages` in `packages/sdk/pyproject.toml`, delete `packages/sdk/tests/test_import_shim.py`, invert the clash test in `test_wheel_install.py`, and drop the shim check from the release smoke test.
