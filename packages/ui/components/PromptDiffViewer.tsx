@@ -24,14 +24,15 @@ function getPromptText(event: AgentEvent): string {
   if (!event) return "";
   const payload = event.payload as LLMPayload | undefined;
   if (!payload) return "";
+  const raw = payload as unknown as Record<string, unknown>;
 
   // 1. Check if prompts is a single string
-  if (typeof (payload as any).prompts === "string" && (payload as any).prompts.trim()) {
-    return (payload as any).prompts;
+  if (typeof raw.prompts === "string" && raw.prompts.trim()) {
+    return raw.prompts;
   }
   // 2. Check if prompt is a single string (singular 'prompt')
-  if (typeof (payload as any).prompt === "string" && (payload as any).prompt.trim()) {
-    return (payload as any).prompt;
+  if (typeof raw.prompt === "string" && raw.prompt.trim()) {
+    return raw.prompt;
   }
 
   // 3. Standard array handling
@@ -47,11 +48,12 @@ function isLLMEventWithPrompts(event: AgentEvent): boolean {
   if (!event || event.agent_type !== "llm") return false;
   const payload = event.payload as LLMPayload | undefined;
   if (!payload) return false;
-  
-  if (typeof (payload as any).prompts === "string" && (payload as any).prompts.trim()) {
+  const raw = payload as unknown as Record<string, unknown>;
+
+  if (typeof raw.prompts === "string" && raw.prompts.trim()) {
     return true;
   }
-  if (typeof (payload as any).prompt === "string" && (payload as any).prompt.trim()) {
+  if (typeof raw.prompt === "string" && raw.prompt.trim()) {
     return true;
   }
 
