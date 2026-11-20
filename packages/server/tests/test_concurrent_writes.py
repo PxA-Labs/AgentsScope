@@ -14,42 +14,14 @@ from datetime import datetime, timezone
 import database
 import main
 import pytest
-import pytest_asyncio
-from database import Base, get_db
 from httpx import ASGITransport, AsyncClient
 from main import app
 from models import EventModel, SessionModel
-from sqlalchemy import event, func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import create_async_engine
 
 PRODUCERS = 10
 EVENTS_PER_PRODUCER = 10
-
-
-@pytest_asyncio.fixture
-async def file_db(tmp_path, monkeypatch):
-    """A fresh SQLite file with the production pragmas (WAL, busy_timeout)."""
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'concurrent.db'}")
-    event.listen(engine.sync_engine, "connect", database.set_sqlite_pragma)
-    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    monkeypatch.setattr(database, "async_session_maker", maker)
-    monkeypatch.setattr(main, "async_session_maker", maker)
-
-    async def _get_db():
-        async with maker() as session:
-            yield session
-
-    # The suite-wide override shares one session across requests; concurrent
-    # requests need their own sessions, as in production.
-    app.dependency_overrides[get_db] = _get_db
-    try:
-        yield maker
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-        await engine.dispose()
 
 
 def _sdk_event(producer: int, k: int) -> dict:

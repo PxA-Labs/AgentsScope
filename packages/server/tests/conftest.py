@@ -18,6 +18,7 @@ import main
 import pytest_asyncio
 from database import Base, get_db
 from main import app
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Temporary file database for testing to avoid SQLite connection isolation traps
@@ -88,3 +89,29 @@ async def override_get_db(db_session):
     app.dependency_overrides[get_db] = _get_db
     yield
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def file_db(tmp_path, monkeypatch):
+    """A fresh SQLite file with the production pragmas (WAL, busy_timeout)."""
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'concurrent.db'}")
+    event.listen(engine.sync_engine, "connect", database.set_sqlite_pragma)
+    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    monkeypatch.setattr(database, "async_session_maker", maker)
+    monkeypatch.setattr(main, "async_session_maker", maker)
+
+    async def _get_db():
+        async with maker() as session:
+            yield session
+
+    # The suite-wide override shares one session across requests; concurrent
+    # requests need their own sessions, as in production.
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        yield maker
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        await engine.dispose()
