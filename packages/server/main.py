@@ -6,7 +6,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from auth import authorize_websocket, negotiated_subprotocol, require_api_key
+from auth import (
+    authorize_websocket,
+    negotiated_subprotocol,
+    require_api_key,
+    validate_auth_config,
+)
 from database import Base, async_session_maker, engine
 from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +51,8 @@ async def _periodic_prune() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Refuse to start with placeholder/short API keys; warn on blank values.
+    validate_auth_config()
     # Initialize DB schema
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

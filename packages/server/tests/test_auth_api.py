@@ -9,13 +9,16 @@ from auth import (
     API_KEY_ENV,
     API_KEYS_ENV,
     WS_CLOSE_UNAUTHORIZED,
+    AuthConfigError,
     encode_ws_auth_protocol,
 )
 from fastapi.testclient import TestClient
 from main import app
 from starlette.websockets import WebSocketDisconnect
 
-KEY = "test-key-Abc123"
+KEY = "test-key-Abc123-0123456789"
+OLD_KEY = "rotating-old-key-0123"
+NEW_KEY = "rotating-new-key-4567"
 
 
 @pytest.fixture
@@ -122,10 +125,10 @@ def test_rest_accepts_valid_key(with_auth):
 
 def test_rotated_keys_are_all_accepted(monkeypatch):
     monkeypatch.delenv(API_KEY_ENV, raising=False)
-    monkeypatch.setenv(API_KEYS_ENV, "old-key,new-key")
+    monkeypatch.setenv(API_KEYS_ENV, f"{OLD_KEY},{NEW_KEY}")
     with TestClient(app) as client:
-        assert client.get("/api/sessions", headers=bearer("old-key")).status_code == 200
-        assert client.get("/api/sessions", headers=bearer("new-key")).status_code == 200
+        assert client.get("/api/sessions", headers=bearer(OLD_KEY)).status_code == 200
+        assert client.get("/api/sessions", headers=bearer(NEW_KEY)).status_code == 200
         assert client.get("/api/sessions", headers=bearer(KEY)).status_code == 401
 
 
@@ -136,6 +139,15 @@ def test_single_key_with_comma_is_not_split(monkeypatch):
         assert client.get("/api/sessions", headers=bearer("ab")).status_code == 401
         ok = client.get("/api/sessions", headers=bearer("secretkey-0123456789,ab"))
         assert ok.status_code == 200
+
+
+@pytest.mark.parametrize("weak", ["change-me", "too-short"])
+def test_server_refuses_to_start_with_a_weak_key(monkeypatch, weak):
+    monkeypatch.setenv(API_KEY_ENV, weak)
+    monkeypatch.delenv(API_KEYS_ENV, raising=False)
+    with pytest.raises(AuthConfigError):
+        with TestClient(app):
+            pass
 
 
 def test_rejection_is_logged_without_the_key(with_auth, caplog):

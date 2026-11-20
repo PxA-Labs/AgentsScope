@@ -33,7 +33,20 @@ WS_SUBPROTOCOL = "agentscope"
 WS_AUTH_PROTOCOL_PREFIX = "agentscope.auth."
 WS_CLOSE_UNAUTHORIZED = 4401
 
+# Key policy, enforced at startup by validate_auth_config(). Keys shorter than
+# this, or copied from the examples in our docs, make the server refuse to
+# start. They also never authenticate (fail closed) should the environment
+# change after startup.
+MIN_API_KEY_LENGTH = 16
+PLACEHOLDER_API_KEYS = frozenset(
+    {"change-me", "changeme", "old-key", "new-key", "<key>", "<old-key>", "<new-key>"}
+)
+
 logger = logging.getLogger(__name__)
+
+
+class AuthConfigError(RuntimeError):
+    """Raised at startup when the configured API keys are unsafe to use."""
 
 
 def configured_api_keys() -> List[str]:
@@ -57,6 +70,70 @@ def auth_enabled() -> bool:
     return bool(configured_api_keys())
 
 
+def _weak_key_reason(key: str) -> Optional[str]:
+    if key.lower() in PLACEHOLDER_API_KEYS:
+        return "is a placeholder value from the documentation"
+    if len(key) < MIN_API_KEY_LENGTH:
+        return f"is shorter than {MIN_API_KEY_LENGTH} characters"
+    return None
+
+
+def validate_auth_config() -> None:
+    """Check the API-key environment at startup.
+
+    * Warns when a variable is set but blank and auth therefore stays disabled
+      (e.g. ``AGENTSCOPE_API_KEY=${UNSET_VAR}`` in a compose file).
+    * Warns when ``AGENTSCOPE_API_KEY`` contains a comma, since it is used as
+      one key and is never split.
+    * Raises :class:`AuthConfigError` for placeholder or short keys.
+
+    Key values are never included in log messages or exceptions.
+    """
+    single_raw = os.getenv(API_KEY_ENV)
+    if single_raw is not None and "," in single_raw:
+        logger.warning(
+            "%s contains a comma and is used as one single key. Use %s for "
+            "several comma-separated keys.",
+            API_KEY_ENV,
+            API_KEYS_ENV,
+        )
+
+    problems = []
+    single = (single_raw or "").strip()
+    if single:
+        reason = _weak_key_reason(single)
+        if reason:
+            problems.append(f"{API_KEY_ENV} {reason}")
+    for index, key in enumerate(
+        k.strip() for k in os.getenv(API_KEYS_ENV, "").split(",") if k.strip()
+    ):
+        reason = _weak_key_reason(key)
+        if reason:
+            problems.append(f"key #{index + 1} in {API_KEYS_ENV} {reason}")
+    if problems:
+        raise AuthConfigError(
+            "Refusing to start with a weak API key: "
+            + "; ".join(problems)
+            + '. Generate one with: python -c "import secrets; '
+            'print(secrets.token_urlsafe(32))"'
+        )
+
+    if auth_enabled():
+        logger.info(
+            "API-key authentication enabled (%d key(s) configured).",
+            len(configured_api_keys()),
+        )
+        return
+    blank = [name for name in (API_KEY_ENV, API_KEYS_ENV) if name in os.environ]
+    if blank:
+        logger.warning(
+            "%s %s set but empty, so API-key authentication is DISABLED and "
+            "/api and /ws are open to anyone who can reach this server.",
+            " and ".join(blank),
+            "is" if len(blank) == 1 else "are",
+        )
+
+
 def _digest(value: str) -> bytes:
     return hashlib.sha256(value.encode("utf-8")).digest()
 
@@ -74,7 +151,10 @@ def is_valid_api_key(candidate: Optional[str]) -> bool:
     for key in configured_api_keys():
         # Compare against all keys (no early exit) so timing does not reveal
         # which key, if any, partially matched.
-        matched |= hmac.compare_digest(candidate_digest, _digest(key))
+        equal = hmac.compare_digest(candidate_digest, _digest(key))
+        # Weak keys never authenticate, but they still count as configured
+        # (auth stays enabled), so a bad key fails closed rather than open.
+        matched |= equal and _weak_key_reason(key) is None
     return matched
 
 

@@ -1,17 +1,22 @@
 """Unit tests for auth.py helpers (no HTTP)."""
 
+import logging
+
 import auth
 import pytest
 from auth import (
     API_KEY_ENV,
     API_KEYS_ENV,
+    MIN_API_KEY_LENGTH,
     WS_AUTH_PROTOCOL_PREFIX,
+    AuthConfigError,
     _bearer_token,
     _decode_ws_auth_protocol,
     auth_enabled,
     configured_api_keys,
     encode_ws_auth_protocol,
     is_valid_api_key,
+    validate_auth_config,
 )
 
 
@@ -121,3 +126,88 @@ def test_ws_auth_protocol_round_trip(key):
 )
 def test_malformed_ws_auth_protocol_returns_none(protocol):
     assert _decode_ws_auth_protocol(protocol) is None
+
+
+# --- Startup validation ------------------------------------------------------
+
+
+def auth_warnings(caplog):
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "auth" and r.levelno == logging.WARNING
+    ]
+
+
+def test_validation_is_quiet_when_auth_is_not_configured(caplog):
+    with caplog.at_level(logging.INFO, logger="auth"):
+        validate_auth_config()
+    assert auth_warnings(caplog) == []
+
+
+@pytest.mark.parametrize(
+    "env_name,value", [(API_KEY_ENV, "   "), (API_KEY_ENV, ""), (API_KEYS_ENV, " , ")]
+)
+def test_blank_value_warns_that_auth_is_disabled(monkeypatch, caplog, env_name, value):
+    monkeypatch.setenv(env_name, value)
+    with caplog.at_level(logging.WARNING, logger="auth"):
+        validate_auth_config()
+    warnings = auth_warnings(caplog)
+    assert len(warnings) == 1
+    assert env_name in warnings[0]
+    assert "DISABLED" in warnings[0]
+
+
+def test_blank_value_is_harmless_when_other_variable_has_keys(monkeypatch, caplog):
+    monkeypatch.setenv(API_KEY_ENV, " ")
+    monkeypatch.setenv(API_KEYS_ENV, f"{OLD},{NEW}")
+    with caplog.at_level(logging.WARNING, logger="auth"):
+        validate_auth_config()
+    assert auth_warnings(caplog) == []
+
+
+def test_comma_in_single_key_variable_warns(monkeypatch, caplog):
+    monkeypatch.setenv(API_KEY_ENV, f"{OLD},{NEW}")
+    with caplog.at_level(logging.WARNING, logger="auth"):
+        validate_auth_config()
+    warnings = auth_warnings(caplog)
+    assert len(warnings) == 1
+    assert API_KEYS_ENV in warnings[0]
+    assert OLD not in warnings[0] and NEW not in warnings[0]
+
+
+@pytest.mark.parametrize(
+    "env_name,value",
+    [
+        (API_KEY_ENV, "change-me"),
+        (API_KEY_ENV, "CHANGE-ME"),
+        (API_KEY_ENV, "xyz123"),
+        (API_KEY_ENV, "a" * (MIN_API_KEY_LENGTH - 1)),
+        (API_KEYS_ENV, f"{OLD},old-key"),
+        (API_KEYS_ENV, f"{OLD},tiny"),
+    ],
+)
+def test_weak_keys_refuse_to_start(monkeypatch, env_name, value):
+    monkeypatch.setenv(env_name, value)
+    with pytest.raises(AuthConfigError) as exc:
+        validate_auth_config()
+    message = str(exc.value)
+    assert env_name in message
+    # The offending value itself is never echoed.
+    for part in value.split(","):
+        assert part not in message
+
+
+def test_minimum_length_key_is_accepted(monkeypatch, caplog):
+    monkeypatch.setenv(API_KEY_ENV, "k" * MIN_API_KEY_LENGTH)
+    with caplog.at_level(logging.WARNING, logger="auth"):
+        validate_auth_config()
+    assert auth_warnings(caplog) == []
+
+
+@pytest.mark.parametrize("weak", ["change-me", "short"])
+def test_weak_keys_never_authenticate_but_keep_auth_enabled(monkeypatch, weak):
+    """Fail closed if the environment changes after startup validation."""
+    monkeypatch.setenv(API_KEY_ENV, weak)
+    assert auth_enabled() is True
+    assert is_valid_api_key(weak) is False
