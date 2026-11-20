@@ -79,6 +79,9 @@ class AgentScopeCallback(AsyncCallbackHandler):
         session_name: Optional[str] = None,
         session_metadata: Optional[Dict[str, Any]] = None,
         budget_limit_usd: Optional[float] = None,
+        api_key: Optional[str] = None,
+        secure: bool = False,
+        base_url: Optional[str] = None,
     ):
         """Initialize the callback handler.
 
@@ -88,6 +91,11 @@ class AgentScopeCallback(AsyncCallbackHandler):
             session_name: Custom name for this run session.
             session_metadata: Arbitrary tags or configurations.
             budget_limit_usd: Optional max cumulative cost in USD.
+            api_key: API key for servers with authentication enabled. Defaults
+                to the AGENTSCOPE_API_KEY environment variable.
+            secure: Use TLS (https/wss) for host:port.
+            base_url: Full server URL, e.g. ``https://agentscope.example.com``.
+                Overrides host, port and secure; its scheme selects TLS.
         """
         super().__init__()
         self.client = AgentScopeClient(
@@ -95,6 +103,9 @@ class AgentScopeCallback(AsyncCallbackHandler):
             port=port,
             session_name=session_name,
             session_metadata=session_metadata,
+            api_key=api_key,
+            secure=secure,
+            base_url=base_url,
         )
         self.budget_limit_usd = budget_limit_usd
         self.cumulative_cost_usd: float = 0.0

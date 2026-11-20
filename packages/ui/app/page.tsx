@@ -5,6 +5,13 @@ import Link from "next/link";
 import { PromptDiffViewer } from "../components/PromptDiffViewer";
 import { useSessionStore } from "../store/sessionStore";
 import {
+  apiFetch,
+  notifyUnauthorized,
+  openWebSocket,
+  UNAUTHORIZED_EVENT,
+  WS_CLOSE_UNAUTHORIZED,
+} from "../lib/api";
+import {
   Session,
   AgentEvent,
   MemoryItem,
@@ -36,12 +43,6 @@ import {
   GitCompare,
 } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765";
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8765";
-
-function getApiUrl(path: string) {
-  return `${API_BASE}${path}`;
-}
 
 export default function Dashboard() {
   const {
@@ -80,6 +81,9 @@ export default function Dashboard() {
     type: "success" | "error";
   } | null>(null);
   const [wsStatus, setWsStatus] = useState<"connected" | "connecting" | "disconnected">("connecting");
+  // Set once the server rejects our credentials. Polling stops until the user
+  // saves a key in the AuthBanner, which reloads the page.
+  const [unauthorized, setUnauthorized] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eventFeedEndRef = useRef<HTMLDivElement>(null);
@@ -92,7 +96,7 @@ export default function Dashboard() {
   // Fetch Session list
   const fetchSessionsList = async () => {
     try {
-      const res = await fetch(getApiUrl("/api/sessions"));
+      const res = await apiFetch("/api/sessions");
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions);
@@ -108,10 +112,19 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    const onUnauthorized = () => setUnauthorized(true);
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
+
+  useEffect(() => {
+    // Retrying with rejected credentials cannot succeed and only adds load
+    // (and log lines) on the server, so pause polling while unauthorized.
+    if (unauthorized) return;
     fetchSessionsList();
     const interval = setInterval(fetchSessionsList, 4000);
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [activeSession, unauthorized]);
 
   // Handle active session selection
   const handleSelectSession = async (session: Session) => {
@@ -122,9 +135,7 @@ export default function Dashboard() {
 
     // Fetch existing events
     try {
-      const resEvents = await fetch(
-        getApiUrl(`/api/sessions/${session.session_id}/events`)
-      );
+      const resEvents = await apiFetch(`/api/sessions/${session.session_id}/events`);
       if (resEvents.ok) {
         const eventsData = await resEvents.json();
         setEvents(eventsData.events);
@@ -135,9 +146,7 @@ export default function Dashboard() {
 
     // Fetch graph
     try {
-      const resGraph = await fetch(
-        getApiUrl(`/api/sessions/${session.session_id}/graph`)
-      );
+      const resGraph = await apiFetch(`/api/sessions/${session.session_id}/graph`);
       if (resGraph.ok) {
         const graph = await resGraph.json();
         setGraphData(graph);
@@ -148,9 +157,7 @@ export default function Dashboard() {
 
     // Fetch stats
     try {
-      const resStats = await fetch(
-        getApiUrl(`/api/sessions/${session.session_id}/stats`)
-      );
+      const resStats = await apiFetch(`/api/sessions/${session.session_id}/stats`);
       if (resStats.ok) {
         const stats = await resStats.json();
         setStatsData(stats);
@@ -174,7 +181,7 @@ export default function Dashboard() {
       if (isCancelled) return;
       setWsStatus("connecting");
       try {
-        ws = new WebSocket(`${WS_BASE}/ws?client_type=ui&session_id=${activeSession.session_id}`);
+        ws = openWebSocket(`/ws?client_type=ui&session_id=${activeSession.session_id}`);
 
         ws.onopen = () => {
           if (isCancelled) return;
@@ -246,8 +253,15 @@ export default function Dashboard() {
           setWsStatus("disconnected");
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           if (isCancelled) return;
+          if (event.code === WS_CLOSE_UNAUTHORIZED) {
+            // Retrying with the same credentials cannot succeed; wait for the
+            // user to enter a key (saving it reloads the dashboard).
+            setWsStatus("disconnected");
+            notifyUnauthorized();
+            return;
+          }
           setWsStatus("connecting");
           const nextDelay = currentDelay;
           currentDelay = Math.min(currentDelay * 2, maxDelay);
@@ -272,10 +286,10 @@ export default function Dashboard() {
 
   const fetchGraphAndStats = async (sessionId: string) => {
     try {
-      const resGraph = await fetch(getApiUrl(`/api/sessions/${sessionId}/graph`));
+      const resGraph = await apiFetch(`/api/sessions/${sessionId}/graph`);
       if (resGraph.ok) setGraphData(await resGraph.json());
 
-      const resStats = await fetch(getApiUrl(`/api/sessions/${sessionId}/stats`));
+      const resStats = await apiFetch(`/api/sessions/${sessionId}/stats`);
       if (resStats.ok) setStatsData(await resStats.json());
     } catch (e) {
       console.warn("Refresh stats failed", e);
@@ -286,7 +300,7 @@ export default function Dashboard() {
     if (!activeSession) return;
     try {
       setMem0Error(null);
-      const res = await fetch(getApiUrl(`/api/sessions/${activeSession.session_id}/memories`));
+      const res = await apiFetch(`/api/sessions/${activeSession.session_id}/memories`);
       if (res.ok) {
         const data = await res.json();
         setMemories(data.results || []);
@@ -310,9 +324,7 @@ export default function Dashboard() {
     try {
       setIsSearchingMemories(true);
       setMem0Error(null);
-      const res = await fetch(
-        getApiUrl(`/api/sessions/${activeSession.session_id}/memories/search`),
-        {
+      const res = await apiFetch(`/api/sessions/${activeSession.session_id}/memories/search`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: memoryQuery }),
@@ -349,9 +361,7 @@ export default function Dashboard() {
       if (parsedCategories.length > 0) {
         payload.categories = parsedCategories;
       }
-      const res = await fetch(
-        getApiUrl(`/api/sessions/${activeSession.session_id}/memories`),
-        {
+      const res = await apiFetch(`/api/sessions/${activeSession.session_id}/memories`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -376,9 +386,7 @@ export default function Dashboard() {
   const handleDeleteMemory = async (memoryId: string) => {
     if (!activeSession) return;
     try {
-      const res = await fetch(
-        getApiUrl(`/api/sessions/${activeSession.session_id}/memories/${memoryId}`),
-        {
+      const res = await apiFetch(`/api/sessions/${activeSession.session_id}/memories/${memoryId}`, {
           method: "DELETE",
         }
       );
@@ -398,7 +406,7 @@ export default function Dashboard() {
     if (!activeSession) return;
     try {
       setIsExporting(true);
-      const res = await fetch(getApiUrl(`/api/sessions/${activeSession.session_id}/export`));
+      const res = await apiFetch(`/api/sessions/${activeSession.session_id}/export`);
       if (!res.ok) throw new Error("Failed to export session");
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -437,7 +445,7 @@ export default function Dashboard() {
         throw new Error("Invalid session export structure: missing session or events");
       }
 
-      const res = await fetch(getApiUrl("/api/sessions/import"), {
+      const res = await apiFetch("/api/sessions/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(jsonPayload),

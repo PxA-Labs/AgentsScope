@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import ReactDiffViewer, { DiffMethod } from "react-diff-viewer-continued";
 import { Session, AgentEvent, LLMPayload } from "../types";
+import { apiFetch } from "../lib/api";
 import {
   ArrowRightLeft,
   GitCompare,
@@ -23,11 +24,6 @@ import {
   Minus,
 } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8765";
-
-function getApiUrl(path: string) {
-  return `${API_BASE}${path}`;
-}
 
 const diffStyles = {
   variables: {
@@ -97,7 +93,7 @@ export function SessionDiffViewer() {
   const fetchSessions = async () => {
     try {
       setLoadingSessions(true);
-      const res = await fetch(getApiUrl("/api/sessions"));
+      const res = await apiFetch("/api/sessions");
       if (res.ok) {
         const data = await res.json();
         const sessList: Session[] = data.sessions || [];
@@ -130,8 +126,8 @@ export function SessionDiffViewer() {
       setLoadingEvents(true);
       try {
         const [resA, resB] = await Promise.all([
-          sessionAId ? fetch(getApiUrl(`/api/sessions/${sessionAId}/events`)) : null,
-          sessionBId ? fetch(getApiUrl(`/api/sessions/${sessionBId}/events`)) : null,
+          sessionAId ? apiFetch(`/api/sessions/${sessionAId}/events`) : null,
+          sessionBId ? apiFetch(`/api/sessions/${sessionBId}/events`) : null,
         ]);
 
         if (isMounted) {
