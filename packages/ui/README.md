@@ -20,6 +20,12 @@ For instructions on installing node modules and launching the dev server, please
 - `hooks/` holds data access and live updates: `useSessions` (list polling), `useSessionDetail` (events, graph, stats), `useLiveEvents` (the only WebSocket, with reconnect backoff), `useMemories`, `useSessionImport` and `useUnauthorized`.
 - `lib/api.ts` is the typed REST client (API-key auth, export and import helpers); `store/sessionStore.ts` is the Zustand store.
 
+## Styling
+
+The dashboard uses Tailwind CSS 4 through the `@tailwindcss/postcss` plugin (`postcss.config.js`). There is no `tailwind.config.js`: the theme lives in `app/globals.css`, in `@theme` blocks next to the `:root` colour variables. Tailwind scans the package for class names on its own and skips `tests/`.
+
+`app/globals.css` also keeps a few Tailwind 3 defaults so the look did not change in the upgrade (#330): the v3 sRGB palette for the colour families we use, fixed line heights for the `text-*` sizes, gray borders and placeholders, and pointer cursors on buttons. Tailwind 4 needs Safari 16.4+, Chrome 111+ or Firefox 128+.
+
 ## Tests
 
 Run these from `packages/ui`:

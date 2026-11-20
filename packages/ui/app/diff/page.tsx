@@ -9,7 +9,7 @@ export default function DiffPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Top Navbar */}
-      <header className="h-16 border-b border-border bg-card/50 backdrop-blur px-6 flex items-center justify-between flex-shrink-0">
+      <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <Link
             href="/"

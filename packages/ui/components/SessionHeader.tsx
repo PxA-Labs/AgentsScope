@@ -44,7 +44,7 @@ export function SessionHeader({ session, wsStatus, activeTab, onTabChange }: Ses
             onClick={() => onTabChange("execution")}
             className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
               activeTab === "execution"
-                ? "bg-purple-600 text-white shadow-sm"
+                ? "bg-purple-600 text-white shadow-xs"
                 : "text-muted-foreground hover:text-white"
             }`}
           >
@@ -54,7 +54,7 @@ export function SessionHeader({ session, wsStatus, activeTab, onTabChange }: Ses
             onClick={() => onTabChange("memories")}
             className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
               activeTab === "memories"
-                ? "bg-purple-600 text-white shadow-sm"
+                ? "bg-purple-600 text-white shadow-xs"
                 : "text-muted-foreground hover:text-white"
             }`}
           >

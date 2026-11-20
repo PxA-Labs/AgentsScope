@@ -33,7 +33,7 @@ export function SessionList({
   );
 
   return (
-    <aside className="w-80 border-r border-border bg-card flex flex-col flex-shrink-0">
+    <aside className="w-80 border-r border-border bg-card flex flex-col shrink-0">
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center font-bold text-lg text-white">
@@ -81,7 +81,7 @@ export function SessionList({
             placeholder="Search sessions..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-secondary/60 text-xs pl-8 pr-3 py-2 rounded-lg border border-border focus:outline-none focus:border-purple-500/50"
+            className="w-full bg-secondary/60 text-xs pl-8 pr-3 py-2 rounded-lg border border-border focus:outline-hidden focus:border-purple-500/50"
           />
         </div>
       </div>

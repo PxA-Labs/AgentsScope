@@ -308,7 +308,7 @@ export function PromptDiffViewer({
                   onClick={() => handleSelectEvent(e.event_id)}
                   className={`w-full text-left p-2.5 rounded-lg text-xs transition-all border ${
                     isSelected
-                      ? "bg-purple-600/25 text-white border-purple-500/60 shadow-sm"
+                      ? "bg-purple-600/25 text-white border-purple-500/60 shadow-xs"
                       : "bg-secondary/20 hover:bg-secondary/50 text-gray-200 border-border/60 hover:border-border"
                   }`}
                 >
@@ -326,7 +326,7 @@ export function PromptDiffViewer({
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">
+                    <span className="text-[10px] text-muted-foreground font-mono shrink-0">
                       {formatTime(e.timestamp)}
                     </span>
                   </div>
@@ -371,7 +371,7 @@ export function PromptDiffViewer({
                   onClick={() => setViewMode("split")}
                   className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${
                     viewMode === "split"
-                      ? "bg-purple-600 text-white shadow-sm"
+                      ? "bg-purple-600 text-white shadow-xs"
                       : "text-muted-foreground hover:text-white"
                   }`}
                 >
@@ -382,7 +382,7 @@ export function PromptDiffViewer({
                   onClick={() => setViewMode("unified")}
                   className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${
                     viewMode === "unified"
-                      ? "bg-purple-600 text-white shadow-sm"
+                      ? "bg-purple-600 text-white shadow-xs"
                       : "text-muted-foreground hover:text-white"
                   }`}
                 >
