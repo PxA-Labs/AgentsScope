@@ -7,20 +7,26 @@
 # the REST API until it is stored. Prints the time spent in each step.
 #
 # Usage:
-#   scripts/ttv_check.sh [REPO_URL_OR_PATH] [--with-ui]
+#   scripts/ttv_check.sh [REPO_URL_OR_PATH] [--with-ui] [--cold]
 #
 # Defaults to cloning the current local checkout (HEAD). Pass the GitHub URL to
 # measure what a new user experiences. --with-ui also times `npm ci` and
-# `npm run build` for the dashboard. pip/npm caches on the machine make the
-# numbers optimistic compared with a truly cold machine.
+# `npm run build` for the dashboard.
+#
+# By default pip and npm reuse the machine's package caches, so results depend
+# on what earlier runs downloaded. --cold disables the pip cache and gives npm
+# an empty cache in the temporary directory, so every package is downloaded,
+# as on a new machine (OS-level DNS/TLS caches and bandwidth still vary).
 # ==============================================================================
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WITH_UI=0
+COLD=0
 for arg in "$@"; do
   case "$arg" in
     --with-ui) WITH_UI=1 ;;
+    --cold) COLD=1 ;;
     *) SRC="$arg" ;;
   esac
 done
@@ -44,8 +50,17 @@ step() {
   LAST="$t"
 }
 
+if [ "$COLD" -eq 1 ]; then
+  export PIP_NO_CACHE_DIR=1
+  export npm_config_cache="$WORK/npm-cache"
+  CACHES="cold (pip cache disabled, empty npm cache)"
+else
+  CACHES="warm (machine pip/npm caches)"
+fi
+
 echo "Source: $SRC"
 echo "Workdir: $WORK"
+echo "Caches: $CACHES"
 echo
 
 git clone --quiet --depth 1 "file://$SRC" "$WORK/repo" 2>/dev/null || git clone --quiet --depth 1 "$SRC" "$WORK/repo"
@@ -62,9 +77,10 @@ step "pip install server"
 pip install --quiet --disable-pip-version-check -e "$WORK/repo/packages/sdk"
 step "pip install SDK"
 
+# exec, so SERVER_PID is uvicorn itself and the cleanup trap stops it.
 (cd "$WORK/repo/packages/server" && \
   DATABASE_URL="sqlite+aiosqlite:///$WORK/ttv.db" \
-  python -m uvicorn main:app --host 127.0.0.1 --port "$PORT" --log-level warning \
+  exec python -m uvicorn main:app --host 127.0.0.1 --port "$PORT" --log-level warning \
   >"$WORK/server.log" 2>&1) &
 SERVER_PID=$!
 python - "$PORT" <<'PY'
