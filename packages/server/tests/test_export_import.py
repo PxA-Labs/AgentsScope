@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from database import get_db
 from httpx import ASGITransport, AsyncClient
 from main import app
 from models import EventModel, SessionModel
@@ -64,11 +63,10 @@ async def test_session_export_and_import(db_session: AsyncSession):
     db_session.add_all([ev1, ev2])
     await db_session.commit()
 
-    # 2. Test Export Endpoint
+    # 2. Test Export Endpoint (each request gets its own session, as in
+    # production; the seeded rows are committed above)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        app.dependency_overrides[get_db] = lambda: db_session
-
         res = await client.get(f"/api/sessions/{sess_id}/export")
         assert res.status_code == 200
         export_data = res.json()
@@ -115,5 +113,3 @@ async def test_session_export_and_import(db_session: AsyncSession):
         assert reimported_resp["session_id"] != new_sess_id
         assert "imported" in reimported_resp["session_id"]
         assert "Imported" in reimported_resp["name"]
-
-        app.dependency_overrides.clear()

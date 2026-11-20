@@ -42,11 +42,11 @@ if DATABASE_URL.startswith("postgresql+asyncpg://"):
     )
 
 
-# Configure SQLite options (WAL & Foreign Keys) on every new connection
+# Configure SQLite options (WAL & Foreign Keys) on every new connection.
+# Registered only on SQLite engines by configure_sqlite_engine, so it does not
+# depend on the global engine's dialect: a SQLite engine built while
+# DATABASE_URL points at PostgreSQL still gets its pragmas.
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    # Only execute SQLite-specific pragmas for SQLite dialect
-    if engine.dialect.name != "sqlite":
-        return
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL;")
@@ -82,7 +82,12 @@ def configure_sqlite_engine(target: AsyncEngine) -> None:
     start of every transaction (SQLAlchemy's documented recipe for SAVEPOINT
     support on sqlite3/aiosqlite), so ``begin_nested()`` is nested in a real
     transaction and commits or rolls back with it.
+
+    Does nothing when ``target`` is not a SQLite engine: the check uses the
+    engine's own dialect, never the global ``engine``.
     """
+    if target.dialect.name != "sqlite":
+        return
     sync_engine = target.sync_engine
     event.listen(sync_engine, "connect", set_sqlite_pragma)
     event.listen(sync_engine, "connect", _disable_driver_begin)

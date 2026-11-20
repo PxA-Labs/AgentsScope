@@ -269,27 +269,75 @@ def test_websocket_event_upsert_and_merge():
         assert abs(sess_data["total_cost_usd"] - 0.000225) < 1e-6
 
 
-def test_set_sqlite_pragma_bypasses_non_sqlite():
-    from unittest.mock import MagicMock
-
+@pytest.mark.asyncio
+async def test_set_sqlite_pragma_bypasses_non_sqlite():
     import database
-    from database import set_sqlite_pragma
+    from sqlalchemy import event
 
-    # Mock engine.dialect.name to "postgresql"
-    original_engine = database.engine
-    mock_engine = MagicMock()
-    mock_engine.dialect.name = "postgresql"
-    database.engine = mock_engine
-
+    # A PostgreSQL engine never gets the SQLite listeners, whatever the global
+    # engine is, even if configure_sqlite_engine is called on it directly.
+    pg = database.create_engine_for_url("postgresql+asyncpg://user:pw@localhost/db")
     try:
-        mock_conn = MagicMock()
-        # Call set_sqlite_pragma hook
-        set_sqlite_pragma(mock_conn, None)
-        # Verify that cursor was never called on the connection
-        mock_conn.cursor.assert_not_called()
+        database.configure_sqlite_engine(pg)
+        sync_engine = pg.sync_engine
+        assert not event.contains(sync_engine, "connect", database.set_sqlite_pragma)
+        assert not event.contains(
+            sync_engine, "connect", database._disable_driver_begin
+        )
+        assert not event.contains(sync_engine, "begin", database._emit_begin)
     finally:
-        # Restore original engine
-        database.engine = original_engine
+        await pg.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_engine_gets_pragmas_while_global_engine_is_postgresql(
+    tmp_path, monkeypatch
+):
+    import database
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    # The pragmas depend on the connecting engine, not the global one.
+    pg = create_async_engine("postgresql+asyncpg://user:pw@localhost/db")
+    monkeypatch.setattr(database, "engine", pg)
+    lite = database.create_engine_for_url(f"sqlite+aiosqlite:///{tmp_path / 'p.db'}")
+    try:
+        async with lite.connect() as conn:
+            journal_mode = (await conn.exec_driver_sql("PRAGMA journal_mode")).scalar()
+            foreign_keys = (await conn.exec_driver_sql("PRAGMA foreign_keys")).scalar()
+            busy_timeout = (await conn.exec_driver_sql("PRAGMA busy_timeout")).scalar()
+    finally:
+        await lite.dispose()
+        await pg.dispose()
+
+    assert journal_mode == "wal"
+    assert foreign_keys == 1
+    assert busy_timeout == 5000
+
+
+@pytest.mark.asyncio
+async def test_suite_engine_uses_production_sqlite_settings(db_engine, db_session):
+    import database
+    from database import get_db
+    from sqlalchemy import event
+
+    sync_engine = db_engine.sync_engine
+    assert event.contains(sync_engine, "begin", database._emit_begin)
+    assert event.contains(sync_engine, "connect", database._disable_driver_begin)
+    async with db_engine.connect() as conn:
+        journal_mode = (await conn.exec_driver_sql("PRAGMA journal_mode")).scalar()
+    assert journal_mode == "wal"
+
+    # Each request gets its own session, never the test's db_session.
+    override = app.dependency_overrides[get_db]
+    first, second = override(), override()
+    try:
+        s1, s2 = await anext(first), await anext(second)
+        assert s1 is not s2
+        assert db_session not in (s1, s2)
+        assert s1.get_bind() is db_engine.sync_engine
+    finally:
+        await first.aclose()
+        await second.aclose()
 
 
 def test_implicit_session_status_synchronization():
@@ -356,7 +404,7 @@ def test_implicit_session_status_synchronization():
         assert sess_data["ended_at"] is not None
 
 
-def test_sdk_client_integration(db_engine):
+def test_sdk_client_integration(db_engine, tmp_path):
     import asyncio
     import socket
     import threading
@@ -376,24 +424,19 @@ def test_sdk_client_integration(db_engine):
     # Clear any leftover single-thread dependency overrides for the live server
     app.dependency_overrides.clear()
 
-    import os
-
     import database
     import main
-    from sqlalchemy.ext.asyncio import (
-        AsyncSession,
-        async_sessionmaker,
-        create_async_engine,
-    )
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     orig_db_engine = database.engine
     orig_db_maker = database.async_session_maker
     orig_main_engine = main.engine
     orig_main_maker = main.async_session_maker
 
-    live_db_file = f"./test_live_{port}.db"
-    live_db_url = f"sqlite+aiosqlite:///{live_db_file}"
-    live_engine = create_async_engine(live_db_url)
+    # Configured like production (WAL, pragmas, SQLAlchemy-emitted BEGIN).
+    live_engine = database.create_engine_for_url(
+        f"sqlite+aiosqlite:///{tmp_path / 'live.db'}"
+    )
     live_session_maker = async_sessionmaker(
         bind=live_engine,
         class_=AsyncSession,
@@ -495,13 +538,6 @@ def test_sdk_client_integration(db_engine):
         database.async_session_maker = orig_db_maker
         main.engine = orig_main_engine
         main.async_session_maker = orig_main_maker
-        for suffix in ["", "-journal", "-wal"]:
-            path = f"{live_db_file}{suffix}"
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
 
 
 @pytest.mark.asyncio
