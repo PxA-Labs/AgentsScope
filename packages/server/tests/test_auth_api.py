@@ -5,6 +5,7 @@ import re
 import time
 import uuid
 
+import auth
 import pytest
 from auth import (
     API_KEY_ENV,
@@ -22,6 +23,13 @@ from starlette.websockets import WebSocketDisconnect
 KEY = "test-key-Abc123-0123456789"
 OLD_KEY = "rotating-old-key-0123"
 NEW_KEY = "rotating-new-key-4567"
+
+
+@pytest.fixture(autouse=True)
+def fresh_rejection_log():
+    auth._rejection_log.reset()
+    yield
+    auth._rejection_log.reset()
 
 
 @pytest.fixture
@@ -254,6 +262,37 @@ def test_rejection_is_logged_without_the_key(with_auth, caplog):
     messages = [r.getMessage() for r in caplog.records if r.name == "auth"]
     assert any("Rejected unauthenticated GET /api/sessions" in m for m in messages)
     assert not any("leaky-secret-value" in m for m in messages)
+
+
+def rejection_warnings(caplog):
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "auth"
+        and r.levelno == logging.WARNING
+        and r.getMessage().startswith("Rejected unauthenticated")
+    ]
+
+
+def test_rejection_logs_are_rate_limited_per_client(with_auth, caplog, monkeypatch):
+    """A dashboard polling with a bad key must not flood the log."""
+    now = [1000.0]
+    monkeypatch.setattr(auth._rejection_log, "clock", lambda: now[0])
+    with caplog.at_level(logging.WARNING, logger="auth"):
+        with TestClient(app) as client:
+            for _ in range(5):
+                assert client.get("/api/sessions").status_code == 401
+            for _ in range(3):
+                with client.websocket_connect("/ws?client_type=ui") as ws:
+                    with pytest.raises(WebSocketDisconnect):
+                        ws.receive_text()
+            assert len(rejection_warnings(caplog)) == 1
+
+            now[0] += auth.REJECTION_LOG_WINDOW_SECONDS
+            client.get("/api/sessions")
+    warnings = rejection_warnings(caplog)
+    assert len(warnings) == 2
+    assert "7 similar rejections from this client suppressed" in warnings[1]
 
 
 # --- WebSocket ---------------------------------------------------------------

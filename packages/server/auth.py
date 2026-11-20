@@ -24,7 +24,8 @@ import hashlib
 import hmac
 import logging
 import os
-from typing import List, Optional
+import time
+from typing import Dict, List, Optional
 
 from fastapi import Request, WebSocket, status
 from fastapi.responses import JSONResponse
@@ -241,15 +242,65 @@ def _client_for_log(client) -> str:
     return host.replace("\r", "").replace("\n", "")
 
 
+REJECTION_LOG_WINDOW_SECONDS = 60.0
+
+
+class _RejectionLogLimiter:
+    """Allow one rejection warning per client per window.
+
+    A dashboard left open with a wrong key polls every few seconds; without
+    this, every poll and reconnect would add a WARNING line.
+    """
+
+    def __init__(self, window: float, max_clients: int = 1024) -> None:
+        self.window = window
+        self.max_clients = max_clients
+        self.clock = time.monotonic
+        self._entries: Dict[str, List[float]] = {}
+
+    def reset(self) -> None:
+        self._entries.clear()
+
+    def check(self, client: str) -> Optional[int]:
+        """Return the number of suppressed rejections if this one should be
+        logged, or None if it should be suppressed."""
+        now = self.clock()
+        entry = self._entries.get(client)
+        if entry is not None and now - entry[0] < self.window:
+            entry[1] += 1
+            return None
+        suppressed = int(entry[1]) if entry is not None else 0
+        if entry is None and len(self._entries) >= self.max_clients:
+            self._entries.clear()  # bound memory under many distinct clients
+        self._entries[client] = [now, 0]
+        return suppressed
+
+
+_rejection_log = _RejectionLogLimiter(REJECTION_LOG_WINDOW_SECONDS)
+
+
+def _log_rejection(what: str, client) -> None:
+    host = _client_for_log(client)
+    suppressed = _rejection_log.check(host)
+    if suppressed is None:
+        logger.debug("Rejected unauthenticated %s from %s", what, host)
+    elif suppressed:
+        logger.warning(
+            "Rejected unauthenticated %s from %s (%d similar rejections from "
+            "this client suppressed in the last %ds)",
+            what,
+            host,
+            suppressed,
+            int(_rejection_log.window),
+        )
+    else:
+        logger.warning("Rejected unauthenticated %s from %s", what, host)
+
+
 async def _reject_http(scope: Scope, receive: Receive, send: Send) -> None:
     request = Request(scope)
     safe_path = request.url.path.replace("\r", "").replace("\n", "")
-    logger.warning(
-        "Rejected unauthenticated %s %s from %s",
-        request.method,
-        safe_path,
-        _client_for_log(request.client),
-    )
+    _log_rejection(f"{request.method} {safe_path}", request.client)
     response = JSONResponse(
         {"detail": "Missing or invalid API key"},
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -269,10 +320,7 @@ async def authorize_websocket(websocket: WebSocket) -> bool:
         return True
     if is_valid_api_key(_websocket_token(websocket)):
         return True
-    logger.warning(
-        "Rejected unauthenticated WebSocket connection from %s",
-        _client_for_log(websocket.client),
-    )
+    _log_rejection("WebSocket connection", websocket.client)
     await websocket.accept(subprotocol=negotiated_subprotocol(websocket))
     await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
     return False
