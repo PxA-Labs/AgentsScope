@@ -4,6 +4,7 @@ Runs the SDK in separate interpreters, so the test observes exactly what a
 user's script does: whether it exits and what reaches the database.
 """
 
+import contextlib
 import json
 import os
 import socket
@@ -26,12 +27,15 @@ def _free_port():
         return s.getsockname()[1]
 
 
-@pytest.fixture(scope="module")
-def server():
+@contextlib.contextmanager
+def _uvicorn(extra_env=None):
+    """Run the real server in its own process; stop it by its PID."""
     port = _free_port()
     with tempfile.TemporaryDirectory() as tmp:
         env = {**os.environ, "DATABASE_URL": f"sqlite+aiosqlite:///{tmp}/e2e.db"}
         env.pop("AGENTSCOPE_API_KEY", None)
+        env.pop("AGENTSCOPE_API_KEYS", None)
+        env.update(extra_env or {})
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -69,41 +73,66 @@ def server():
                 proc.kill()
 
 
-def run_sdk_script(port, session_name, body, timeout=30, host="127.0.0.1"):
+@pytest.fixture(scope="module")
+def server():
+    with _uvicorn() as port:
+        yield port
+
+
+def run_sdk_script(
+    port, session_name, body, timeout=30, host="127.0.0.1", api_key=None
+):
     prelude = (
         "from agentscope_trace.decorators import configure, get_global_client, trace\n"
-        f"configure(host={host!r}, port={port}, session_name={session_name!r})\n"
+        f"configure(host={host!r}, port={port}, session_name={session_name!r}, "
+        f"api_key={api_key!r})\n"
     )
+    env = {**os.environ}
+    env.pop("AGENTSCOPE_API_KEY", None)
     started = time.monotonic()
     proc = subprocess.run(
         [sys.executable, "-c", prelude + textwrap.dedent(body)],
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
     return proc, time.monotonic() - started
 
 
-def stored_event_ids(port, session_name):
-    sessions = json.load(
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/api/sessions?limit=100")
-    )["sessions"]
-    match = [s for s in sessions if s["name"] == session_name]
+def _api(port, path, api_key=None, body=None):
+    """Call the server's REST API, with the API key when one is given."""
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    with urllib.request.urlopen(
+        urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/{path}", data=data, headers=headers
+        )
+    ) as response:
+        return json.load(response)
+
+
+def session_ids_named(port, session_name, api_key=None):
+    sessions = _api(port, "sessions?limit=100", api_key)["sessions"]
+    return [s["session_id"] for s in sessions if s["name"] == session_name]
+
+
+def stored_event_ids(port, session_name, api_key=None):
+    match = session_ids_named(port, session_name, api_key)
     assert match, f"session {session_name!r} was not created"
-    url = (
-        f"http://127.0.0.1:{port}/api/sessions/"
-        f"{match[0]['session_id']}/events?limit=1000"
-    )
-    return {e["event_id"] for e in json.load(urllib.request.urlopen(url))["events"]}
+    events = _api(port, f"sessions/{match[0]}/events?limit=1000", api_key)["events"]
+    return {e["event_id"] for e in events}
 
 
-def wait_for_event_count(port, session_name, expected, timeout=15.0):
+def wait_for_event_count(port, session_name, expected, timeout=15.0, api_key=None):
     """The SDK may finish sending before the server has persisted everything
     (it ingests messages sequentially), so poll instead of reading once."""
     deadline = time.monotonic() + timeout
     count = 0
     while time.monotonic() < deadline:
-        count = len(stored_event_ids(port, session_name))
+        count = len(stored_event_ids(port, session_name, api_key))
         if count >= expected:
             break
         time.sleep(0.2)
