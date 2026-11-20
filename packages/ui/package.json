@@ -9,17 +9,17 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "next": "^16.4.5",
+    "next": "^16.4.6",
     "react": "^18.2.0",
     "react-dom": "^19.3.1",
     "react-diff-viewer-continued": "^4.4.0",
     "reactflow": "^11.10.3",
     "recharts": "^3.10.1",
-    "zustand": "^5.0.15",
+    "zustand": "^5.1.0",
     "swr": "^2.5.1",
     "clsx": "^2.1.0",
     "tailwind-merge": "^3.7.0",
-    "lucide-react": "^1.48.0"
+    "lucide-react": "^1.74.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
@@ -27,7 +27,7 @@
     "@types/react": "^18.2.55",
     "@types/react-dom": "^19.3.0",
     "tailwindcss": "^3.4.1",
-    "postcss": "^8.5.28",
+    "postcss": "^8.5.33",
     "autoprefixer": "^10.6.1",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.5"

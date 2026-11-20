@@ -12,6 +12,12 @@ updates:
     labels:
       - "dependencies"
       - "ci/cd"
+    groups:
+      # All github/codeql-action/* steps must run the same release, so they
+      # are bumped together in a single PR instead of one PR per sub-action.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # Python SDK (pyproject.toml)
   - package-ecosystem: "pip"

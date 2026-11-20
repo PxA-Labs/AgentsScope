@@ -2,19 +2,22 @@
 
 All notable changes to the **AgentScope** project will be documented in this file.
 
-## [Unreleased] - 2026-11-14
+## [Unreleased] - 2026-11-20
+
+### Added
+- **cli**: Explain how to get the server when run from a pip install
+
+### Documentation
+- Add RELEASING.md for the agentscope-trace release process
+
+### CI/CD
+- **release**: Only publish tags on main, mark pre-releases, serialise runs
+- **release**: Let a re-tag of the same version get past TestPyPI
+- **release**: Publish agentscope-trace to PyPI on version tags
+- **release**: Add tag/version consistency check
 
 ### Miscellaneous
-- Build(deps): update pydantic requirement in /packages/sdk
-- Build(deps-dev): update langchain-core requirement in /packages/sdk
-- Build(deps): update pydantic requirement in /packages/server
-- Build(deps-dev): update pytest requirement in /packages/server
-- Build(deps-dev): update ruff requirement in /packages/sdk
-- Build(deps): bump next from 16.3.3 to 16.4.5 in /packages/ui
-- Build(deps-dev): update pytest-asyncio requirement in /packages/sdk
-- Build(deps): bump ossf/scorecard-action from 2.4.4 to 2.5.0
-- Build(deps): bump react-dom and @types/react-dom in /packages/ui
-- Build(deps): bump stefanzweifel/git-auto-commit-action from 5 to 7
+- Build(sdk): publish as agentscope-trace and single-source the version
 
 ## [1.0.0] - 2026-08-10
 
