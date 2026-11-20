@@ -8,6 +8,14 @@
 @source not "../tests";
 
 /*
+ * Tailwind 3 applied hover: on every device. Tailwind 4 wraps it in
+ * @media (hover: hover), which hides hover-only controls (e.g. the memory
+ * delete button, opacity-0 group-hover:opacity-100) on touch screens. Keep
+ * the v3 behaviour.
+ */
+@custom-variant hover (&:hover);
+
+/*
  * Theme tokens (moved here from tailwind.config.js in the Tailwind 4
  * migration, #330). The values are the HSL channel variables defined on
  * :root below.

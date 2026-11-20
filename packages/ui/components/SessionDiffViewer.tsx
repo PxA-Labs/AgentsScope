@@ -495,7 +495,7 @@ export function SessionDiffViewer() {
                       onClick={() => hasLLM && setSelectedEventIndex(row.index)}
                       className={`transition-colors duration-150 ${
                         hasLLM ? "cursor-pointer hover:bg-secondary/30" : ""
-                      } ${isSelected ? "bg-purple-900/20 border-l-2 border-purple-500" : ""}`}
+                      } ${isSelected ? "bg-purple-900/20 border-l-2" : ""}`}
                     >
                       <td className="p-3 text-center text-[10px] font-mono text-muted-foreground">
                         {row.index + 1}
