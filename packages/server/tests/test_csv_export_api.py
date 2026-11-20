@@ -5,7 +5,7 @@ import csv
 import io
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from database import get_db
@@ -16,9 +16,16 @@ from pricing import calculate_cost
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
+def recent_start() -> datetime:
+    # Relative to now: the test database is shared across the run, and a fixed
+    # date would age into test_retention's prune window and break its counts.
+    now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    return now - timedelta(hours=1)
+
+
 async def seed_session(db: AsyncSession, name: str = "CSV Run", n_events: int = 0):
     sess_id = str(uuid.uuid4())
-    start = datetime(2026, 11, 15, 9, 0, 0)
+    start = recent_start()
     db.add(
         SessionModel(
             session_id=sess_id,
@@ -177,7 +184,7 @@ async def test_csv_export_of_session_without_events_has_only_header(
             session_id=sess_id,
             name="empty",
             status="running",
-            started_at=datetime(2026, 11, 15),
+            started_at=recent_start(),
             metadata_={},
         )
     )
