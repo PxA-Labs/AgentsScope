@@ -2,14 +2,21 @@
 
 Scenario A: the server is stopped mid-session while the SDK keeps emitting,
 then restarted on the same port and database. Counts how many events arrive
-and how long recovery takes.
+and how long the SDK takes to deliver them once the server is back.
 
 Scenario B: same, but the outage produces more events than the SDK buffer
 holds (max_queue_size), showing the drop-oldest policy.
 
-Run: python benchmarks/bench_resilience.py
+Timing: "server start" is how long the restarted uvicorn takes to answer
+/health. "Recovery" starts only after that, so it measures the SDK alone:
+the wait for its next reconnect attempt (exponential backoff 1 s, 2 s, 4 s...
+counted from the outage) plus delivering the buffer. Each scenario runs
+--repeat times; the summary shows the median with the min-max range.
+
+Run: python benchmarks/bench_resilience.py [--repeat 5]
 """
 
+import argparse
 import sys
 import tempfile
 import time
@@ -17,7 +24,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _harness import ServerProcess, count_events, get_json, make_event, print_table
+from _harness import (
+    ServerProcess,
+    count_events,
+    get_json,
+    int_range,
+    machine_info,
+    make_event,
+    print_table,
+    spread,
+)
 from agentscope.client import AgentScopeClient
 
 
@@ -31,7 +47,7 @@ def wait_for_count(port: int, session_id: str, expected: int, timeout: float) ->
             count = 0
         if count >= expected:
             break
-        time.sleep(0.25)
+        time.sleep(0.05)
     return count, time.monotonic() - start
 
 
@@ -50,23 +66,26 @@ def ranges(ids) -> str:
     return ", ".join(out)
 
 
-def drain(client: AgentScopeClient) -> None:
-    # Work around #289 (stop() blocks on a full buffer) on unfixed SDKs.
-    while not client.queue.empty():
-        try:
-            client.queue.get_nowait()
-        except Exception:
-            break
+def stored_ids(port: int, session_id: str, prefix: str) -> set:
+    ids, page = set(), 1
+    while True:
+        events = get_json(
+            port, f"/api/sessions/{session_id}/events?page={page}&limit=500"
+        )["events"]
+        ids.update(e["event_id"] for e in events if e["event_id"].startswith(prefix))
+        if len(events) < 500:
+            return ids
+        page += 1
 
 
-def outage(label: str, before: int, during: int, max_queue_size: int) -> dict:
+def outage(before: int, during: int, max_queue_size: int) -> dict:
     with tempfile.TemporaryDirectory(prefix="agentscope-res-") as tmp:
         server = ServerProcess(db_path=Path(tmp) / "res.db").start()
         port = server.port
         client = AgentScopeClient(
             host="127.0.0.1",
             port=port,
-            session_name=label,
+            session_name="outage",
             max_queue_size=max_queue_size,
         )
         try:
@@ -78,62 +97,76 @@ def outage(label: str, before: int, during: int, max_queue_size: int) -> dict:
             session_id = client.session_id
             stored_before, _ = wait_for_count(port, session_id, before, 15)
 
+            outage_start = time.monotonic()
             server.stop()
             for i in range(during):
                 client.emit(make_event(f"during-{i}"))
                 time.sleep(1.0 / max(during, 1))  # spread over ~1 s
 
-            restarted = time.monotonic()
-            server.start()  # same port, same database file
+            restart = time.monotonic()
+            server.start()  # same port, same database file; waits for /health
+            healthy = time.monotonic()
             expected = stored_before + min(during, max_queue_size)
-            stored_after, _ = wait_for_count(port, session_id, expected, 60)
-            recovery_s = time.monotonic() - restarted
-
-            during_ids = {
-                e["event_id"]
-                for e in get_json(
-                    port, f"/api/sessions/{session_id}/events?limit=1000"
-                )["events"]
-                if e["event_id"].startswith("during-")
-            }
-            kept = ranges(int(e.split("-")[1]) for e in during_ids)
+            wait_for_count(port, session_id, expected, 60)
+            delivered = time.monotonic()
+            # Let any straggling retries land before reading the ids.
+            time.sleep(0.5)
+            during_ids = stored_ids(port, session_id, "during-")
         finally:
-            drain(client)
             client.stop()
             server.cleanup()
 
     return {
-        "scenario": label,
-        "buffer": max_queue_size,
-        "sent before": before,
         "stored before": stored_before,
-        "sent during outage": during,
-        "delivered after restart": len(during_ids),
-        "kept during-#": kept,
-        "recovery s": round(recovery_s, 2),
+        "delivered": len(during_ids),
+        "kept": ranges(int(e.split("-")[1]) for e in during_ids),
+        "outage s": healthy - outage_start,
+        "server start s": healthy - restart,
+        "recovery s": delivered - healthy,
     }
 
 
+SCENARIOS = [
+    ("A: outage within buffer", 100, 300, 5000),
+    ("B: outage overflows buffer", 100, 2000, 500),
+]
+
+
 def main() -> None:
-    rows = [
-        outage("A: outage within buffer", before=100, during=300, max_queue_size=5000),
-        outage(
-            "B: outage overflows buffer", before=100, during=2000, max_queue_size=500
-        ),
-    ]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repeat", type=int, default=5)
+    args = parser.parse_args()
+
+    rows = []
+    for label, before, during, buffer in SCENARIOS:
+        runs = [outage(before, during, buffer) for _ in range(args.repeat)]
+        for i, run in enumerate(runs, 1):
+            print(
+                f"{label} run {i}: delivered {run['delivered']}/{during}, "
+                f"kept during-# {run['kept']}, outage {run['outage s']:.2f} s, "
+                f"server start {run['server start s']:.2f} s, "
+                f"recovery {run['recovery s']:.2f} s"
+            )
+        kept = sorted({r["kept"] for r in runs})
+        rows.append(
+            {
+                "scenario": label,
+                "runs": len(runs),
+                "buffer": f"{buffer:,}",
+                "sent during outage": f"{during:,}",
+                "delivered after restart": int_range([r["delivered"] for r in runs]),
+                "kept during-#": " / ".join(kept),
+                "outage s": spread([r["outage s"] for r in runs], 2),
+                "server start s": spread([r["server start s"] for r in runs], 2),
+                "recovery s": spread([r["recovery s"] for r in runs], 2),
+            }
+        )
+
+    print(f"\nMachine: {machine_info()}")
     print_table(
-        "Server outage and recovery",
+        f"Server outage and recovery, median (min–max) over {args.repeat} runs",
         rows,
-        [
-            "scenario",
-            "buffer",
-            "sent before",
-            "stored before",
-            "sent during outage",
-            "delivered after restart",
-            "kept during-#",
-            "recovery s",
-        ],
+        list(rows[0].keys()),
     )
 
 
