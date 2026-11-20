@@ -56,12 +56,105 @@ class _SenderEventLoop(asyncio.SelectorEventLoop):
         return future
 
 
+class _Sender:
+    """State owned by one background sender thread.
+
+    Every start() creates a fresh instance, so a thread that outlives a
+    timed-out stop() never shares its loop, wake-up events or deadline with a
+    newer one. Methods not marked async are safe to call from any thread.
+    """
+
+    def __init__(self) -> None:
+        self.thread: Optional[threading.Thread] = None
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.shutdown = threading.Event()
+        self.deadline = float("inf")
+        self.idle = False
+        self._has_events: Optional[asyncio.Event] = None
+        self._stop_requested: Optional[asyncio.Event] = None
+
+    def bind(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Called on the sender thread once its loop is running."""
+        self._has_events = asyncio.Event()
+        self._stop_requested = asyncio.Event()
+        self.loop = loop
+
+    def expired(self) -> bool:
+        return self.shutdown.is_set() and time.monotonic() >= self.deadline
+
+    def request_stop(self, deadline: float) -> None:
+        """Ask the sender to deliver what is buffered and exit by ``deadline``."""
+        self.deadline = min(self.deadline, deadline)
+        self.shutdown.set()
+        self._call_soon(self._on_stop_requested)
+
+    def notify_event(self) -> None:
+        """Wake the sender if it is waiting for events. Cheap when it is busy."""
+        if self.idle:
+            self.idle = False
+            self._call_soon(self._on_event)
+
+    def _call_soon(self, callback: Any) -> None:
+        loop = self.loop
+        if loop is None:
+            # Not bound yet: the sender checks the buffer and `shutdown`
+            # before it waits, so nothing is missed.
+            return
+        try:
+            loop.call_soon_threadsafe(callback)
+        except RuntimeError:
+            pass  # the loop has already closed
+
+    def _on_event(self) -> None:
+        if self._has_events is not None:
+            self._has_events.set()
+
+    def _on_stop_requested(self) -> None:
+        if self._stop_requested is not None:
+            self._stop_requested.set()
+        self._on_event()
+
+    async def wait_for_events(self, buffer: queue.Queue, timeout: float) -> None:
+        """Wait until emit() or stop() wakes us, or ``timeout`` elapses."""
+        assert self._has_events is not None
+        self._has_events.clear()
+        # Publish `idle` before the final check: an emit() that lands after
+        # the check sees idle=True and wakes us, so no event waits for the
+        # timeout.
+        self.idle = True
+        try:
+            if buffer.empty() and not self.shutdown.is_set():
+                await asyncio.wait_for(self._has_events.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            self.idle = False
+
+    async def backoff(self, seconds: float) -> None:
+        """Sleep before a retry. stop() cuts the sleep short; once stopping,
+        retries continue until the deadline but never sleep past it."""
+        if self.shutdown.is_set():
+            await asyncio.sleep(
+                max(0.0, min(seconds, self.deadline - time.monotonic()))
+            )
+            return
+        assert self._stop_requested is not None
+        try:
+            await asyncio.wait_for(self._stop_requested.wait(), seconds)
+        except asyncio.TimeoutError:
+            pass
+
+
 class AgentScopeClient:
     """Thread-safe WebSocket and REST client for the AgentScope observability server.
 
     Employs a background daemon thread with its own asyncio event loop to handle
     all networking out-of-band. Ensures zero latency impact on the agent pipeline.
     """
+
+    # Reconnect backoff bounds, in seconds.
+    _initial_backoff = 1.0
+    _max_backoff = 30.0
 
     def __init__(
         self,
@@ -76,8 +169,9 @@ class AgentScopeClient:
         """
         Args:
             batch_size: Maximum events per WebSocket message.
-            flush_interval_seconds: How long the sender idles when the buffer
-                is empty before checking again.
+            flush_interval_seconds: Safety-net period at which an idle sender
+                re-checks the buffer. New events wake the sender immediately,
+                so this adds no latency.
             shutdown_timeout: Upper bound for delivering buffered events when
                 the interpreter exits (see :meth:`stop`).
         """
@@ -98,9 +192,7 @@ class AgentScopeClient:
         self.ws_connected = False
         self.shutdown_timeout = max(0.0, shutdown_timeout)
         self._lock = threading.Lock()
-        # Set by stop(): the sender delivers what is buffered, then exits.
-        self._shutdown = threading.Event()
-        self._shutdown_deadline = float("inf")
+        self._sender: Optional[_Sender] = None
         self._atexit_registered = False
 
     def start(self) -> None:
@@ -109,12 +201,16 @@ class AgentScopeClient:
             if self.running:
                 return
             self.running = True
-            self._shutdown.clear()
-            self._shutdown_deadline = float("inf")
-            self.thread = threading.Thread(
-                target=self._run_loop, name="AgentScopeClientThread", daemon=True
+            sender = _Sender()
+            sender.thread = threading.Thread(
+                target=self._run_loop,
+                args=(sender,),
+                name="AgentScopeClientThread",
+                daemon=True,
             )
-            self.thread.start()
+            self._sender = sender
+            self.thread = sender.thread
+            sender.thread.start()
             if not self._atexit_registered:
                 # Deliver buffered events when the program ends, so scripts do
                 # not need to call stop() explicitly.
@@ -131,9 +227,10 @@ class AgentScopeClient:
         with self._lock:
             if not self.running:
                 return
-            self._shutdown_deadline = time.monotonic() + max(0.0, timeout)
-            self._shutdown.set()
-            thread = self.thread
+            sender = self._sender
+            assert sender is not None
+            sender.request_stop(time.monotonic() + max(0.0, timeout))
+            thread = sender.thread
         if thread and thread is not threading.current_thread():
             thread.join(timeout=max(0.0, timeout) + 0.5)
         with self._lock:
@@ -144,15 +241,6 @@ class AgentScopeClient:
             self.stop(timeout=self.shutdown_timeout)
         except Exception:
             pass
-
-    def _shutdown_expired(self) -> bool:
-        return self._shutdown.is_set() and time.monotonic() >= self._shutdown_deadline
-
-    def _sleep_or_shutdown(self, seconds: float):
-        """Sleep, but never past the shutdown deadline."""
-        if self._shutdown.is_set():
-            seconds = min(seconds, max(0.0, self._shutdown_deadline - time.monotonic()))
-        return asyncio.sleep(seconds)
 
     def _next_batch(self) -> list:
         """Take up to batch_size buffered events without blocking."""
@@ -182,6 +270,9 @@ class AgentScopeClient:
                     self.queue.task_done()
                 except queue.Empty:
                     pass
+        sender = self._sender
+        if sender is not None:
+            sender.notify_event()
 
     def patch_session_status(self, status: str) -> None:
         """Update the session status on the server.
@@ -231,48 +322,54 @@ class AgentScopeClient:
             daemon=True,
         ).start()
 
-    def _run_loop(self) -> None:
-        self.loop = _SenderEventLoop()
-        asyncio.set_event_loop(self.loop)
+    def _run_loop(self, sender: _Sender) -> None:
+        # The loop stays local to this thread (and its _Sender); self.loop is
+        # only kept up to date for callers that inspect it.
+        loop = _SenderEventLoop()
+        self.loop = loop
+        asyncio.set_event_loop(loop)
         try:
-            self.loop.run_until_complete(self._main_async_loop())
+            loop.run_until_complete(self._main_async_loop(sender))
         except (RuntimeError, asyncio.CancelledError):
             pass
         finally:
+            sender.loop = None
             try:
-                pending = [t for t in asyncio.all_tasks(self.loop) if not t.done()]
+                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
                 for task in pending:
                     task.cancel()
                 if pending:
-                    self.loop.run_until_complete(
+                    loop.run_until_complete(
                         asyncio.gather(*pending, return_exceptions=True)
                     )
             except Exception:
                 pass
             finally:
-                self.loop.close()
+                loop.close()
 
-    async def _main_async_loop(self) -> None:
+    async def _main_async_loop(self, sender: _Sender) -> None:
         """Deliver buffered events until stop() asks to finish.
 
         The buffer is drained with non-blocking reads on this loop. Blocking
         queue.get() calls in an executor thread would keep the interpreter
-        from exiting (it joins executor threads at shutdown).
+        from exiting (it joins executor threads at shutdown). When the buffer
+        is empty the loop waits until emit() or stop() wakes it.
         """
-        backoff = 1.0
-        max_backoff = 30.0
+        loop = asyncio.get_running_loop()
+        sender.bind(loop)
+        backoff = self._initial_backoff
         failed_batch: list = []
 
-        while not self._shutdown_expired():
+        while not sender.expired():
             try:
                 # 1. Ensure the session is registered with the server.
                 if not self.session_id:
-                    await self.loop.run_in_executor(None, self._create_session_sync)
+                    await loop.run_in_executor(None, self._create_session_sync)
                     if not self.session_id:
-                        if self._shutdown.is_set() and self.queue.empty():
+                        if sender.shutdown.is_set() and self.queue.empty():
                             return
-                        await self._sleep_or_shutdown(backoff)
-                        backoff = min(backoff * 2, max_backoff)
+                        await sender.backoff(backoff)
+                        backoff = min(backoff * 2, self._max_backoff)
                         continue
 
                 # 2. Connect to the WebSocket ingestion endpoint.
@@ -280,16 +377,18 @@ class AgentScopeClient:
                 async with websockets.connect(ws_uri) as websocket:
                     logging.info(f"Connected to AgentScope server at {ws_uri}")
                     self.ws_connected = True
-                    backoff = 1.0
+                    backoff = self._initial_backoff
 
                     # 3. Send buffered events in batches.
-                    while not self._shutdown_expired():
+                    while not sender.expired():
                         batch = failed_batch or self._next_batch()
                         failed_batch = []
                         if not batch:
-                            if self._shutdown.is_set():
+                            if sender.shutdown.is_set():
                                 return  # everything delivered
-                            await asyncio.sleep(self.flush_interval_seconds)
+                            await sender.wait_for_events(
+                                self.queue, self.flush_interval_seconds
+                            )
                             continue
 
                         if len(batch) == 1:
@@ -324,23 +423,23 @@ class AgentScopeClient:
                 ConnectionRefusedError,
             ) as e:
                 self.ws_connected = False
-                if self._shutdown_expired():
+                if sender.expired():
                     break
                 logging.warning(
                     "AgentScope server connection failed: "
                     f"{e}. Retrying in {backoff}s..."
                 )
                 try:
-                    await self._sleep_or_shutdown(backoff)
+                    await sender.backoff(backoff)
                 except Exception:
                     break
-                backoff = min(backoff * 2, max_backoff)
+                backoff = min(backoff * 2, self._max_backoff)
             except Exception as e:
-                if self._shutdown_expired():
+                if sender.expired():
                     break
                 logging.error(f"Unexpected error in SDK client loop: {e}")
                 try:
-                    await self._sleep_or_shutdown(1.0)
+                    await sender.backoff(1.0)
                 except Exception:
                     break
         self.ws_connected = False
