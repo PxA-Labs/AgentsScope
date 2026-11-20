@@ -25,7 +25,7 @@ pip install -e "packages/sdk[tiktoken]"    # exact token counts when a provider 
 ## Features
 
 - **Non-blocking telemetry**: events go onto an in-memory queue and are sent in batches by a background thread, so agent execution never waits on the network.
-- **Resilient transport**: WebSocket connection with automatic reconnection. Up to 5,000 events are buffered while the server is unreachable, and the oldest are dropped first.
+- **Resilient transport**: WebSocket connection with automatic reconnection. Up to 5,000 events are buffered while the server is unreachable (set `max_queue_size` on `AgentScopeClient` to change it), and the oldest are dropped first.
 - **Graceful shutdown**: buffered events are delivered when the process exits, even if `stop()` is never called, bounded by the client's `shutdown_timeout` (an `AgentScopeClient` argument, 5 s by default).
 - **Authentication and TLS**: pass `api_key=` (or set `AGENTSCOPE_API_KEY`) and `base_url="https://..."` / `secure=True` to reach a protected remote server. See [docs/AUTHENTICATION.md](../../docs/AUTHENTICATION.md).
 - **LangChain callback handler**: trace chains, tools, agents, retrievers and LLMs with two lines of code.
