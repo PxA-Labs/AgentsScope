@@ -88,3 +88,21 @@ def test_emitter_swallows_client_errors():
             raise RuntimeError("down")
 
     _Emitter(Broken()).emit("id", "chain_start", "n", "team", "running", {}, None)
+
+
+def test_each_response_by_the_same_agent_is_its_own_turn():
+    rec, state = new_state()
+    state.observe(msg("TextMessage", "solo", "first"))
+    state.observe(msg("ToolCallRequestEvent", "solo", []))
+    state.observe(msg("ToolCallSummaryMessage", "solo", "second"))
+    state.observe(msg("TextMessage", "solo", "third"))
+    state.finish(None)
+    turns = [
+        e for e in rec.events if e["agent_type"] == "agent" and e["status"] != "running"
+    ]
+    assert [t["payload"]["outputs"]["output"] for t in turns] == [
+        "first",
+        "second",
+        "third",
+    ]
+    assert len({t["event_id"] for t in turns}) == 3

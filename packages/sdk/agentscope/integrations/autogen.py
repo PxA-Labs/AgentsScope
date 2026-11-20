@@ -537,6 +537,11 @@ class _RunState:
             turn["output"] = _content_text(getattr(item, "content", ""))
         if kind == "ThoughtEvent":
             turn["thought"] = _content_text(getattr(item, "content", ""))
+        if not kind.endswith("Event"):
+            # A chat message (TextMessage, ToolCallSummaryMessage, Handoff...)
+            # is the agent's response and ends its turn; events come before it.
+            # A further response by the same agent then opens a new turn.
+            self._close_turn()
 
     def _turn_for(self, source: str) -> Dict[str, Any]:
         if self.turn is not None and self.turn["source"] == source:
