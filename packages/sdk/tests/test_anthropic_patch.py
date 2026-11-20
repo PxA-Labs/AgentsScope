@@ -254,6 +254,56 @@ def test_async_stream_helper(recorder):
     assert_completed(llm_events(recorder), "Paris.", streaming=True)
 
 
+def test_stream_helper_user_exception_after_completion_records_llm_end(recorder):
+    # The API call succeeded; an exception from the caller's own code inside
+    # the with block is not an LLM error and must not drop the usage.
+    patch_anthropic()
+    with pytest.raises(ValueError, match="caller bug"):
+        with sync_client().messages.stream(**REQUEST) as stream:
+            stream.get_final_message()
+            raise ValueError("caller bug")
+    assert_completed(llm_events(recorder), "Paris.", streaming=True)
+
+
+def test_async_stream_helper_user_exception_after_completion_records_llm_end(
+    recorder,
+):
+    patch_anthropic()
+
+    async def run():
+        async with async_client().messages.stream(**REQUEST) as stream:
+            await stream.get_final_message()
+            raise ValueError("caller bug")
+
+    with pytest.raises(ValueError, match="caller bug"):
+        asyncio.run(run())
+    assert_completed(llm_events(recorder), "Paris.", streaming=True)
+
+
+def test_stream_helper_exception_before_message_completes_records_llm_error(
+    recorder,
+):
+    patch_anthropic()
+    with pytest.raises(ValueError, match="mid-stream"):
+        with sync_client().messages.stream(**REQUEST) as stream:
+            next(iter(stream))  # message_start only; no final message yet
+            raise ValueError("mid-stream")
+    start, err = llm_events(recorder)
+    assert (start["event_type"], err["event_type"]) == ("llm_start", "llm_error")
+    assert "mid-stream" in err["payload"]["error"]
+
+
+def test_stream_helper_early_break_records_partial_usage(recorder):
+    patch_anthropic()
+    with sync_client().messages.stream(**REQUEST) as stream:
+        for _ in stream:
+            break
+    start, end = llm_events(recorder)
+    assert (start["event_type"], end["event_type"]) == ("llm_start", "llm_end")
+    assert end["payload"]["prompt_tokens"] == 12
+    assert end["payload"]["completion_tokens"] == 1
+
+
 def test_api_error_emits_llm_error_and_reraises(recorder):
     patch_anthropic()
     with pytest.raises(anthropic.BadRequestError):

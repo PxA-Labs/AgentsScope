@@ -169,14 +169,18 @@ class _TracedMessageStreamManager:
         self._stream: Any = None
 
     def _finish(self, exc: Optional[BaseException]) -> None:
-        if exc is not None:
-            self._trace.error(exc)
-            return
         snapshot = None
         try:
             snapshot = self._stream.current_message_snapshot
         except Exception:
             pass
+        if exc is not None:
+            # The API call succeeded if the final message arrived (message_delta
+            # sets stop_reason); an exception after that came from the caller's
+            # own code in the with block, so record the response, not an error.
+            if _field(snapshot, "stop_reason") is None:
+                self._trace.error(exc)
+                return
         if snapshot is None:
             self._trace.end("", None, None, None)
         else:
