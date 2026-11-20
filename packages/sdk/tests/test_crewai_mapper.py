@@ -252,3 +252,24 @@ def test_long_text_is_truncated(mapper, rec):
     )
     completion = rec.events[0]["payload"]["completion"]
     assert len(completion) == 4000 and completion.endswith("…")
+
+
+def test_only_open_scopes_are_remembered(mapper, rec):
+    for i in range(50):
+        mapper.handle(ev("crew_kickoff_started", f"c{i}"))
+        mapper.handle(ev("flow_started", f"f{i}", parent=f"c{i}"))
+        mapper.handle(ev("llm_call_started", f"m{i}", parent=f"f{i}", model="x"))
+        for j in range(20):  # e.g. streamed chunks: not scopes, never parents
+            mapper.handle(ev("llm_stream_chunk", f"s{i}-{j}", parent=f"m{i}"))
+        mapper.handle(
+            ev("llm_call_completed", f"m{i}e", parent=f"f{i}", started=f"m{i}")
+        )
+        mapper.handle(ev("flow_finished", f"f{i}e", parent=f"c{i}", started=f"f{i}"))
+        mapper.handle(ev("crew_kickoff_completed", f"c{i}e", started=f"c{i}"))
+    assert (len(mapper._parents), len(mapper._shown), len(mapper._started_at)) == (
+        0,
+        0,
+        0,
+    )
+    llm = [e for e in rec.events if e["event_type"] == "llm_start"][-1]
+    assert llm["parent_event_id"] == "c49"

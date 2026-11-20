@@ -40,6 +40,9 @@ from agentscope.client import AgentScopeClient
 logger = logging.getLogger(__name__)
 
 _MAX_TEXT = 4000
+# Safety cap on remembered open scopes (they are normally released when the
+# scope's end event arrives).
+_MAX_OPEN_SCOPES = 10_000
 
 # CrewAI event ``type`` -> (AgentScope event_type, agent_type, phase)
 _EVENT_MAP: Dict[str, Tuple[str, str, str]] = {
@@ -123,6 +126,15 @@ def _task_name(event: Any) -> str:
     return _truncate(str(name), 80)
 
 
+def _scope_starting_events() -> Optional[frozenset]:
+    """CrewAI's scope-starting event types, or ``None`` without CrewAI."""
+    try:
+        from crewai.events.event_context import SCOPE_STARTING_EVENTS
+    except Exception:
+        return None
+    return frozenset(SCOPE_STARTING_EVENTS)
+
+
 def _event_classes() -> List[type]:
     """All concrete CrewAI event classes (imported lazily)."""
     import importlib
@@ -159,9 +171,15 @@ class CrewAIEventMapper:
         self.client = client
         self.mark_session_status = mark_session_status
         self._lock = threading.Lock()
-        # CrewAI event_id -> parent_event_id, for every event seen.
+        # CrewAI sets an event's parent_event_id to the innermost open scope,
+        # and only scope-starting events open scopes, so only those need
+        # remembering; each is forgotten when its scope's end event (which
+        # carries started_event_id) arrives. That keeps memory flat however
+        # many kickoffs, events or streamed chunks a process sees.
+        self._scope_types = _scope_starting_events()
+        # open scope's event_id -> its parent_event_id.
         self._parents: Dict[str, Optional[str]] = {}
-        # CrewAI event ids that produced an AgentScope node.
+        # open scopes that produced an AgentScope node.
         self._shown: set = set()
         # start event id -> start timestamp, for latency.
         self._started_at: Dict[str, Any] = {}
@@ -184,29 +202,55 @@ class CrewAIEventMapper:
             parent_id = self._parents.get(parent_id)
         return parent_id
 
+    def _opens_scope(self, event_type: str) -> bool:
+        if self._scope_types is not None:
+            return event_type in self._scope_types
+        return event_type.endswith("_started")  # without CrewAI (tests)
+
+    def _remember_scope(self, event_id: str, parent_id: Optional[str]) -> None:
+        self._parents[event_id] = parent_id
+        while len(self._parents) > _MAX_OPEN_SCOPES:
+            oldest = next(iter(self._parents))
+            self._parents.pop(oldest)
+            self._shown.discard(oldest)
+            self._started_at.pop(oldest, None)
+
+    def _forget_scope(self, started_id: Optional[str]) -> None:
+        if started_id:
+            self._parents.pop(started_id, None)
+            self._shown.discard(started_id)
+            self._started_at.pop(started_id, None)
+
     def _handle(self, event: Any) -> None:
         event_id = getattr(event, "event_id", None)
         if not event_id:
             return
+        event_type = getattr(event, "type", "")
+        if not isinstance(event_type, str):
+            event_type = ""
+        mapping = _EVENT_MAP.get(event_type)
+        started_id = getattr(event, "started_event_id", None)
+        parent_id = getattr(event, "parent_event_id", None)
         with self._lock:
-            self._parents[event_id] = getattr(event, "parent_event_id", None)
-            mapping = _EVENT_MAP.get(getattr(event, "type", ""))
+            if self._opens_scope(event_type):
+                self._remember_scope(event_id, parent_id)
             if mapping is None:
+                self._forget_scope(started_id)
                 return
             as_type, agent_type, phase = mapping
-            started_id = getattr(event, "started_event_id", None)
             node_id = event_id if phase == "start" else (started_id or event_id)
-            parent = self._resolve_parent(getattr(event, "parent_event_id", None))
+            parent = self._resolve_parent(parent_id)
+            latency_ms = None
             if phase == "start":
                 self._shown.add(event_id)
                 self._started_at[event_id] = getattr(event, "timestamp", None)
             else:
-                self._shown.add(node_id)
-            latency_ms = None
-            started = self._started_at.pop(node_id, None) if phase != "start" else None
-            ended = getattr(event, "timestamp", None)
-            if isinstance(started, datetime) and isinstance(ended, datetime):
-                latency_ms = max(0, int((ended - started).total_seconds() * 1000))
+                started = self._started_at.pop(node_id, None)
+                ended = getattr(event, "timestamp", None)
+                if isinstance(started, datetime) and isinstance(ended, datetime):
+                    latency_ms = max(0, int((ended - started).total_seconds() * 1000))
+            # The scope this event closes can no longer be anyone's parent.
+            self._forget_scope(started_id)
 
         name, payload = self._describe(event, agent_type, phase)
         status = {"start": "running", "end": "completed", "error": "error"}[phase]

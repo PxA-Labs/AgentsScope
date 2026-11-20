@@ -248,3 +248,18 @@ def test_close_delivers_events_still_pending_on_the_bus():
         )
     listener.close()
     assert len(rec.events) == 200
+
+
+def test_bookkeeping_stays_flat_across_many_kickoffs():
+    rec = Recorder()
+    listener = AgentScopeCrewAIListener(client=rec)
+    try:
+        sizes = []
+        for _ in range(10):
+            run(research_crew())
+            m = listener.mapper
+            sizes.append((len(m._parents), len(m._shown), len(m._started_at)))
+    finally:
+        listener.close()
+    assert len(set(sizes)) == 1, sizes
+    assert sizes[-1] == (0, 0, 0), sizes
