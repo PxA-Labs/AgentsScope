@@ -33,7 +33,9 @@ async def prune_old_sessions(
 
     total_pruned = 0
     maker = session_maker or database.async_session_maker
-    async with maker() as db:
+    # Deletes and VACUUM take SQLite's write lock; serialise them with the
+    # event writers so neither side fails with "database is locked" (#323).
+    async with database.sqlite_write_lock(maker), maker() as db:
         try:
             # 1. Prune by retention days
             if retention_days_raw:
