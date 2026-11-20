@@ -400,26 +400,37 @@ export default function Dashboard() {
     }
   };
 
-  const handleExportSession = async () => {
+  const handleExportSession = async (format: "json" | "csv") => {
     if (!activeSession) return;
     try {
       setIsExporting(true);
-      const res = await apiFetch(`/api/sessions/${activeSession.session_id}/export`);
+      const res = await apiFetch(
+        `/api/sessions/${activeSession.session_id}/export?format=${format}`
+      );
       if (!res.ok) throw new Error("Failed to export session");
-      const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      // JSON is pretty-printed for readability; CSV is downloaded byte-for-byte
+      // (it already carries a UTF-8 BOM so spreadsheets detect the encoding).
+      const blob =
+        format === "json"
+          ? new Blob([JSON.stringify(await res.json(), null, 2)], { type: "application/json" })
+          : new Blob([await res.arrayBuffer()], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
+      // Prefer the server's filename (CSV sends Content-Disposition); fall back
+      // to building one locally, e.g. for JSON.
+      const serverName = res.headers
+        .get("Content-Disposition")
+        ?.match(/filename="([^"]+)"/)?.[1];
       const safeName = (activeSession.name || "session").replace(/[^a-zA-Z0-9_-]/g, "_");
-      link.download = `${safeName}_${activeSession.session_id.slice(0, 8)}.json`;
+      link.download = serverName || `${safeName}_${activeSession.session_id.slice(0, 8)}.${format}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error("Export error:", err);
-      alert("Failed to export session telemetry data.");
+      alert(`Failed to export session telemetry data as ${format.toUpperCase()}.`);
     } finally {
       setIsExporting(false);
     }
@@ -723,17 +734,35 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center gap-3">
                 {getWsStatusBadge(wsStatus)}
-                <button
-                  onClick={handleExportSession}
-                  disabled={isExporting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                             text-purple-300 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20
-                             transition-colors disabled:opacity-50"
-                  title="Export session and telemetry events as JSON"
+                <div
+                  role="group"
+                  aria-label="Export session"
+                  className="flex items-center rounded-lg text-xs font-semibold text-purple-300
+                             bg-purple-500/10 border border-purple-500/30 overflow-hidden"
                 >
-                  <Download className={`w-3.5 h-3.5 ${isExporting ? "animate-bounce" : ""}`} />
-                  {isExporting ? "Exporting..." : "Export JSON"}
-                </button>
+                  <span className="flex items-center gap-1.5 pl-3 pr-2 py-1.5">
+                    <Download className={`w-3.5 h-3.5 ${isExporting ? "animate-bounce" : ""}`} />
+                    {isExporting ? "Exporting..." : "Export"}
+                  </span>
+                  <button
+                    onClick={() => handleExportSession("json")}
+                    disabled={isExporting}
+                    className="px-2.5 py-1.5 border-l border-purple-500/30 hover:bg-purple-500/20
+                               transition-colors disabled:opacity-50"
+                    title="Export session and events as JSON (can be re-imported)"
+                  >
+                    JSON
+                  </button>
+                  <button
+                    onClick={() => handleExportSession("csv")}
+                    disabled={isExporting}
+                    className="px-2.5 py-1.5 border-l border-purple-500/30 hover:bg-purple-500/20
+                               transition-colors disabled:opacity-50"
+                    title="Export events as CSV (one row per event, for spreadsheets and pandas)"
+                  >
+                    CSV
+                  </button>
+                </div>
                 <Link
                   href="/diff"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
