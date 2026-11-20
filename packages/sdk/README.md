@@ -42,7 +42,7 @@ The smallest possible change is `import agentscope_trace as agentscope`, which k
 
 Old imports still work for now: a deprecated `agentscope` shim aliases `agentscope_trace` and emits one `DeprecationWarning`. Both names give the same module objects, so the global client, patches and monkeypatches are shared and the two can be mixed while you migrate. Import `agentscope` (or `agentscope_trace`) once at startup, before starting threads: while that first import is still running, another thread's first import of an `agentscope.<name>` submodule can fail with ModuleNotFoundError.
 
-The shim will be removed after at least one minor release. It is also the one file that still clashes with the unrelated `agentscope` package on PyPI, so the two can't be installed together until it's gone.
+The shim will be removed after at least one minor release (0.3.0 at the earliest). It is also the one file that still clashes with the unrelated `agentscope` package on PyPI, so the two can't be installed together until it's gone.
 
 If you work on this repository with an editable install made before the rename, re-run `make setup-sdk` (or `pip install -e packages/sdk`): the old install only maps `agentscope`, so both import names fail until you do.
 

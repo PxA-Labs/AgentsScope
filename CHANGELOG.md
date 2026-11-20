@@ -9,18 +9,19 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [agentscope-trace 0.1.0]
 
-First release of the Python SDK on PyPI, as **`agentscope-trace`** (`pip install agentscope-trace`). The names `agentscope` and `agentscope-sdk` on PyPI belong to unrelated projects. This is a pre-1.0 release: the public API may still change between minor versions. The server and dashboard are not published to PyPI; run them from the repository or with Docker Compose.
+First release of the Python SDK on PyPI, as **`agentscope-trace`** (`pip install agentscope-trace`). The names `agentscope` and `agentscope-sdk` on PyPI belong to unrelated projects. This is a pre-1.0 release: the public API may still change between minor versions. The server and dashboard are not published to PyPI; run them from the repository or with Docker Compose, and note that the `agentscope start` command needs a repository checkout (run it from the repo root). The `[1.0.0]` entry below is an earlier project milestone, not an SDK version.
 
 ### Added
+- **Core SDK** (from earlier development, published for the first time): the LangChain `AgentScopeCallback`, `patch_openai()`, the `@trace` / `@trace_llm` / `@trace_tool` / `@trace_retriever` decorators, per-call cost tracking with an optional `budget_limit_usd`, and the `langchain` and `tiktoken` extras.
 - **Framework integrations:** CrewAI via its event bus, including Flows ([#292](https://github.com/PxA-Labs/AgentsScope/pull/292), [#338](https://github.com/PxA-Labs/AgentsScope/pull/338)); AutoGen through a traced model client and team run tracer ([#293](https://github.com/PxA-Labs/AgentsScope/pull/293)); LlamaIndex via its instrumentation API ([#295](https://github.com/PxA-Labs/AgentsScope/pull/295)). Install with the `crewai`, `autogen` and `llamaindex` extras.
-- **Model SDK auto-instrumentation:** `patch_anthropic()`, `patch_gemini()` and `patch_all()` alongside `patch_openai()`, covering sync, async and streaming calls ([#288](https://github.com/PxA-Labs/AgentsScope/pull/288), [#341](https://github.com/PxA-Labs/AgentsScope/pull/341)).
+- **Model SDK auto-instrumentation:** `patch_anthropic()`, `patch_gemini()` and `patch_all()` alongside `patch_openai()`, covering sync, async and streaming calls ([#288](https://github.com/PxA-Labs/AgentsScope/pull/288), [#341](https://github.com/PxA-Labs/AgentsScope/pull/341)). Install the SDKs with the `anthropic` and `gemini` extras, or bring your own.
 - **Authentication and TLS:** `api_key=` (or `AGENTSCOPE_API_KEY`) and `base_url=` / `secure=True` for protected or remote servers ([#287](https://github.com/PxA-Labs/AgentsScope/pull/287)).
-- **Graceful shutdown:** buffered events are delivered at exit even if `stop()` is never called, bounded by `shutdown_timeout` (5 s by default) ([#296](https://github.com/PxA-Labs/AgentsScope/pull/296)).
+- **Graceful shutdown:** buffered events are delivered at exit even if `stop()` is never called, bounded by `shutdown_timeout` (an `AgentScopeClient` argument, 5 s by default) ([#296](https://github.com/PxA-Labs/AgentsScope/pull/296)).
 - `max_queue_size` on `AgentScopeClient`, plus documented performance figures in `docs/PERFORMANCE.md` ([#291](https://github.com/PxA-Labs/AgentsScope/pull/291)).
 
 ### Fixed
 - `budget_limit_usd` now actually stops the LangChain run; before, LangChain swallowed `BudgetExceededError` ([#317](https://github.com/PxA-Labs/AgentsScope/pull/317)).
-- `stop()` no longer hangs when the offline buffer is full ([#290](https://github.com/PxA-Labs/AgentsScope/pull/290)), and no longer waits out its timeout after the server rejects the API key ([#340](https://github.com/PxA-Labs/AgentsScope/pull/340)).
+- `stop()` no longer hangs when the offline buffer is full ([#290](https://github.com/PxA-Labs/AgentsScope/pull/290)), and neither `stop()` nor the exit-time flush waits out its timeout after the server rejects the API key ([#340](https://github.com/PxA-Labs/AgentsScope/pull/340)).
 - Cancelling a traced AutoGen run stops the team instead of letting it run on ([#339](https://github.com/PxA-Labs/AgentsScope/pull/339)).
 
 ### Changed
@@ -29,7 +30,7 @@ First release of the Python SDK on PyPI, as **`agentscope-trace`** (`pip install
 - PEP 639 licence metadata (`License-Expression: Apache-2.0`) ([#282](https://github.com/PxA-Labs/AgentsScope/pull/282)).
 
 ### Server and dashboard (in the repository, not on PyPI)
-CSV export ([#286](https://github.com/PxA-Labs/AgentsScope/pull/286)); optional API-key auth for REST and WebSocket ([#287](https://github.com/PxA-Labs/AgentsScope/pull/287)); no more lost events when several SDK clients write to SQLite at once, with each event and its session totals stored atomically ([#324](https://github.com/PxA-Labs/AgentsScope/pull/324), [#333](https://github.com/PxA-Labs/AgentsScope/pull/333)); the dashboard split into components with Vitest and Playwright tests, fixing dropped live events ([#332](https://github.com/PxA-Labs/AgentsScope/pull/332)); React 19, ESLint 9 and Tailwind CSS 4 ([#284](https://github.com/PxA-Labs/AgentsScope/pull/284), [#334](https://github.com/PxA-Labs/AgentsScope/pull/334)).
+CSV export ([#286](https://github.com/PxA-Labs/AgentsScope/pull/286)); optional API-key auth for REST and WebSocket ([#287](https://github.com/PxA-Labs/AgentsScope/pull/287)); no more lost events when several SDK clients write to SQLite at once, with each event and its session totals stored atomically ([#324](https://github.com/PxA-Labs/AgentsScope/pull/324), [#333](https://github.com/PxA-Labs/AgentsScope/pull/333)); the dashboard split into components with Vitest and Playwright tests, fixing dropped live events ([#332](https://github.com/PxA-Labs/AgentsScope/pull/332)); React 19, ESLint 9 and Tailwind CSS 4 ([#320](https://github.com/PxA-Labs/AgentsScope/pull/320), [#284](https://github.com/PxA-Labs/AgentsScope/pull/284), [#334](https://github.com/PxA-Labs/AgentsScope/pull/334)).
 
 ### Import package renamed to `agentscope_trace` ([#297](https://github.com/PxA-Labs/AgentsScope/issues/297))
 
