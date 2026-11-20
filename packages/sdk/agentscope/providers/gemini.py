@@ -139,8 +139,11 @@ class _GeminiAdapter(ProviderAdapter):
 
     def model(self, kwargs: Dict[str, Any]) -> str:
         model = str(kwargs.get("model") or self.default_model)
-        # "models/gemini-1.5-flash" -> "gemini-1.5-flash" so pricing matches.
-        return model.split("/", 1)[1] if model.startswith("models/") else model
+        # "models/gemini-1.5-flash" and Vertex resource names such as
+        # "projects/p/locations/l/publishers/google/models/gemini-1.5-flash"
+        # -> "gemini-1.5-flash", so pricing matches.
+        model = model.rsplit("/models/", 1)[-1]
+        return model[len("models/") :] if model.startswith("models/") else model
 
     def prompts(self, kwargs: Dict[str, Any]) -> List[str]:
         return _extract_prompts(kwargs)

@@ -201,6 +201,19 @@ def test_models_prefix_is_normalised(recorder):
     assert llm_events(recorder)[-1]["payload"]["model"] == MODEL
 
 
+@pytest.mark.parametrize(
+    "model",
+    [
+        MODEL,
+        f"models/{MODEL}",
+        f"publishers/google/models/{MODEL}",
+        f"projects/p/locations/us-central1/publishers/google/models/{MODEL}",
+    ],
+)
+def test_model_name_is_normalised(model):
+    assert provider._ADAPTER.model({"model": model}) == MODEL
+
+
 def test_async_generate_content(recorder):
     patch_gemini()
 
