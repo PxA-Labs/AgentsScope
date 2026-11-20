@@ -182,27 +182,78 @@ def trace_model_client(
 ) -> Any:
     """Wrap an AutoGen ``ChatCompletionClient`` so every call is traced.
 
+    The wrapper is a regular AutoGen component: ``dump_component()`` stores the
+    wrapped client's config, and loading it back yields a traced client that
+    reports to the global AgentScope client (an explicit ``agentscope_client``
+    is not serialized).
+
     Args:
         client: Any ``autogen_core.models.ChatCompletionClient``.
         name: Model name to report (defaults to the client's model).
         agentscope_client: Override the AgentScope client (defaults to the
             global client from ``agentscope.decorators.configure``).
     """
-    from autogen_core.models import ChatCompletionClient, CreateResult
+    from autogen_core.models import ChatCompletionClient
 
     if isinstance(client, ChatCompletionClient) and getattr(
         client, "_agentscope_traced", False
     ):
         return client
+    return _traced_client_class()(
+        client, name=name, agentscope_client=agentscope_client
+    )
 
-    emitter = _Emitter(agentscope_client)
-    model = name or _model_name(client)
 
-    class TracedChatCompletionClient(ChatCompletionClient):
+_TRACED_CLIENT_CLASS: Any = None
+
+
+def __getattr__(attr: str) -> Any:
+    # Lazily expose the class so ``load_component`` can import it by path
+    # without making autogen a hard dependency of this module.
+    if attr == "TracedChatCompletionClient":
+        return _traced_client_class()
+    raise AttributeError(f"module {__name__!r} has no attribute {attr!r}")
+
+
+def _traced_client_class() -> Any:
+    global _TRACED_CLIENT_CLASS
+    if _TRACED_CLIENT_CLASS is not None:
+        return _TRACED_CLIENT_CLASS
+
+    from autogen_core import Component, ComponentModel
+    from autogen_core.models import ChatCompletionClient, CreateResult
+    from pydantic import BaseModel
+
+    class TracedChatCompletionClientConfig(BaseModel):
+        client: ComponentModel
+        name: Optional[str] = None
+
+    class TracedChatCompletionClient(
+        ChatCompletionClient, Component[TracedChatCompletionClientConfig]
+    ):
+        """A ChatCompletionClient that reports every call to AgentScope."""
+
+        component_type = "model"
+        component_config_schema = TracedChatCompletionClientConfig
+        component_provider_override = f"{__name__}.TracedChatCompletionClient"
         _agentscope_traced = True
 
-        def __init__(self) -> None:
+        def __init__(
+            self, client: Any, name: Optional[str] = None, agentscope_client: Any = None
+        ) -> None:
             self._inner = client
+            self._name = name
+            self._model = name or _model_name(client)
+            self._emitter = _Emitter(agentscope_client)
+
+        def _to_config(self) -> TracedChatCompletionClientConfig:
+            return TracedChatCompletionClientConfig(
+                client=self._inner.dump_component(), name=self._name
+            )
+
+        @classmethod
+        def _from_config(cls, config: TracedChatCompletionClientConfig) -> Any:
+            return cls(ChatCompletionClient.load_component(config.client), config.name)
 
         # -- tracing helpers ----------------------------------------------
 
@@ -212,15 +263,15 @@ def trace_model_client(
                 "parent": current_parent_run_id.get(),
                 "t0": time.perf_counter(),
                 "base": {
-                    "model": model,
+                    "model": self._model,
                     "prompts": _render_llm_messages(messages),
                     "streaming": streaming,
                 },
             }
-            emitter.emit(
+            self._emitter.emit(
                 run["id"],
                 "llm_start",
-                model,
+                self._model,
                 "llm",
                 "running",
                 {**run["base"], "completion": None},
@@ -247,13 +298,15 @@ def trace_model_client(
                 payload["cached"] = True
             if prompt is not None or completion is not None:
                 try:
-                    payload["cost_usd"] = calculate_cost(model, prompt, completion)
+                    payload["cost_usd"] = calculate_cost(
+                        self._model, prompt, completion
+                    )
                 except ValueError:
                     pass
-            emitter.emit(
+            self._emitter.emit(
                 run["id"],
                 "llm_end",
-                model,
+                self._model,
                 "llm",
                 "completed",
                 payload,
@@ -262,10 +315,10 @@ def trace_model_client(
             )
 
         def _error(self, run: Dict[str, Any], exc: BaseException) -> None:
-            emitter.emit(
+            self._emitter.emit(
                 run["id"],
                 "llm_error",
-                model,
+                self._model,
                 "llm",
                 "error",
                 {**run["base"], "completion": None, "error": str(exc)},
@@ -325,9 +378,14 @@ def trace_model_client(
             return self._inner.model_info
 
         def __getattr__(self, item: str) -> Any:
+            if item == "_inner":  # not set yet (e.g. during copy/unpickle)
+                raise AttributeError(item)
             return getattr(self._inner, item)
 
-    return TracedChatCompletionClient()
+    TracedChatCompletionClient.__qualname__ = "TracedChatCompletionClient"
+    TracedChatCompletionClient.__module__ = __name__
+    _TRACED_CLIENT_CLASS = TracedChatCompletionClient
+    return TracedChatCompletionClient
 
 
 # --------------------------------------------------------------------------

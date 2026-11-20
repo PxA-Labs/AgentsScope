@@ -381,3 +381,29 @@ def test_events_follow_reconfigured_global_client(monkeypatch):
     assert any(e["payload"].get("completion") == "two" for e in job2.events)
     assert any(e["agent_type"] == "team" for e in job2.events)
     assert job2.status == ["completed"] and job1.status == []
+
+
+def test_traced_client_round_trips_through_dump_component(monkeypatch):
+    from autogen_core.models import ChatCompletionClient
+
+    rec = Recorder()
+    monkeypatch.setattr(
+        "agentscope.integrations.autogen.get_global_client", lambda: rec
+    )
+    wrapped = trace_model_client(
+        ReplayChatCompletionClient(["restored"], model_info=INFO), name="gpt-4o"
+    )
+    config = wrapped.dump_component()
+    assert (
+        config.provider == "agentscope.integrations.autogen.TracedChatCompletionClient"
+    )
+
+    loaded = ChatCompletionClient.load_component(config)
+    assert getattr(loaded, "_agentscope_traced", False)
+    asyncio.run(loaded.create([UserMessage(content="hi", source="u")]))
+    (end,) = [e for e in rec.events if e["event_type"] == "llm_end"]
+    assert end["agent_name"] == "gpt-4o"
+    assert end["payload"]["completion"] == "restored"
+
+    # Agents (and so teams) holding a traced client can be dumped too.
+    AssistantAgent("a", model_client=wrapped).dump_component()
