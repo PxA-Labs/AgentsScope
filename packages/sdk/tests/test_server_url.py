@@ -1,6 +1,5 @@
 """Server URL derivation: plain http/ws by default, https/wss when asked."""
 
-import asyncio
 import io
 import logging
 import urllib.request
@@ -99,27 +98,18 @@ def capture_urlopen(monkeypatch, body=b'{"session_id": "sess-1"}'):
     return captured
 
 
-def test_rest_calls_use_https(monkeypatch):
+def test_rest_calls_use_https(monkeypatch, inline_status_patch):
     captured = capture_urlopen(monkeypatch)
     client = AgentScopeClient(base_url="https://obs.example.com/agentscope")
     client._create_session_sync()
     assert captured[0].full_url == "https://obs.example.com/agentscope/api/sessions"
-
-    class InlineThread:
-        def __init__(self, target, name=None, daemon=None):
-            self.target = target
-
-        def start(self):
-            self.target()
-
-    monkeypatch.setattr("agentscope.client.threading.Thread", InlineThread)
     client._send_status_patch("sess-1", "completed")
     assert (
         captured[1].full_url == "https://obs.example.com/agentscope/api/sessions/sess-1"
     )
 
 
-def test_websocket_uses_wss(monkeypatch):
+def test_websocket_uses_wss(monkeypatch, run_sender_loop):
     uris = []
 
     def fake_connect(uri, **kwargs):
@@ -129,17 +119,7 @@ def test_websocket_uses_wss(monkeypatch):
     monkeypatch.setattr("agentscope.client.websockets.connect", fake_connect)
     client = AgentScopeClient(host="obs.example.com", port=443, secure=True)
     client.session_id = "sess-1"
-    client.running = True
-    client.loop = asyncio.new_event_loop()
-
-    async def stop_sleep(_):
-        client.running = False
-
-    monkeypatch.setattr("agentscope.client.asyncio.sleep", stop_sleep)
-    try:
-        client.loop.run_until_complete(client._main_async_loop())
-    finally:
-        client.loop.close()
+    run_sender_loop(client)
     assert uris == ["wss://obs.example.com:443/ws?client_type=sdk"]
 
 
