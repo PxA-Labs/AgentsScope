@@ -18,24 +18,18 @@ import main
 import pytest_asyncio
 from database import Base, get_db
 from main import app
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-# Temporary file database for testing to avoid SQLite connection isolation traps
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_temp.db"
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 @pytest_asyncio.fixture(scope="session")
-async def db_engine():
-    # Remove old database file if it exists to ensure a clean state
-    for suffix in ["", "-journal", "-wal"]:
-        path = f"./test_temp.db{suffix}"
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+async def db_engine(tmp_path_factory):
+    """A file-backed SQLite engine configured like production (#333).
 
-    engine = create_async_engine(TEST_DATABASE_URL)
+    create_engine_for_url applies WAL, foreign_keys, busy_timeout and lets
+    SQLAlchemy emit BEGIN, so the suite runs under the production settings.
+    """
+    db_path = tmp_path_factory.mktemp("db") / "test.db"
+    engine = database.create_engine_for_url(f"sqlite+aiosqlite:///{db_path}")
 
     # Patch the global session maker in both database and main modules
     test_session_maker = async_sessionmaker(
@@ -59,31 +53,37 @@ async def db_engine():
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
-    # Clean up temp database files
-    for suffix in ["", "-journal", "-wal"]:
-        path = f"./test_temp.db{suffix}"
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-
 
 @pytest_asyncio.fixture
-async def db_session(db_engine):
-    session_maker = async_sessionmaker(
+async def db_session_maker(db_engine):
+    return async_sessionmaker(
         bind=db_engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    async with session_maker() as session:
+
+
+@pytest_asyncio.fixture
+async def db_session(db_session_maker):
+    """A session for seeding and checking data directly in a test.
+
+    Requests do not share it (see override_get_db), so a read after a request
+    needs a new transaction (commit/rollback) or a fresh session to see the
+    request's writes.
+    """
+    async with db_session_maker() as session:
         yield session
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def override_get_db(db_session):
+async def override_get_db(db_session_maker):
+    # One session per request, as in production get_db.
     async def _get_db():
-        yield db_session
+        async with db_session_maker() as session:
+            try:
+                yield session
+            finally:
+                await session.close()
 
     app.dependency_overrides[get_db] = _get_db
     yield
@@ -107,8 +107,6 @@ async def file_db(tmp_path, monkeypatch):
         async with maker() as session:
             yield session
 
-    # The suite-wide override shares one session across requests; concurrent
-    # requests need their own sessions, as in production.
     app.dependency_overrides[get_db] = _get_db
     try:
         yield maker
