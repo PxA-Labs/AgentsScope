@@ -162,12 +162,18 @@ class AgentScopeClient:
             self.thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:
-        """Stop the background client and close resources."""
+        """Stop the background client and close resources.
+
+        Never blocks indefinitely, even with a full buffer and an unreachable
+        server. It can take up to ``timeout + 0.5`` seconds: up to 0.5 s
+        (capped at ``timeout``) waiting for buffer space for the shutdown
+        sentinel, then up to ``timeout`` joining the background thread.
+        """
         with self._lock:
             if not self.running:
                 return
             self.running = False
-            self.queue.put(None)  # Sentinel to exit queue readers
+            self._enqueue_shutdown_sentinel(timeout)
             # Let the async loop consume the sentinel and unwind the websocket
             # context manager. Calling loop.stop() here can leave the underlying
             # websockets keepalive task pending during shutdown.
@@ -184,6 +190,30 @@ class AgentScopeClient:
         if not self._auth_warning_logged:
             self._auth_warning_logged = True
             logging.warning(_UNAUTHORIZED_HINT)
+
+    def _enqueue_shutdown_sentinel(self, timeout: float) -> None:
+        """Queue the sentinel that tells the sender loop to exit, never blocking.
+
+        A blocking put() deadlocks when the buffer is full and nothing drains it
+        (server unreachable). If the server is reachable, the sender frees space
+        within milliseconds, so wait briefly to avoid dropping events; otherwise
+        evict the oldest buffered event so the sentinel always fits.
+        """
+        try:
+            self.queue.put(None, timeout=min(0.5, max(0.0, timeout)))
+            return
+        except queue.Full:
+            pass
+        while True:
+            try:
+                self.queue.put_nowait(None)
+                return
+            except queue.Full:
+                try:
+                    self.queue.get_nowait()
+                    self.queue.task_done()
+                except queue.Empty:
+                    pass
 
     def emit(self, event: Dict[str, Any]) -> None:
         """Queue an event payload to be sent to the server.

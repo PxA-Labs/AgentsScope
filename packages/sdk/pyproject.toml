@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Lightweight tracing SDK for AgentScope observability dashboard"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -30,9 +31,9 @@ tiktoken = [
 ]
 dev = [
     "pytest>=9.2.0",
-    "pytest-asyncio>=1.4.1.post1",
+    "pytest-asyncio>=1.5.0",
     "black>=26.10.1",
-    "ruff>=0.17.4",
+    "ruff>=0.17.5",
 ]
 
 [tool.black]
