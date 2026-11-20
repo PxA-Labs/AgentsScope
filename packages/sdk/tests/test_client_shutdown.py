@@ -37,7 +37,15 @@ def test_stop_returns_when_buffer_full_and_server_unreachable():
     assert len(items) == client.queue.maxsize
 
 
-def test_stop_does_not_drop_events_when_sender_is_draining():
+def test_stop_waits_for_buffer_space_before_evicting():
+    """If a consumer frees space within 0.5 s, the sentinel is appended
+    without evicting anything: every buffered item stays in the queue, in
+    order, ahead of the sentinel.
+
+    This only covers the enqueue step. The consumer here ignores ``running``;
+    the real sender quits once stop() clears it, so buffered events can still
+    be lost after stop() (#294, fixed separately in #296).
+    """
     client = AgentScopeClient()
     client.queue = queue.Queue(maxsize=3)
     client.running = True  # simulate a connected client without a real socket
