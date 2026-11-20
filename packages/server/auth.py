@@ -24,6 +24,7 @@ import hashlib
 import hmac
 import logging
 import os
+import secrets
 import time
 from typing import Dict, List, Optional
 
@@ -112,11 +113,11 @@ def validate_auth_config() -> None:
     """
     single_raw = os.getenv(API_KEY_ENV)
     if single_raw is not None and "," in single_raw:
+        # Literal message (no interpolated values) so log scanners can see
+        # that only variable names, never key material, are logged.
         logger.warning(
-            "%s contains a comma and is used as one single key. Use %s for "
-            "several comma-separated keys.",
-            API_KEY_ENV,
-            API_KEYS_ENV,
+            "AGENTSCOPE_API_KEY contains a comma and is used as one single key. "
+            "Use AGENTSCOPE_API_KEYS for several comma-separated keys."
         )
 
     problems = []
@@ -145,25 +146,29 @@ def validate_auth_config() -> None:
             len(configured_api_keys()),
         )
         return
-    blank = [name for name in (API_KEY_ENV, API_KEYS_ENV) if name in os.environ]
-    if blank:
+    if API_KEY_ENV in os.environ or API_KEYS_ENV in os.environ:
         logger.warning(
-            "%s %s set but empty, so API-key authentication is DISABLED and "
-            "/api and /ws are open to anyone who can reach this server.",
-            " and ".join(blank),
-            "is" if len(blank) == 1 else "are",
+            "AGENTSCOPE_API_KEY / AGENTSCOPE_API_KEYS is set but empty, so "
+            "API-key authentication is DISABLED and /api and /ws are open to "
+            "anyone who can reach this server."
         )
 
 
+# Random per-process key for the comparison MAC below. The MAC is only used to
+# compare values in constant time; it is never stored or logged.
+_COMPARISON_KEY = secrets.token_bytes(32)
+
+
 def _digest(value: str) -> bytes:
-    return hashlib.sha256(value.encode("utf-8")).digest()
+    return hmac.new(_COMPARISON_KEY, value.encode("utf-8"), hashlib.sha256).digest()
 
 
 def is_valid_api_key(candidate: Optional[str]) -> bool:
     """Constant-time comparison against every configured key.
 
-    SHA-256 digests are compared rather than the raw strings, so both sides
-    always have the same length and timing does not reveal the key length.
+    HMAC-SHA256 digests (keyed per process) are compared rather than the raw
+    strings, so both sides always have the same length and timing does not
+    reveal the key length.
     """
     if not candidate:
         return False
