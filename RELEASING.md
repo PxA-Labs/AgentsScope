@@ -10,8 +10,9 @@ The Python SDK in `packages/sdk` is published to PyPI as **`agentscope-trace`** 
      - Owner: `PxA-Labs`, repository: `AgentsScope`
      - Workflow: `release.yml`, environment: `pypi`
    - Repeat on TestPyPI (`https://test.pypi.org`) with environment `testpypi`.
-2. **Create the GitHub environments** `testpypi` and `pypi` (*Settings → Environments*). Add **required reviewers** to `pypi` so every production publish needs a human approval.
-3. No secrets are needed. The workflow authenticates with OIDC (`id-token: write`).
+2. **Create the GitHub environments** `testpypi` and `pypi` (*Settings → Environments*) **before the first tag is pushed**. If a tag arrives first, GitHub creates them automatically with no protection, and PyPI would publish without approval. On both, set *Deployment branches and tags* to **selected tags** matching `v*`. Add **required reviewers** to `pypi` so every production publish needs a human approval.
+3. **Restrict who can create release tags.** Add a tag ruleset (*Settings → Rules → Rulesets → New tag ruleset*) targeting `v*` that restricts creation, update and deletion to maintainers.
+4. No secrets are needed. The workflow authenticates with OIDC (`id-token: write`).
 
 ## Cutting a release
 
@@ -25,10 +26,11 @@ The Python SDK in `packages/sdk` is published to PyPI as **`agentscope-trace`** 
    git push origin v0.2.0
    ```
 3. The workflow then:
-   1. checks the tag matches `_version.py` (`.github/scripts/check_release_version.py`) and fails otherwise
-   2. builds the sdist and wheel, runs `twine check --strict`, and smoke-tests the wheel in a clean virtualenv (import, version metadata, `agentscope --help`)
-   3. publishes to **TestPyPI**, then waits for the `pypi` environment approval and publishes to **PyPI**
-   4. attaches build-provenance attestations and creates a **GitHub Release** with the artifacts and generated notes
+   1. checks the tagged commit is on `main`, and fails otherwise
+   2. checks the tag matches `_version.py` (`.github/scripts/check_release_version.py`) and fails otherwise
+   3. builds the sdist and wheel, runs `twine check --strict`, and smoke-tests the wheel in a clean virtualenv (import, version metadata, `agentscope --help`)
+   4. publishes to **TestPyPI**, then waits for the `pypi` environment approval and publishes to **PyPI**
+   5. attaches build-provenance attestations and creates a **GitHub Release** with the artifacts and generated notes (marked as a pre-release for `aN`, `bN` and `rcN` tags)
 4. Verify: `pip install agentscope-trace==0.2.0` in a fresh virtualenv.
 
 If any step fails, nothing further is published. Fix the problem in a PR, delete the tag (`git push --delete origin v0.2.0`), and tag again. The TestPyPI step uses `skip-existing`, so re-tagging the same version still gets through it to the PyPI step. PyPI never accepts the same version twice, so if a broken build was already uploaded to PyPI, bump to the next patch version instead.
