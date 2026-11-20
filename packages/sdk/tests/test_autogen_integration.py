@@ -325,6 +325,36 @@ def test_breaking_out_early_is_a_normal_close_and_restores_context():
     assert unrelated and unrelated[-1]["parent_event_id"] is None
 
 
+@pytest.mark.parametrize("kind", ["agent", "team"])
+def test_breaking_out_and_returning_at_once_is_still_a_normal_close(kind):
+    # No sleep after ``break``: the loop shuts down while the abandoned stream
+    # is being finalized, and asyncio throws CancelledError (not GeneratorExit)
+    # into it. That is still the consumer closing the stream, not a failure.
+    rec = Recorder()
+
+    async def main():
+        if kind == "agent":
+            runner = AssistantAgent(
+                "solo",
+                model_client=trace_model_client(
+                    ReplayChatCompletionClient(["x"] * 5, model_info=INFO),
+                    agentscope_client=rec,
+                ),
+            )
+        else:
+            runner = make_team(rec)
+        tracer = AgentScopeAutoGenTracer(agentscope_client=rec)
+        async for _ in tracer.trace(runner.run_stream(task="go"), task="go"):
+            break
+
+    asyncio.run(main())
+
+    (team_node,) = of(final_nodes(rec), "team")
+    assert team_node["event_type"] == "chain_end"
+    assert team_node["payload"]["outputs"].get("closed_early") is True
+    assert rec.status == ["completed"]
+
+
 def test_explicit_aclose_closes_the_run_and_the_team():
     rec = Recorder()
     team = make_team(rec)

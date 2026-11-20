@@ -430,41 +430,44 @@ class AgentScopeAutoGenTracer:
         state = _RunState(self._emitter, self.name)
         state.start(task)
         iterator = stream.__aiter__()
-        try:
-            while True:
-                # Hold the run as parent only while the inner stream is working,
-                # never across our own ``yield``: the caller's context stays
-                # untouched between items, and a generator abandoned mid-stream
-                # (finalized later, in another Context) has nothing to reset.
-                token = current_parent_run_id.set(state.run_id)
-                try:
-                    item = await iterator.__anext__()
-                except StopAsyncIteration:
-                    break
-                finally:
-                    current_parent_run_id.reset(token)
-                try:
-                    if isinstance(item, TaskResult):
-                        state.finish(item)
-                    else:
-                        state.observe(item)
-                except Exception as e:  # tracing must never break the run
-                    logger.debug(f"AgentScope AutoGen tracer ignored an item: {e}")
+        while True:
+            # Hold the run as parent only while the inner stream is working,
+            # never across our own ``yield``: the caller's context stays
+            # untouched between items, and a generator abandoned mid-stream
+            # (finalized later, in another Context) has nothing to reset.
+            token = current_parent_run_id.set(state.run_id)
+            try:
+                item = await iterator.__anext__()
+            except StopAsyncIteration:
+                break
+            except BaseException as e:
+                # Only an error from the stream itself fails the run.
+                state.fail(e)
+                self._patch("failed")
+                raise
+            finally:
+                current_parent_run_id.reset(token)
+            try:
+                if isinstance(item, TaskResult):
+                    state.finish(item)
+                else:
+                    state.observe(item)
+            except Exception as e:  # tracing must never break the run
+                logger.debug(f"AgentScope AutoGen tracer ignored an item: {e}")
+            try:
                 yield item
-        except GeneratorExit:
-            # The consumer stopped early (``break`` / ``aclose()``): a normal
-            # close, not a failure. Close the inner stream too so the team stops.
-            if not state.finished:
-                state.finish(None, closed_early=True)
-            self._patch("completed")
-            aclose = getattr(iterator, "aclose", None)
-            if aclose is not None:
-                await aclose()
-            raise
-        except BaseException as e:
-            state.fail(e)
-            self._patch("failed")
-            raise
+            except BaseException:
+                # Anything thrown in here comes from the consumer closing us:
+                # ``break`` / ``aclose()`` (GeneratorExit), or asyncio
+                # cancelling the finalizer of an abandoned stream at loop
+                # shutdown (CancelledError). A normal close, not a failure.
+                if not state.finished:
+                    state.finish(None, closed_early=True)
+                self._patch("completed")
+                aclose = getattr(iterator, "aclose", None)
+                if aclose is not None:
+                    await aclose()
+                raise
         if not state.finished:
             state.finish(None)
         self._patch("completed")
