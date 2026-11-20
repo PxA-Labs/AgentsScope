@@ -29,7 +29,7 @@ Events go to the global client from `configure()`, looked up on every event, so 
 A typical RAG query renders as **query → retriever** and **query → synthesizer → llm**. Nodes attach to their nearest shown ancestor in LlamaIndex's span tree. A query run inside an `@trace` function nests under it.
 
 - **Errors**: when a step raises, LlamaIndex emits no end events. Any node still open is shown as an error with the exception message.
-- **One node per LLM call**: when an LLM implements `chat()` on top of `complete()` (as completion-only models do), the nested call is folded into one node, and its token usage is used if the outer call reports none.
+- **One node per LLM call**: when an LLM implements `chat()` on top of `complete()` (as completion-only models do), or `astream_complete()` / `astream_chat()` by running the sync stream inside the async one (as `CustomLLM` and `MockLLM` do), the nested call is folded into one node, and its token usage is used if the outer call reports none. Other calls you make on the same LLM while a stream is open stay separate nodes.
 - **Usage**: read from `additional_kwargs` (`prompt_tokens`/`completion_tokens`, as the OpenAI integration reports) or `raw.usage` (`input_tokens`/`output_tokens` as well). LLMs that report no usage show no tokens. Nothing is estimated.
 
 ## Streaming
