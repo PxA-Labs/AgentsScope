@@ -377,6 +377,16 @@ class AgentScopeClient:
         ).start()
 
     def _run_loop(self, sender: _Sender) -> None:
+        try:
+            self._run_sender(sender)
+        finally:
+            # Only now is the client really stopped (see stop()).
+            with self._lock:
+                if self._sender is sender:
+                    self.running = False
+                    self.ws_connected = False
+
+    def _run_sender(self, sender: _Sender) -> None:
         # The loop stays local to this thread (and its _Sender); self.loop is
         # only kept up to date for callers that inspect it.
         loop = _SenderEventLoop()
@@ -400,10 +410,6 @@ class AgentScopeClient:
                 pass
             finally:
                 loop.close()
-                with self._lock:
-                    if self._sender is sender:
-                        self.running = False
-                        self.ws_connected = False
 
     async def _main_async_loop(self, sender: _Sender) -> None:
         """Deliver buffered events until stop() asks to finish.
