@@ -4,37 +4,20 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
-### Added
-- **ui**: Prompt for an API key when the server requires one
-- **ui**: Attach API key to REST calls and WebSockets
-- **sdk**: Send API key to servers with auth enabled
-- **server**: Enforce optional API-key auth on /api and /ws
-- **server**: Add optional API-key auth helpers
-
-### Fixed
-- **sdk**: Don't forward the API key when a REST call is redirected
-- **server**: Avoid CodeQL weak-password-hashing false positive
-- **server**: Clear CodeQL false positives in auth logging and comparison
-- **sdk**: Back off to the maximum after a 4401 close
-- **sdk**: Support https/wss so the API key need not travel in cleartext
-- **ui**: Stop polling sessions once the server rejects the API key
-- **server**: Rate-limit rejected-credential log lines per client
-- **server**: Enforce API-key auth in ASGI middleware before routing
-- **server**: Validate API-key configuration at startup
-- **server**: Stop splitting AGENTSCOPE_API_KEY and compare key digests
-- **sdk**: Make the 401 hint a literal to clear CodeQL false positive
-
 ### Documentation
-- **auth**: Describe the SDK's retry backoff accurately
-- Describe the HMAC comparison digest
-- Document TLS in the SDK, the key policy and middleware enforcement
-- Document optional API-key authentication
+- Update the minimum Python version to 3.11
 
 ### Tests
-- **sdk**: The API key must not follow a redirected REST call
-- **server**: Check auth on every registered route, not a fixed list
-- **sdk**: Cover API-key headers and 401 handling
-- **server**: Cover API-key auth over REST and WebSocket
+- **ci**: Parse workflows as YAML in the Python-support guard
+- **ci**: Keep CI Python versions aligned with requires-python
+
+### CI/CD
+- Test the server on Python 3.14, the version its image runs
+- Test the SDK and server on Python 3.11, 3.12 and 3.13
+
+### Miscellaneous
+- Build(deps): require SQLAlchemy 2.1 and websockets 17 on the server
+- Build: require Python 3.11+
 
 ## [1.0.0] - 2026-08-10
 
