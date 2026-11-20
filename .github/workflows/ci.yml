@@ -206,3 +206,88 @@ jobs:
             cd packages/ui
             npm run build
           fi
+
+  test-ui:
+    name: Test Next.js UI (unit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/ui
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Vitest 5, jsdom and msw need Node 22+.
+      - name: Set up Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/ui/package-lock.json
+
+      - name: Install UI Dependencies
+        run: npm ci
+
+      - name: Type-check UI
+        run: npx tsc --noEmit
+
+      - name: Run unit tests with coverage
+        # Fails below 60% line coverage on store/ and lib/ (vitest.config.mts).
+        run: npm run test:coverage
+
+  e2e-ui:
+    name: UI E2E Smoke Test (Playwright)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/ui
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: packages/server/requirements.txt
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/ui/package-lock.json
+
+      - name: Install Server Dependencies
+        working-directory: packages/server
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install UI Dependencies
+        run: npm ci
+
+      # Only Chromium's headless shell, to keep the job short.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Run E2E smoke test
+        # Starts the FastAPI server (temp SQLite DB) and `next build && next start`.
+        env:
+          E2E_PYTHON: python
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            packages/ui/playwright-report/
+            packages/ui/test-results/
+          retention-days: 7

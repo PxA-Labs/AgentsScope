@@ -15,6 +15,11 @@ env/
 # Node / Next.js
 node_modules/
 .next/
+*.tsbuildinfo
+# UI test output (Vitest coverage, Playwright)
+packages/ui/coverage/
+packages/ui/test-results/
+packages/ui/playwright-report/
 out/
 .vercel
 

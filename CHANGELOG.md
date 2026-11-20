@@ -4,8 +4,30 @@ All notable changes to the **AgentScope** project will be documented in this fil
 
 ## [Unreleased] - 2026-11-20
 
+### Fixed
+- **ui**: Keep the live WebSocket open across session_update messages
+
+### Documentation
+- **ui**: Describe the component layout and how to run the UI tests
+
+### Refactor
+- **ui**: Keep the live socket independent of the refresh callback
+- **ui**: Drop explicit any and restore the strict lint rules
+- **ui**: Split the dashboard page into components
+- **ui**: Move data fetching and the WebSocket into hooks
+- **ui**: Keep graph and stats in the session store
+- **ui**: Add typed REST helpers to lib/api
+
+### Tests
+- **ui**: Add a Playwright E2E smoke test against the real server
+- **ui**: Add Vitest, Testing Library and msw unit tests
+
+### CI/CD
+- Run the UI unit and E2E tests
+
 ### Miscellaneous
-- Build(deps): bump react and @types/react in /packages/ui
+- Build(ui): keep make test-ui light; document the Node versions tests need
+- Build(ui): align react with react-dom 19.3
 
 ## [1.0.0] - 2026-08-10
 

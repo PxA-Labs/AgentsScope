@@ -61,7 +61,8 @@ function extractPrompt(event?: AgentEvent): string {
   if (Array.isArray(payload.prompts) && payload.prompts.length > 0) {
     return payload.prompts.join("\n\n---\n\n");
   }
-  if ((payload as any).prompt) return String((payload as any).prompt);
+  const prompt = (payload as unknown as Record<string, unknown>).prompt;
+  if (prompt) return String(prompt);
   return "";
 }
 
@@ -110,6 +111,9 @@ export function SessionDiffViewer() {
   };
 
   useEffect(() => {
+    // Initial load. fetchSessions flips the loading flag before its request,
+    // as the Refresh button needs; that synchronous update is intended here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSessions();
   }, []);
 

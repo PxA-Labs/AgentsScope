@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "next": "^16.4.6",
@@ -30,6 +34,15 @@
     "postcss": "^8.5.33",
     "autoprefixer": "^10.6.2",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.4.5"
+    "eslint-config-next": "^16.4.5",
+    "@playwright/test": "^1.65.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
+    "@vitest/coverage-v8": "^5.1.1",
+    "jsdom": "^31.0.1",
+    "msw": "^3.0.7",
+    "vitest": "^5.1.1"
   }
 }
