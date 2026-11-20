@@ -379,3 +379,38 @@ def test_process_exit_stops_clients_in_parallel():
     assert proc.returncode == 0, proc.stderr
     assert "BODY DONE" in proc.stdout
     assert elapsed < 3.5, f"exit took {elapsed:.1f}s (3 x 1.5 s serially?)"
+
+
+def test_exit_flush_works_when_new_threads_are_refused():
+    """Python 3.12.0-3.12.2 refuse to start threads while atexit hooks run
+    ("can't create new thread at interpreter shutdown"). The exit flush must
+    then run its blocking calls (here: session registration) inline."""
+    proc, elapsed = run_script("""
+        import threading
+
+        attempts = []
+
+        def register_on_second_try(self):
+            attempts.append(1)
+            if len(attempts) > 1:
+                self.session_id = "sess-1"
+
+        AgentScopeClient._create_session_sync = register_on_second_try
+
+        client = AgentScopeClient(session_name="no-threads-at-exit")
+        for i in range(20):
+            client.emit({"event_id": str(i)})
+        while not attempts:  # the first registration failed: now in backoff
+            time.sleep(0.01)
+
+        def refuse_new_threads(self):
+            raise RuntimeError("can't create new thread at interpreter shutdown")
+
+        # Registered after the client's exit hook, so it runs before it.
+        atexit.register(setattr, threading.Thread, "start", refuse_new_threads)
+        print("BODY DONE", flush=True)
+        """)
+    assert proc.returncode == 0, proc.stderr
+    assert "BODY DONE" in proc.stdout
+    assert "DELIVERED 20" in proc.stdout, proc.stdout + proc.stderr
+    assert elapsed < 3, f"exit took {elapsed:.1f}s"

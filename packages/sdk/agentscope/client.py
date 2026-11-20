@@ -97,7 +97,9 @@ class _SenderEventLoop(asyncio.SelectorEventLoop):
     asyncio performs for ``create_connection``. Through the default executor
     both fail ("cannot schedule new futures after interpreter shutdown"), so
     each call gets a short-lived daemon thread instead. Such calls are rare
-    (session registration and reconnects), so no pool is needed.
+    (session registration and reconnects), so no pool is needed. Where even
+    starting a thread is refused at exit (Python 3.12.0-3.12.2), the call
+    runs inline on the sender thread.
     """
 
     def run_in_executor(self, executor, func, *args):  # type: ignore[override]
@@ -125,7 +127,15 @@ class _SenderEventLoop(asyncio.SelectorEventLoop):
             except RuntimeError:
                 pass  # the loop was closed while the call ran
 
-        threading.Thread(target=work, name="AgentScopeClientIO", daemon=True).start()
+        thread = threading.Thread(target=work, name="AgentScopeClientIO", daemon=True)
+        try:
+            thread.start()
+        except RuntimeError:
+            # Python 3.12.0-3.12.2 refuse new threads once atexit hooks run
+            # ("can't create new thread at interpreter shutdown"). Run the
+            # call on this (the sender) thread instead: blocking the loop is
+            # acceptable while flushing at exit, losing the events is not.
+            work()
         return future
 
 
