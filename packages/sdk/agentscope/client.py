@@ -8,6 +8,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import weakref
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -145,6 +146,50 @@ class _Sender:
             pass
 
 
+# Clients whose buffered events should be delivered when the interpreter
+# exits. Weak references, so stopped clients can be garbage collected; a
+# running sender thread keeps its own client alive.
+_live_clients: "weakref.WeakSet[AgentScopeClient]" = weakref.WeakSet()
+_exit_hook_lock = threading.Lock()
+_exit_hook_registered = False
+
+
+def _track_for_exit(client: "AgentScopeClient") -> None:
+    global _exit_hook_registered
+    with _exit_hook_lock:
+        _live_clients.add(client)
+        if not _exit_hook_registered:
+            # Registered on first use rather than at import, so it runs
+            # before atexit hooks the program registered earlier (LIFO).
+            atexit.register(_stop_clients_at_exit)
+            _exit_hook_registered = True
+
+
+def _stop_clients_at_exit() -> None:
+    """Deliver buffered events of every running client, in parallel.
+
+    All clients are asked to stop first, each with its own shutdown_timeout
+    measured from the same moment, and only then joined. Exit therefore
+    takes as long as the slowest client, not the sum of all of them.
+    """
+    now = time.monotonic()
+    with _exit_hook_lock:
+        clients = list(_live_clients)
+    stopping = []
+    for client in clients:
+        try:
+            sender = client._request_stop(client.shutdown_timeout, now=now)
+        except Exception:
+            continue
+        if sender is not None:
+            stopping.append((client, sender))
+    for client, sender in stopping:
+        try:
+            client._join_sender(sender)
+        except Exception:
+            pass
+
+
 class AgentScopeClient:
     """Thread-safe WebSocket and REST client for the AgentScope observability server.
 
@@ -193,7 +238,6 @@ class AgentScopeClient:
         self.shutdown_timeout = max(0.0, shutdown_timeout)
         self._lock = threading.Lock()
         self._sender: Optional[_Sender] = None
-        self._atexit_registered = False
 
     def start(self) -> None:
         """Start the background connection thread and event loop."""
@@ -211,11 +255,9 @@ class AgentScopeClient:
             self._sender = sender
             self.thread = sender.thread
             sender.thread.start()
-            if not self._atexit_registered:
-                # Deliver buffered events when the program ends, so scripts do
-                # not need to call stop() explicitly.
-                atexit.register(self._stop_at_exit)
-                self._atexit_registered = True
+        # Deliver buffered events when the program ends, so scripts do not
+        # need to call stop() explicitly.
+        _track_for_exit(self)
 
     def stop(self, timeout: float = 2.0) -> None:
         """Deliver buffered events, then stop the background client.
@@ -230,22 +272,29 @@ class AgentScopeClient:
         slow session request), ``running`` stays True until it finishes, and
         no second sender thread is started in the meantime.
         """
-        with self._lock:
-            if not self.running:
-                return
-            sender = self._sender
-            assert sender is not None
-            sender.request_stop(time.monotonic() + max(0.0, timeout))
-            thread = sender.thread
-        if thread and thread is not threading.current_thread():
-            thread.join(timeout=max(0.0, timeout) + 0.5)
+        sender = self._request_stop(timeout)
+        if sender is not None:
+            self._join_sender(sender)
         # The thread clears `running` itself when it exits (see _run_loop).
 
-    def _stop_at_exit(self) -> None:
-        try:
-            self.stop(timeout=self.shutdown_timeout)
-        except Exception:
-            pass
+    def _request_stop(
+        self, timeout: float, now: Optional[float] = None
+    ) -> Optional[_Sender]:
+        """Ask the running sender to flush and exit; return it, don't wait."""
+        with self._lock:
+            if not self.running or self._sender is None:
+                return None
+            sender = self._sender
+            start = time.monotonic() if now is None else now
+            sender.request_stop(start + max(0.0, timeout))
+            return sender
+
+    @staticmethod
+    def _join_sender(sender: _Sender) -> None:
+        """Wait for the sender until its deadline plus 0.5 s to close up."""
+        thread = sender.thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=max(0.0, sender.deadline - time.monotonic()) + 0.5)
 
     def _next_batch(self) -> list:
         """Take up to batch_size buffered events without blocking."""
