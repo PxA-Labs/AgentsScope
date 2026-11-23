@@ -23,7 +23,7 @@
     "swr": "^2.5.1",
     "clsx": "^2.1.0",
     "tailwind-merge": "^3.7.0",
-    "lucide-react": "^1.74.0"
+    "lucide-react": "^1.77.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
